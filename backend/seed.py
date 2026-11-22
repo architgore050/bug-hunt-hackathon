@@ -209,9 +209,10 @@ def main(reset: bool) -> None:
                 "DELETE FROM app.stage_transitions", "DELETE FROM app.time_adjustments", "DELETE FROM app.stages",
                 "DELETE FROM app.invites", "DELETE FROM app.team_members", "DELETE FROM app.teams",
                 "DELETE FROM app.acceptances", "DELETE FROM app.refresh_tokens", "DELETE FROM app.password_resets",
-                "DELETE FROM app.sessions", "DELETE FROM app.users", "DELETE FROM app.readiness_items",
+                "DELETE FROM app.sessions", "DELETE FROM app.announcements", "DELETE FROM app.exports",
+                "DELETE FROM app.users", "DELETE FROM app.readiness_items",
                 "DELETE FROM app.rules_documents", "DELETE FROM app.event_config_revisions",
-                "DELETE FROM app.announcements", "DELETE FROM app.exports", "DELETE FROM app.events",
+                "DELETE FROM app.challenge_versions", "DELETE FROM app.events",
                 "DELETE FROM app.tenants",
             ):
                 s.execute(text(stmt))
@@ -230,11 +231,11 @@ def main(reset: bool) -> None:
 
         users = {}
         for email, name, role in [
-            ("admin@bughunt.local", "Platform Admin", "admin"),
-            ("organizer@bughunt.local", "Kalpesh Parashar", "organizer"),
-            ("organizer2@bughunt.local", "Aashish Prasad", "organizer"),
-            ("reviewer1@bughunt.local", "Reviewer One", "reviewer"),
-            ("reviewer2@bughunt.local", "Reviewer Two", "reviewer"),
+            ("admin@example.com", "Platform Admin", "admin"),
+            ("organizer@example.com", "Kalpesh Parashar", "organizer"),
+            ("organizer2@example.com", "Aashish Prasad", "organizer"),
+            ("reviewer1@example.com", "Reviewer One", "reviewer"),
+            ("reviewer2@example.com", "Reviewer Two", "reviewer"),
         ]:
             uid = str(uuid7())
             users[email] = uid
@@ -316,7 +317,7 @@ def main(reset: bool) -> None:
                 {"i": str(uuid7()), "c": challenge_id, "p": rel, "ln": ln, "lt": txt},
             )
         s.execute(
-            text("UPDATE app.challenge_versions SET status='sealed', content_hash=:h, frozen_at=now() WHERE id = CAST(:i AS uuid)"),
+            text("UPDATE app.challenge_versions SET status='published', content_hash=:h, frozen_at=now(), published_at=now() WHERE id = CAST(:i AS uuid)"),
             {"h": "sha256:" + hashlib.sha256(json.dumps([f for f in PARTICIPANT_FILES]).encode()).hexdigest(), "i": challenge_id},
         )
         s.execute(
@@ -330,8 +331,8 @@ def main(reset: bool) -> None:
         # --- teams, participants, invites ----------------------------------------
         teams = {}
         for team_name, member_emails in [
-            ("Team Lambda", [f"p1.team1@bughunt.local", f"p2.team1@bughunt.local", f"p3.team1@bughunt.local", f"p4.team1@bughunt.local"]),
-            ("Team Vector", [f"p1.team2@bughunt.local", f"p2.team2@bughunt.local", f"p3.team2@bughunt.local", f"p4.team2@bughunt.local", f"p5.team2@bughunt.local"]),
+            ("Team Lambda", [f"p1.team1@example.com", f"p2.team1@example.com", f"p3.team1@example.com", f"p4.team1@example.com"]),
+            ("Team Vector", [f"p1.team2@example.com", f"p2.team2@example.com", f"p3.team2@example.com", f"p4.team2@example.com", f"p5.team2@example.com"]),
         ]:
             team_id = str(uuid7())
             join_code = secrets.token_hex(4).upper()
@@ -347,7 +348,7 @@ def main(reset: bool) -> None:
                           {"i": str(uuid7()), "t": team_id, "u": uid})
 
         invite_tokens = []
-        for email in ["organizer3@bughunt.local"]:
+        for email in ["organizer3@example.com"]:
             raw = secrets.token_urlsafe(32)
             invite_tokens.append((email, raw))
             s.execute(
@@ -356,7 +357,7 @@ def main(reset: bool) -> None:
             )
 
         s.execute(text("INSERT INTO app.announcements (id, event_id, severity, body, created_by) VALUES (CAST(:i AS uuid), CAST(:e AS uuid), 'info', :b, CAST(:u AS uuid))"),
-                  {"i": str(uuid7()), "e": event_id, "b": "Welcome to Fall Back! Set up your environment before the briefing ends.", "u": users["organizer@bughunt.local"]})
+                  {"i": str(uuid7()), "e": event_id, "b": "Welcome to Fall Back! Set up your environment before the briefing ends.", "u": users["organizer@example.com"]})
         audit_write(s, actor_id=None, actor_role="system", action="seed.completed", entity_type="event",
                     entity_id=event_id, request_id="seed", details={"users": len(users), "teams": len(teams)})
 
@@ -407,8 +408,8 @@ def main(reset: bool) -> None:
     print("seed complete:")
     print(f"  event fall-back-2026, stage {stage_id[:8]}, challenge papyrus ({len(PARTICIPANT_FILES)} files)")
     print(f"  ground truth: {len(GT_BUGS)} bugs ({sum(b[6] for b in GT_BUGS)} pts), {len(GT_FLAGS)} flags ({sum(f[2] for f in GT_FLAGS)} pts)")
-    print("  staff: admin@ / organizer@ / reviewer1@ / reviewer2@ bughunt.local - password Dev-only!Passw0rd!")
-    print("  participants: p1..p5.team1@ / p1..p5.team2@ bughunt.local - password Dev-only!Passw0rd!")
+    print("  staff: admin@ / organizer@ / reviewer1@ / reviewer2@ example.com - password Dev-only!Passw0rd!")
+    print("  participants: p1..p5.team1@ / p1..p5.team2@ example.com - password Dev-only!Passw0rd!")
     for email, raw in invite_tokens:
         print(f"  invite for {email}: {raw}")
 

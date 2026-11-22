@@ -63,7 +63,7 @@ def get_principal(request: Request, creds: HTTPAuthorizationCredentials | None =
     with app_session() as s:
         row = s.execute(
             text(
-                "SELECT u.id, u.email, u.name, u.role, u.status, u.token_version, "
+                "SELECT u.id, u.email, u.name, u.role, u.status, u.token_version, s.id AS session_id, "
                 "s.revoked_at FROM app.users u JOIN app.sessions s ON s.id = CAST(:sid AS uuid) "
                 "WHERE u.id = CAST(:uid AS uuid)"
             ),
@@ -91,10 +91,13 @@ def require_role(*roles: str):
     return checker
 
 
-def require_staff(p: Principal = Depends(get_principal)) -> Principal:
-    if p.role not in ("reviewer", "organizer", "admin"):
-        raise ApiError("AUTH_FORBIDDEN")
-    return p
+def require_staff() -> "callable":
+    def checker(p: Principal = Depends(get_principal)) -> Principal:
+        if p.role not in ("reviewer", "organizer", "admin"):
+            raise ApiError("AUTH_FORBIDDEN")
+        return p
+
+    return checker
 
 
 def require_admin(p: Principal = Depends(get_principal)) -> Principal:
