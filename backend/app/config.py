@@ -29,8 +29,8 @@ class Settings(BaseSettings):
 
     # --- auth ----------------------------------------------------------------
     # DEV ONLY DEFAULTS. A live deployment MUST override all of these.
-    jwt_secret: str = "dev-only-insecure-secret-replace-me"
-    jwt_algorithm: str = "HS256"  # pinned; Ed25519 (EdDSA) supported via JWT_SECRET_KEY_FILE in production
+    jwt_secret: str = "dev-only-insecure-secret-replace-me"  # MUST be overridden in any real deployment
+    jwt_algorithm: str = "HS256"  # pinned; HS256 only. EdDSA/Ed25519 is a P1 follow-up requiring a key-file setting
     access_token_ttl_s: int = 600  # 10 minutes
     refresh_token_ttl_s: int = 86400 * 3
     refresh_reuse_grace_s: int = 10  # AUTH-04: same-successor retry window

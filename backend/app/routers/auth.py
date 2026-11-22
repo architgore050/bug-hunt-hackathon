@@ -1,8 +1,8 @@
-"""Authentication endpoints (spec ATH-01..05).
+"""Authentication endpoints (spec AUTH-1..05).
 
 - POST /auth/login: rate limited, generic error (no account enumeration).
 - POST /auth/refresh: cookie + CSRF headers; rotates the refresh token family;
-  reuse outside the grace window revokes the family (AUTH-04).
+  reuse outside the grace window revokes the family (AUTH-4).
 - POST /auth/activate: single-use invite token -> set password + accept rules.
 - POST /auth/password/reset-request + /reset.
 - GET /me, /me/sessions, POST /me/acceptances, POST /auth/step-up.
@@ -61,7 +61,7 @@ def login(body: LoginIn, request: Request, response: Response):
             {"e": body.email.lower()},
         ).mappings().first()
         if user is None or not user["password_hash"] or not security.verify_password(body.password, user["password_hash"]):
-            # generic failure: no enumeration (ATH-01)
+            # generic failure: no enumeration (AUTH-1)
             raise ApiError("AUTH_INVALID_CREDENTIALS")
         if user["status"] == "pending":
             raise ApiError("AUTH_NOT_ACTIVATED")
@@ -135,7 +135,7 @@ def refresh(request: Request, response: Response):
         if row["status"] == "revoked" or row["expires_at"] < now:
             raise ApiError("AUTH_SESSION_REVOKED")
         if row["status"] == "rotated":
-            # AUTH-04 reuse handling: within grace return the same successor; outside revoke family
+            # AUTH-4 reuse handling: within grace return the same successor; outside revoke family
             rotated_at = row["rotated_at"]
             in_grace = rotated_at is not None and (now - rotated_at).total_seconds() <= settings.refresh_reuse_grace_s
             if in_grace and row["successor_encrypted"]:
@@ -327,7 +327,7 @@ def reset(body: ResetIn, request: Request):
             {"pw": security.hash_password(body.password), "u": str(row["user_id"])},
         )
         s.execute(text("UPDATE app.password_resets SET used_at = now() WHERE id = CAST(:id AS uuid)"), {"id": str(row["id"])})
-        # revoke all sessions + refresh families (ATH-03)
+        # revoke all sessions + refresh families (AUTH-3)
         s.execute(text("UPDATE app.sessions SET revoked_at = now() WHERE user_id = CAST(:u AS uuid) AND revoked_at IS NULL"), {"u": str(row["user_id"])})
         s.execute(text("UPDATE app.refresh_tokens SET status='revoked' WHERE user_id = CAST(:u AS uuid)"), {"u": str(row["user_id"])})
         audit_write(s, actor_id=str(row["user_id"]), actor_role="user", action="auth.password_reset",
