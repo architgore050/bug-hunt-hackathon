@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: pgadmin
+          POSTGRES_PASSWORD: ""
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U pgadmin"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5433"
+      DATABASE_URL_APP: postgresql+psycopg://app_api:app_api_dev@127.0.0.1:5433/bughunt_test
+      DATABASE_URL_GT: postgresql+psycopg://gt_admin:gt_admin_dev@127.0.0.1:5433/bughunt_test
+      JWT_SECRET: ci-secret-not-for-production-0123456789abcdef32bytes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Create test database, roles and schemas
+        run: |
+          psql -h 127.0.0.1 -p 5433 -U pgadmin -d postgres -c "CREATE DATABASE bughunt_test"
+          psql -h 127.0.0.1 -p 5433 -U pgadmin -d bughunt_test -f - <<'SQL'
+          CREATE SCHEMA app; CREATE SCHEMA gt; CREATE SCHEMA audit;
+          CREATE ROLE app_api LOGIN PASSWORD 'app_api_dev';
+          CREATE ROLE gt_admin LOGIN PASSWORD 'gt_admin_dev';
+          CREATE ROLE scheduler LOGIN PASSWORD 'scheduler_dev';
+          GRANT USAGE, CREATE ON SCHEMA app TO app_api, gt_admin, scheduler;
+          ALTER ROLE app_api SET search_path = app;
+          ALTER ROLE gt_admin SET search_path = app, gt;
+          ALTER ROLE scheduler SET search_path = app;
+          GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA app TO app_api, gt_admin, scheduler;
+          GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA app TO app_api, gt_admin, scheduler;
+          GRANT USAGE, CREATE ON SCHEMA gt TO gt_admin;
+          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA gt TO gt_admin;
+          GRANT USAGE, SELECT ON SCHEMA audit TO app_api, gt_admin;
+          GRANT INSERT, SELECT ON ALL TABLES IN SCHEMA audit TO app_api, gt_admin;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT ALL ON TABLES TO app_api, gt_admin, scheduler;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT ALL ON SEQUENCES TO app_api, gt_admin, scheduler;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA gt GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO gt_admin;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA audit GRANT INSERT, SELECT ON TABLES TO app_api, gt_admin;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA audit GRANT USAGE, SELECT ON SEQUENCES TO app_api, gt_admin;
+          SQL
+      - name: Apply migrations
+        run: bash scripts/migrate.sh
+        env:
+          DB: bughunt_test
+          PGUSER: pgadmin
+          PGPASSWORD: ""
+      - name: Run backend tests
+        run: |
+          cd backend
+          python -m pytest tests/ -q --timeout=120
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+      - name: Check for leftover placeholders
+        run: |
+          ! grep -rn "TODO\|Lorem\|XXX" frontend/src/ backend/app/ --include="*.py" --include="*.ts" --include="*.tsx"

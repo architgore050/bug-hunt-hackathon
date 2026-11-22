@@ -1,0 +1,28 @@
+/* Design tokens for "The Case File" system. Depth comes from borders and tone
+   steps only: no drop shadows, no gradients, radius 3px max. */
+:root {
+  --ink: #101418;
+  --panel: #171c22;
+  --panel-2: #1d242c;
+  --line: #2a313a;
+  --line-strong: #3a434e;
+  --paper: #ede6d8;
+  --muted: #9aa3ad;
+  --signal: #e8a13d;
+  --signal-dim: #b97f2e;
+  --ok: #5fa97c;
+  --warn: #d98e32;
+  --danger: #c4554d;
+  --info: #6c93b5;
+
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-ui: 'Archivo', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Courier New', monospace;
+
+  --radius: 3px;
+  --radius-sm: 2px;
+  --speed: 120ms;
+
+  --page-max: 1160px;
+  --header-h: 56px;
+}

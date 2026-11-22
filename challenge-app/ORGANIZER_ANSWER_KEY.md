@@ -4,7 +4,7 @@
 participants, the platform's participant API, or any frontend bundle.**
 
 Ground truth for the Bug Hunt CTF platform is seeded from this manifest by
-`backend/app/seed.py`. Line anchors are matched by pattern at seed time and
+`backend/seed.py`. Line anchors are matched by pattern at seed time and
 stored with anchor hashes (DAT-06).
 
 ## Scoreable bugs (award units)
@@ -34,7 +34,7 @@ Total main score available: 275 points.
   against the exact full value. Wildcards are never added.
 - Repro: create a note titled "Networks Basics", search for "Networks".
 - Fix: bind `%${term}%` (and escape embedded wildcards if you want exactness).
-- Aliases: `like`, `wildcard`, `search`, `%`.
+- Aliases: `like`, `wildcard`, `search`.
 - Hidden tests: create note "Networks Basics"; GET /api/notes/search?q=Network
   must include that note.
 

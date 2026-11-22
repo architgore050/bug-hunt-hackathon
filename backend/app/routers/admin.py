@@ -245,10 +245,19 @@ def control_stage(stage_id: str, body: dict, request: Request, p: Principal = De
         elif action == "resume":
             if st["status"] != "paused":
                 raise ApiError("VALIDATION_ERROR", details={"transition": "Only a paused stage can resume."})
-            # shift ends_at by the pause duration to keep the promised working time (TIM-05)
-            s.execute(text("UPDATE app.stages SET status='active', ends_at = ends_at + make_interval(secs => EXTRACT(epoch FROM (now() - (SELECT started_at FROM app.stages WHERE id = CAST(:s AS uuid)))::int)) WHERE id = CAST(:s AS uuid)"), {"s": stage_id})
-            # simpler correct approach below; the SQL above is superseded by the explicit pause-end tracking
-            pass
+            # TIM-05: shift ends_at by the pause duration measured from the pause
+            # transition (not stage start), so the promised working time is kept.
+            paused_at = s.execute(
+                text("SELECT created_at FROM app.stage_transitions WHERE stage_id = CAST(:s AS uuid) AND to_status = 'paused' ORDER BY created_at DESC LIMIT 1"),
+                {"s": stage_id},
+            ).scalar_one()
+            if paused_at is not None:
+                s.execute(
+                    text("UPDATE app.stages SET status='active', ends_at = ends_at + make_interval(secs => LEAST(7200, GREATEST(0, EXTRACT(epoch FROM (clock_timestamp() - CAST(:p AS timestamptz)))::int))) WHERE id = CAST(:s AS uuid)"),
+                    {"s": stage_id, "p": paused_at},
+                )
+            else:
+                s.execute(text("UPDATE app.stages SET status='active' WHERE id = CAST(:s AS uuid)"), {"s": stage_id})
         elif action == "extend":
             seconds = int(body.get("seconds", 0))
             if seconds <= 0 or seconds > 3600:
@@ -718,6 +727,7 @@ def export_csv(event_id: str, kind: str, p: Principal = Depends(require_organize
 
     buf = io.StringIO()
     writer = csv.writer(buf)
+    created_by = p.id
     with app_session() as s:
         if kind == "results":
             writer.writerow(["team_id", "team_name", "score"])
@@ -747,7 +757,14 @@ def export_csv(event_id: str, kind: str, p: Principal = Depends(require_organize
             ).all()
             for r in rows:
                 writer.writerow([str(r[0]), str(r[1]), str(r[2]), r[3], r[4], float(r[5]), r[6], str(r[7]) if r[7] else "", r[8].isoformat()])
-    return {"filename": f"{kind}_{event_id[:8]}.csv", "content": buf.getvalue()}
+    content = buf.getvalue()
+    with app_session() as s:
+        s.execute(
+            text("INSERT INTO app.exports (id, event_id, kind, content, content_hash, created_by) VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :k, :c, :h, CAST(:u AS uuid))"),
+            {"id": str(uuid7()), "e": event_id, "k": f"{kind}_csv", "c": content,
+             "h": __import__("hashlib").sha256(content.encode()).hexdigest(), "u": created_by},
+        )
+    return {"filename": f"{kind}_{event_id[:8]}.csv", "content": content}
 
 
 # --- disputes -------------------------------------------------------------------

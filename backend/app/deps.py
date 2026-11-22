@@ -113,7 +113,7 @@ def require_organizer(p: Principal = Depends(get_principal)) -> Principal:
 
 
 def require_rules_accepted(p: Principal) -> None:
-    """Blocking rules gate (ATH-04): participants must accept the current rules version."""
+    """Blocking rules gate (AUTH-04): participants must accept the current rules version."""
     if p.role != "participant":
         return
     with app_session() as s:

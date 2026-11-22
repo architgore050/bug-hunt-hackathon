@@ -250,7 +250,7 @@ def main(reset: bool) -> None:
                 "INSERT INTO app.events (id, tenant_id, slug, name, status, timezone, duration_minutes, "
                 "max_participants, max_teams, rules_version, config) VALUES "
                 "(CAST(:i AS uuid), CAST(:t AS uuid), 'fall-back-2026', 'Fall Back - Full-Stack Software Debugging Challenge', "
-                "'configured', 'Asia/Kolkata', 180, 50, 12, 1, CAST(:c AS jsonb))"
+                "'configured', 'Asia/Kolkata', 180, 50, 10, 1, CAST(:c AS jsonb))"
             ),
             {"i": event_id, "t": tenant_id, "c": json.dumps(EVENT_CONFIG)},
         )

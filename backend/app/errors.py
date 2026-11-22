@@ -3,7 +3,7 @@
 Every API error uses the same shape:
     {"error": {"code", "message", "request_id", "details"}}
 and carries an X-Request-Id response header. User-facing messages are stable,
-generic where they must not leak account state (ATH-01).
+generic where they must not leak account state (AUTH-1).
 """
 from __future__ import annotations
 
@@ -55,7 +55,12 @@ class ApiError(Exception):
 
 async def api_error_handler(_: Request, exc: ApiError) -> JSONResponse:
     request_id = getattr(_.state, "request_id", "-")
-    body = {"error": {"code": exc.code, "message": exc.message, "request_id": request_id, "details": exc.details}}
+    message = exc.message
+    try:
+        message = message.format(request_id=request_id, **exc.details)
+    except (KeyError, IndexError):
+        pass
+    body = {"error": {"code": exc.code, "message": message, "request_id": request_id, "details": exc.details}}
     return JSONResponse(status_code=exc.status, content=body, headers={"X-Request-Id": request_id})
 
 
