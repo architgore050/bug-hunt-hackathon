@@ -1,3 +1,0 @@
-2026-11-22 12:08:26,814 INFO worker worker starting (handlers: apply_review_outcome, apply_test_results, create_review_item, dispatch_outbox, evaluate_submission, refresh_leaderboard, release_feedback, verify_flag)
-2026-11-22 12:12:25,085 INFO worker processed 1 job(s)
-2026-11-22 12:13:09,141 INFO worker processed 1 job(s)
