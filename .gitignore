@@ -29,6 +29,9 @@ pgdata/
 challenge-app/data/
 challenge-app/*.log
 
+# Runtime logs (local only; never committed)
+logs/
+
 # OS
 .DS_Store
 Thumbs.db
