@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Papyrus admin</title>
+</head>
+<body>
+  <h1>Papyrus admin</h1>
+  <p id="gate">Admin check pending...</p>
+  <pre id="out"></pre>
+  <script>
+    // The gate below is client-side only: it sends the query flag and expects
+    // the server to enforce access. Inspect how /api/admin/overview decides.
+    async function main() {
+      const res = await fetch("/api/admin/overview?view=admin", { credentials: "same-origin" });
+      const gate = document.getElementById("gate");
+      if (!res.ok) {
+        gate.textContent = "Access denied (" + res.status + ")";
+        return;
+      }
+      const data = await res.json();
+      gate.textContent = "Signed in as admin (trust level: query flag)";
+      document.getElementById("out").textContent = JSON.stringify(data, null, 2);
+    }
+    main();
+  </script>
+</body>
+</html>

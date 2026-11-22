@@ -1,0 +1,52 @@
+:root {
+  --ink: #1f2430;
+  --paper: #f4efe6;
+  --accent: #2f6f4f;
+  --line: #d8d0c0;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  background: var(--paper);
+  color: var(--ink);
+}
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  background: var(--ink);
+  color: var(--paper);
+}
+.topbar a { color: var(--paper); margin-right: 16px; text-decoration: none; }
+.brand { font-size: 20px; font-weight: bold; letter-spacing: 1px; }
+main { max-width: 780px; margin: 24px auto; padding: 0 16px; }
+.card {
+  background: #fffdf8;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 18px 22px;
+  margin-bottom: 20px;
+}
+label { display: block; margin: 10px 0; }
+input, textarea, select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  font: inherit;
+}
+button {
+  font: inherit;
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+.muted { color: #7a7263; font-size: 13px; }
+.hidden { display: none; }
+#note-list { list-style: none; padding: 0; }
+#note-list li { padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.note-body { white-space: pre-wrap; font: inherit; }
+#comment-list li { margin: 8px 0; }
