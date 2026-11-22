@@ -86,16 +86,17 @@ def claim_award_unit(
     ).first()
     if existing:
         return False
-    session.add(
-        AwardClaim(
-            id=uuid.uuid4(),
-            event_id=uuid.UUID(event_id),
-            stage_id=uuid.UUID(stage_id),
-            team_id=uuid.UUID(team_id),
-            award_unit_id=award_unit_id,
-            submission_id=uuid.UUID(submission_id),
-        )
+    row = AwardClaim(
+        id=uuid.uuid4(),
+        event_id=uuid.UUID(event_id),
+        stage_id=uuid.UUID(stage_id),
+        team_id=uuid.UUID(team_id),
+        award_unit_id=award_unit_id,
+        submission_id=uuid.UUID(submission_id),
     )
+    session.add(row)
+    session.flush()  # make the claim visible within this transaction and let the
+    # unique constraint reject cross-transaction races (DAT-01)
     return True
 
 
