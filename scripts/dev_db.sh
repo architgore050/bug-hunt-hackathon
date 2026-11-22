@@ -23,6 +23,24 @@ export PATH="$PG_BIN:$PATH"
 # Start PostgreSQL if it is not already running.
 if ! pg_isready -h 127.0.0.1 -p "$PGPORT" >/dev/null 2>&1; then
   mkdir -p "$PGDATA"
+  # A recycled environment can leave a stale pid file behind; drop it only
+  # when the recorded process is genuinely gone.
+  if [ -f "$PGDATA/postmaster.pid" ]; then
+    pid=$(head -1 "$PGDATA/postmaster.pid")
+    if ! ps -p "$pid" -o comm= 2>/dev/null | grep -q postgres; then
+      rm -f "$PGDATA/postmaster.pid"
+    fi
+  fi
+  # The data directory must be owner-only or the server refuses to start.
+  chmod 700 "$PGDATA"
+  # Empty runtime directories do not survive some environment restores.
+  for d in pg_notify pg_tblspc pg_replslot pg_twophase pg_stat pg_stat_tmp \
+           pg_commit_ts pg_dynshmem pg_snapshots pg_subtrans pg_xact \
+           pg_wal/archive_status pg_wal/summaries \
+           pg_logical/snapshots pg_logical/mappings \
+           pg_multixact/members pg_multixact/offsets; do
+    mkdir -p "$PGDATA/$d"
+  done
   if [ ! -s "$PGDATA/PG_VERSION" ]; then
     initdb -D "$PGDATA" -U "$PGUSER" --auth=trust -E UTF8 >/dev/null
   fi
@@ -31,8 +49,20 @@ if ! pg_isready -h 127.0.0.1 -p "$PGPORT" >/dev/null 2>&1; then
   sleep 1
 fi
 
+# Fail fast if the port is served by a different PostgreSQL cluster (a system
+# service, a container, another checkout). psql -w never prompts for a
+# password: our cluster uses trust auth, so pgadmin needs NO password at all.
+SERVED_DIR="$(psql -w -h 127.0.0.1 -p "$PGPORT" -U "$PGUSER" -d postgres -tAc "SHOW data_directory" 2>/dev/null || true)"
+SERVED_DIR="${SERVED_DIR%/}"
+if [ "$SERVED_DIR" != "${PGDATA%/}" ]; then
+  echo "ERROR: 127.0.0.1:$PGPORT is served by another PostgreSQL cluster (data dir: ${SERVED_DIR:-<unreachable or auth required>})." >&2
+  echo "       This platform's dev cluster uses trust auth: pgadmin has no password." >&2
+  echo "       Pick a free port instead, e.g.: PGPORT=5434 DB=\${DB:-bughunt} $0" >&2
+  exit 1
+fi
+
 TARGET_DB="${DB:-bughunt}"
-PSQL="psql -h 127.0.0.1 -p $PGPORT -U $PGUSER -d postgres -v ON_ERROR_STOP=1"
+PSQL="psql -w -h 127.0.0.1 -p $PGPORT -U $PGUSER -d postgres -v ON_ERROR_STOP=1"
 
 if ! $PSQL -tAc "SELECT 1 FROM pg_database WHERE datname='$TARGET_DB'" | grep -q 1; then
   $PSQL -c "CREATE DATABASE $TARGET_DB"

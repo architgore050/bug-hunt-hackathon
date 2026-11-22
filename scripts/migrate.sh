@@ -15,7 +15,7 @@ export PGHOST PGPORT PGUSER PGPASSWORD
 DB="${DB:-bughunt}"
 MIGDIR="$REPO_ROOT/backend/migrations"
 
-run_sql() { psql -d "$DB" -v ON_ERROR_STOP=1 -q "$@"; }
+run_sql() { psql -w -d "$DB" -v ON_ERROR_STOP=1 -q "$@"; }
 
 run_sql -c "CREATE TABLE IF NOT EXISTS app.schema_migrations (filename TEXT PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())" >/dev/null
 
@@ -23,13 +23,13 @@ shopt -s nullglob
 applied=0
 for f in "$MIGDIR"/*.sql; do
   name="$(basename "$f")"
-  already=$(psql -d "$DB" -tAc "SELECT 1 FROM app.schema_migrations WHERE filename='$name'")
+  already=$(psql -w -d "$DB" -tAc "SELECT 1 FROM app.schema_migrations WHERE filename='$name'")
   if [ "$already" = "1" ]; then
     continue
   fi
   echo "applying $name"
-  psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$f"
-  psql -d "$DB" -v ON_ERROR_STOP=1 -q -c "INSERT INTO app.schema_migrations (filename) VALUES ('$name')"
+  psql -w -d "$DB" -v ON_ERROR_STOP=1 -q -f "$f"
+  psql -w -d "$DB" -v ON_ERROR_STOP=1 -q -c "INSERT INTO app.schema_migrations (filename) VALUES ('$name')"
   applied=$((applied+1))
 done
 echo "migrations applied: $applied"

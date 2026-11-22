@@ -28,6 +28,14 @@ own limits honestly.
 Requirements: Python 3.12+, Node 22+, a local PostgreSQL 17 (the scripts use
 portable binaries at `../tools/pg17/bin` by default; override `PG_BIN`).
 
+**No password is needed anywhere in setup.** The dev cluster is initialized
+with trust auth, so `pgadmin` has no password and localhost connections are
+never password-checked (see `.env` for the role passwords used by the app
+itself: `app_api_dev`, `gt_admin_dev`, `scheduler_dev`). If `psql` ever
+prompts for a password, a different PostgreSQL cluster is listening on that
+port; `scripts/dev_db.sh` detects this and tells you to pick another one
+(`PGPORT=5434`).
+
 ```bash
 # 1. database, roles, schemas (creates roles app_api / gt_admin / scheduler)
 DB=bughunt scripts/dev_db.sh
