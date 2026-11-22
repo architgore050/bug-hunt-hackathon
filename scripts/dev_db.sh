@@ -52,6 +52,7 @@ fi
 # Fail fast if the port is served by a different PostgreSQL cluster (a system
 # service, a container, another checkout). psql -w never prompts for a
 # password: our cluster uses trust auth, so pgadmin needs NO password at all.
+PGDATA="$(cd "$PGDATA" && pwd)"   # canonical form: SHOW data_directory never contains ".."
 SERVED_DIR="$(psql -w -h 127.0.0.1 -p "$PGPORT" -U "$PGUSER" -d postgres -tAc "SHOW data_directory" 2>/dev/null || true)"
 SERVED_DIR="${SERVED_DIR%/}"
 if [ "$SERVED_DIR" != "${PGDATA%/}" ]; then
