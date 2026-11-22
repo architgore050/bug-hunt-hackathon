@@ -31,15 +31,14 @@ if ! pg_isready -h 127.0.0.1 -p "$PGPORT" >/dev/null 2>&1; then
   sleep 1
 fi
 
+TARGET_DB="${DB:-bughunt}"
 PSQL="psql -h 127.0.0.1 -p $PGPORT -U $PGUSER -d postgres -v ON_ERROR_STOP=1"
 
-if ! $PSQL -tAc "SELECT 1 FROM pg_database WHERE datname='bughunt'" | grep -q 1; then
-  $PSQL <<'SQL'
-CREATE DATABASE bughunt;
-SQL
+if ! $PSQL -tAc "SELECT 1 FROM pg_database WHERE datname='$TARGET_DB'" | grep -q 1; then
+  $PSQL -c "CREATE DATABASE $TARGET_DB"
 fi
 
-$PSQL -d bughunt <<'SQL'
+$PSQL -d "$TARGET_DB" <<'SQL'
 CREATE SCHEMA IF NOT EXISTS app;
 CREATE SCHEMA IF NOT EXISTS gt;
 CREATE SCHEMA IF NOT EXISTS audit;
@@ -80,4 +79,4 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA audit GRANT INSERT, SELECT ON TABLES TO app_a
 ALTER DEFAULT PRIVILEGES IN SCHEMA audit GRANT USAGE, SELECT ON SEQUENCES TO app_api, gt_admin;
 SQL
 
-echo "Database bughunt ready on 127.0.0.1:$PGPORT (roles: app_api, gt_admin, scheduler)"
+echo "Database $TARGET_DB ready on 127.0.0.1:$PGPORT (roles: app_api, gt_admin, scheduler)"
