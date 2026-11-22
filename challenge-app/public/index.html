@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Papyrus - campus notes</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">Papyrus</a>
+    <nav>
+      <a href="/" data-nav="all">All notes</a>
+      <a href="/?view=mine" data-nav="mine">My notes</a>
+      <span id="userbox"></span>
+    </nav>
+  </header>
+
+  <main>
+    <section id="auth-panel" class="card hidden">
+      <h2>Sign in</h2>
+      <form id="login-form">
+        <label>Username <input name="username" autocomplete="username"></label>
+        <label>Password <input name="password" type="password" autocomplete="current-password"></label>
+        <button type="submit">Sign in</button>
+      </form>
+      <h2>New here?</h2>
+      <form id="register-form">
+        <label>Username <input name="username" autocomplete="off"></label>
+        <label>Display name <input name="display_name"></label>
+        <label>Password <input name="password" type="password"></label>
+        <button type="submit">Create account</button>
+      </form>
+    </section>
+
+    <section id="composer" class="card hidden">
+      <h2>Share a note</h2>
+      <form id="note-form">
+        <label>Title <input name="title" required></label>
+        <label>Subject
+          <select name="subject">
+            <option value="general">general</option>
+            <option value="networks">networks</option>
+            <option value="dbms">dbms</option>
+            <option value="os">os</option>
+          </select>
+        </label>
+        <label>Body <textarea name="body" rows="5" required></textarea></label>
+        <button type="submit">Save note</button>
+        <span id="save-result"></span>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Notes</h2>
+      <form id="search-form">
+        <input id="search-input" name="q" placeholder="Search notes by keyword">
+        <button type="submit" id="search-go">Search</button>
+      </form>
+      <ul id="note-list"></ul>
+    </section>
+
+    <section id="note-detail" class="card hidden">
+      <h2 id="note-title"></h2>
+      <p id="note-meta" class="muted"></p>
+      <pre id="note-body" class="note-body"></pre>
+      <h3>Comments</h3>
+      <ul id="comment-list"></ul>
+      <form id="comment-form" class="hidden">
+        <textarea name="body" rows="2" placeholder="Write a comment"></textarea>
+        <button type="submit">Comment</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
