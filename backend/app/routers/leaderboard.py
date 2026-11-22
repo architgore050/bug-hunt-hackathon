@@ -19,14 +19,15 @@ router = APIRouter(tags=["leaderboard"])
 def leaderboard(stage_id: str, p: Principal = Depends(get_principal)):
     with app_session() as s:
         stage = s.execute(
-            text("SELECT id, config FROM app.stages WHERE id = CAST(:s AS uuid)"),
+            text("SELECT id, config, status FROM app.stages WHERE id = CAST(:s AS uuid)"),
             {"s": stage_id},
         ).mappings().first()
         if stage is None:
             raise ApiError("NOT_FOUND")
         cfg = stage["config"] or {}
         mode = cfg.get("leaderboard_mode", "hidden")
-        if mode == "hidden" and p.role == "participant":
+        released = stage["status"] in ("released", "final")
+        if mode == "hidden" and p.role == "participant" and not released:
             return {"visible": False, "message": "The leaderboard is hidden for this round."}
         delay_s = int(cfg.get("leaderboard_delay_s", 600))
         from datetime import datetime, timedelta, timezone
@@ -50,7 +51,7 @@ def my_results(stage_id: str, p: Principal = Depends(get_principal)):
     require_role("participant")(p)
     with app_session() as s:
         released = s.execute(
-            text("SELECT COALESCE(MAX(feedback_released), false) FROM app.submissions WHERE stage_id = CAST(:s AS uuid)"),
+            text("SELECT COALESCE(BOOL_OR(feedback_released), false) FROM app.submissions WHERE stage_id = CAST(:s AS uuid)"),
             {"s": stage_id},
         ).scalar_one()
         if not released:

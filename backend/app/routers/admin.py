@@ -44,7 +44,7 @@ class EventIn(BaseModel):
 
 
 @router.post("/admin/events", status_code=201)
-def create_event(body: EventIn, request: Request, p: Principal = Depends(require_organizer())):
+def create_event(body: EventIn, request: Request, p: Principal = Depends(require_organizer)):
     with app_session() as s:
         tenant = s.execute(text("SELECT id FROM app.tenants ORDER BY created_at LIMIT 1")).first()
         if tenant is None:
@@ -82,7 +82,7 @@ EVENT_TRANSITIONS = {
 
 
 @router.post("/admin/events/{event_id}/status")
-def set_event_status(event_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer())):
+def set_event_status(event_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
     target = body.get("status")
     with app_session() as s:
         cur = s.execute(text("SELECT status FROM app.events WHERE id = CAST(:e AS uuid) FOR UPDATE"), {"e": event_id}).first()
@@ -112,7 +112,7 @@ class ConfigIn(BaseModel):
 
 
 @router.post("/admin/events/{event_id}/config")
-def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal = Depends(require_organizer())):
+def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal = Depends(require_organizer)):
     """New config revision with reason; publication freezes the snapshot (DAT-04)."""
     w = body.config.get("scoring", {}).get("weights", {})
     if w and abs(sum(float(v) for v in w.values()) - 1.0) > 0.001:
@@ -144,7 +144,7 @@ def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal 
 
 
 @router.get("/admin/events")
-def list_events(p: Principal = Depends(require_organizer())):
+def list_events(p: Principal = Depends(require_organizer)):
     with app_session() as s:
         rows = s.execute(
             text("SELECT id, slug, name, status, starts_at, ends_at, timezone, max_participants, max_teams, rules_version, config_version FROM app.events ORDER BY created_at DESC")
@@ -177,7 +177,7 @@ DEFAULT_STAGE_CONFIG = {
 
 
 @router.post("/admin/events/{event_id}/stages", status_code=201)
-def create_stage(event_id: str, body: StageIn, request: Request, p: Principal = Depends(require_organizer())):
+def create_stage(event_id: str, body: StageIn, request: Request, p: Principal = Depends(require_organizer)):
     cfg = {**DEFAULT_STAGE_CONFIG, **body.config}
     canonical = json.dumps(cfg, sort_keys=True, separators=(",", ":"))
     rsh = "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
@@ -209,14 +209,15 @@ STAGE_TRANSITIONS = {
 
 
 @router.post("/admin/stages/{stage_id}/control")
-def control_stage(stage_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer())):
+def control_stage(stage_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
     """arm / start / pause / resume / extend / end - reason code required (ADM-LV-02)."""
     action = body.get("action")
     reason = body.get("reason", "")
     if not reason:
         raise ApiError("VALIDATION_ERROR", details={"reason": "A reason code is required for stage control."})
     mapping = {
-        "arm": ("draft", "sealed"), "seal": ("draft", "sealed"),
+        "seal": ("draft", "sealed"),
+        "arm": ("sealed", "armed"),
         "start": ("armed", "active"), "resume": ("paused", "active"),
         "pause": ("active", "paused"), "end": ("active", "ended"),
     }
@@ -232,10 +233,10 @@ def control_stage(stage_id: str, body: dict, request: Request, p: Principal = De
             _from, _to = mapping[action]
             if st["status"] != _from:
                 raise ApiError("VALIDATION_ERROR", details={"transition": f"Cannot {action} from {st['status']}."})
-            s.execute(text("UPDATE app.stages SET status='sealed' WHERE id = CAST(:s AS uuid)"), {"s": stage_id})
+            s.execute(text("UPDATE app.stages SET status=:to WHERE id = CAST(:s AS uuid)"), {"to": _to, "s": stage_id})
         elif action == "start":
             if st["status"] != "armed":
-                raise ApiError("VALIDATION_ERROR", details={"transition": "Arm the stage before starting."})
+                raise ApiError("VALIDATION_ERROR", details={"transition": f"Arm the stage first (status is {st['status']})."})
             s.execute(text("UPDATE app.stages SET status='active', started_at=:now, ends_at=:now + make_interval(mins => e.duration_minutes) FROM app.events e WHERE app.stages.id = CAST(:s AS uuid) AND e.id = app.stages.event_id"), {"now": now, "s": stage_id})
         elif action == "pause":
             if st["status"] != "active":
@@ -270,7 +271,7 @@ def control_stage(stage_id: str, body: dict, request: Request, p: Principal = De
 
 
 @router.post("/admin/stages/{stage_id}/release")
-def release_results(stage_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer())):
+def release_results(stage_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
     """ENDED -> EVALUATING -> RELEASED: publishes verdicts and leaderboard (ADM-RS-04)."""
     action = body.get("action", "release")
     reason = body.get("reason", "results release")
@@ -302,7 +303,7 @@ class TeamIn(BaseModel):
 
 
 @router.post("/admin/events/{event_id}/teams", status_code=201)
-def create_team(event_id: str, body: TeamIn, request: Request, p: Principal = Depends(require_organizer())):
+def create_team(event_id: str, body: TeamIn, request: Request, p: Principal = Depends(require_organizer)):
     import secrets
 
     with app_session() as s:
@@ -328,7 +329,7 @@ class InviteIn(BaseModel):
 
 
 @router.post("/admin/events/{event_id}/invites", status_code=201)
-def create_invite(event_id: str, body: InviteIn, request: Request, p: Principal = Depends(require_organizer())):
+def create_invite(event_id: str, body: InviteIn, request: Request, p: Principal = Depends(require_organizer)):
     """Creates a single-use activation token. v1 returns it to the organizer
     console (email delivery is a deployment follow-up, see runbook)."""
     import secrets
@@ -355,7 +356,7 @@ def create_invite(event_id: str, body: InviteIn, request: Request, p: Principal 
 
 
 @router.get("/admin/events/{event_id}/participants")
-def list_participants(event_id: str, p: Principal = Depends(require_organizer())):
+def list_participants(event_id: str, p: Principal = Depends(require_organizer)):
     with app_session() as s:
         rows = s.execute(
             text(
@@ -468,7 +469,7 @@ def freeze_challenge(challenge_id: str, request: Request, p: Principal = Depends
 
 
 @router.post("/admin/challenges/{challenge_id}/publish")
-def publish_challenge(challenge_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer())):
+def publish_challenge(challenge_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
     stage_id = body.get("stage_id")
     if not stage_id:
         raise ApiError("VALIDATION_ERROR", details={"stage_id": "Required."})
@@ -588,7 +589,7 @@ class AnnouncementIn(BaseModel):
 
 
 @router.post("/admin/events/{event_id}/announcements", status_code=201)
-def create_announcement(event_id: str, body: AnnouncementIn, request: Request, p: Principal = Depends(require_organizer())):
+def create_announcement(event_id: str, body: AnnouncementIn, request: Request, p: Principal = Depends(require_organizer)):
     with app_session() as s:
         s.execute(
             text("INSERT INTO app.announcements (id, event_id, severity, body, created_by) VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :sev, :b, CAST(:u AS uuid))"),
@@ -600,7 +601,7 @@ def create_announcement(event_id: str, body: AnnouncementIn, request: Request, p
 
 
 @router.post("/admin/events/{event_id}/time-adjustment")
-def time_adjustment(event_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer())):
+def time_adjustment(event_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
     stage_id = body.get("stage_id")
     delta = int(body.get("delta_seconds", 0))
     reason_code = body.get("reason_code", "OTHER")
@@ -620,7 +621,7 @@ def time_adjustment(event_id: str, body: dict, request: Request, p: Principal = 
 
 
 @router.get("/admin/events/{event_id}/live")
-def live_ops(event_id: str, p: Principal = Depends(require_organizer())):
+def live_ops(event_id: str, p: Principal = Depends(require_organizer)):
     """Control-room view with REAL state (ADM-LV-01); no fabricated indicators."""
     with app_session() as s:
         counts = s.execute(
@@ -664,20 +665,20 @@ def live_ops(event_id: str, p: Principal = Depends(require_organizer())):
 
 
 @router.get("/admin/events/{event_id}/readiness")
-def readiness(event_id: str, p: Principal = Depends(require_organizer())):
+def readiness(event_id: str, p: Principal = Depends(require_organizer)):
     with app_session() as s:
         rows = s.execute(text("SELECT key, label, state, owner, checked_at FROM app.readiness_items WHERE event_id = CAST(:e AS uuid) ORDER BY key"), {"e": event_id}).mappings().all()
     return {"items": [dict(r) for r in rows]}
 
 
 @router.post("/admin/events/{event_id}/readiness/{key}")
-def set_readiness(event_id: str, key: str, body: dict, request: Request, p: Principal = Depends(require_organizer())):
+def set_readiness(event_id: str, key: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
     state = body.get("state", "checked")
     if state not in ("checked", "unchecked", "na"):
         raise ApiError("VALIDATION_ERROR")
     with app_session() as s:
         s.execute(
-            text("UPDATE app.readiness_items SET state=:st, checked_at=CASE WHEN :st='checked' THEN now() ELSE NULL END WHERE event_id = CAST(:e AS uuid) AND key = :k"),
+            text("UPDATE app.readiness_items SET state=CAST(:st AS varchar), checked_at=CASE WHEN CAST(:st AS varchar)='checked' THEN now() ELSE NULL END WHERE event_id = CAST(:e AS uuid) AND key = :k"),
             {"st": state, "e": event_id, "k": key},
         )
         audit_write(s, actor_id=p.id, actor_role=p.role, action="readiness.updated", entity_type="event",
@@ -686,14 +687,14 @@ def set_readiness(event_id: str, key: str, body: dict, request: Request, p: Prin
 
 
 @router.get("/admin/audit/verify")
-def audit_chain_verify(p: Principal = Depends(require_organizer())):
+def audit_chain_verify(p: Principal = Depends(require_organizer)):
     with app_session() as s:
         result = audit_verify(s)
     return result
 
 
 @router.get("/admin/audit")
-def audit_log(p: Principal = Depends(require_organizer()), limit: int = 100, action: str | None = None):
+def audit_log(p: Principal = Depends(require_organizer), limit: int = 100, action: str | None = None):
     with app_session() as s:
         if action:
             rows = s.execute(
@@ -709,7 +710,7 @@ def audit_log(p: Principal = Depends(require_organizer()), limit: int = 100, act
 
 
 @router.get("/admin/events/{event_id}/export/{kind}")
-def export_csv(event_id: str, kind: str, p: Principal = Depends(require_organizer())):
+def export_csv(event_id: str, kind: str, p: Principal = Depends(require_organizer)):
     if kind not in ("results", "submissions", "ledger"):
         raise ApiError("VALIDATION_ERROR", details={"kind": "results|submissions|ledger"})
     import csv
@@ -753,7 +754,7 @@ def export_csv(event_id: str, kind: str, p: Principal = Depends(require_organize
 
 
 @router.get("/admin/disputes")
-def list_disputes(p: Principal = Depends(require_organizer())):
+def list_disputes(p: Principal = Depends(require_organizer)):
     with app_session() as s:
         rows = s.execute(
             text(
@@ -765,14 +766,21 @@ def list_disputes(p: Principal = Depends(require_organizer())):
 
 
 @router.post("/admin/disputes/{dispute_id}/resolve")
-def resolve_dispute(dispute_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer())):
+def resolve_dispute(dispute_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
     outcome = body.get("outcome")  # upheld | rejected
     resolution = body.get("resolution", "")
     adjust_points = body.get("adjust_points")  # optional ledger adjustment for the team
     if outcome not in ("upheld", "rejected"):
         raise ApiError("VALIDATION_ERROR", details={"outcome": "upheld|rejected"})
     with app_session() as s:
-        d = s.execute(text("SELECT id, submission_id, team_id, stage_id, status FROM app.disputes WHERE id = CAST(:id AS uuid) FOR UPDATE"), {"id": dispute_id}).mappings().first()
+        d = s.execute(
+            text(
+                "SELECT di.id, di.submission_id, di.team_id, di.status, s.stage_id "
+                "FROM app.disputes di JOIN app.submissions s ON s.id = di.submission_id "
+                "WHERE di.id = CAST(:id AS uuid) FOR UPDATE"
+            ),
+            {"id": dispute_id},
+        ).mappings().first()
         if d is None:
             raise ApiError("NOT_FOUND")
         if d["status"] in ("upheld", "rejected"):
@@ -799,7 +807,7 @@ def resolve_dispute(dispute_id: str, body: dict, request: Request, p: Principal 
 
 
 @router.post("/admin/adjustments")
-def manual_adjustment(body: dict, request: Request, p: Principal = Depends(require_admin())):
+def manual_adjustment(body: dict, request: Request, p: Principal = Depends(require_admin)):
     """Admin-only manual score adjustment (audit reason required; ADM-RS)."""
     stage_id = body.get("stage_id")
     team_id = body.get("team_id")
@@ -819,7 +827,7 @@ def manual_adjustment(body: dict, request: Request, p: Principal = Depends(requi
 
 
 @router.get("/admin/system/health")
-def system_health(p: Principal = Depends(require_organizer())):
+def system_health(p: Principal = Depends(require_organizer)):
     probes = health_probe()
     with app_session() as s:
         jobs = s.execute(text("SELECT status, count(*) FROM app.jobs GROUP BY status")).all()

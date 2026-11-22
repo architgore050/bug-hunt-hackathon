@@ -146,7 +146,7 @@ def record_decision(item_id: str, body: DecisionIn, request: Request, p: Princip
     with app_session() as s:
         row = s.execute(
             text(
-                "SELECT ri.id, ri.status, ri.submission_id, s.team_id, s.kind, s.challenge_version_id "
+                "SELECT ri.id, ri.status, ri.submission_id, ri.claimed_by, s.team_id, s.kind, s.challenge_version_id "
                 "FROM app.review_items ri JOIN app.submissions s ON s.id = ri.submission_id WHERE ri.id = CAST(:i AS uuid) FOR UPDATE"
             ),
             {"i": item_id},
