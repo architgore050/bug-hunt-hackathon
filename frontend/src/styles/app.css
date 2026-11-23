@@ -83,10 +83,9 @@ body {
 .notfound-body {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 24px;
+  gap: 16px;
   min-height: 100%;
-  padding: 16px;
+  padding: 20px;
 }
 
 .stack {
