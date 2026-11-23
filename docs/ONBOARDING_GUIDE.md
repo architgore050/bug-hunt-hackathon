@@ -4,7 +4,7 @@ Status: CURRENT. How a new team member (or agent) gets productive in under an ho
 
 ## Prerequisites
 
-Python 3.12+, Node 22+, Git. PostgreSQL 17 binaries come via portable pg binaries at `../tools/pg17/bin` by default (override with `PG_BIN`); you do not need a system Postgres installed. No other services: the queue is Postgres-backed (ADR-003), no Redis, no runner VM.
+Python 3.12+, Node 22+, Git, and a local PostgreSQL 16 or 17. The scripts auto-detect binaries: `../tools/pg17/bin` if present, else `initdb`/`psql` on PATH, else the newest `/usr/lib/postgresql/*/bin` (override with `PG_BIN`). The dev cluster listens on 127.0.0.1:5434 (override `PGPORT`; keep `backend/.env` and `backend/tests` in sync). No other services: the queue is Postgres-backed (ADR-003), no Redis, no runner VM.
 
 ## 8-step local setup
 
@@ -19,20 +19,23 @@ DB=bughunt scripts/dev_db.sh
 # 3. migrations (plain forward-only SQL, tracked in app.schema_migrations)
 DB=bughunt PGUSER=pgadmin scripts/migrate.sh
 
-# 4. seed the Fall Back preset (dev-only credentials printed at the end)
-cd backend && python seed.py --reset && cd ..
+# 4. Python dependencies (venv recommended; system Python may be externally managed)
+cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && cd ..
 
-# 5. run the API + worker (one script, ports and logs per run_dev.sh)
+# 5. seed the Fall Back preset (dev-only credentials printed at the end)
+cd backend && .venv/bin/python seed.py --reset && cd ..
+
+# 6. run the API + worker (one script, ports and logs per run_dev.sh)
 scripts/run_dev.sh          # API on 127.0.0.1:8100; worker via backend/worker.py; logs in logs/
-# equivalent manual start: cd backend && uvicorn app.main:app --port 8100 &
-#                          cd backend && python worker.py &
+# equivalent manual start: cd backend && .venv/bin/python -m uvicorn app.main:app --port 8100 &
+#                          cd backend && .venv/bin/python worker.py &
 
-# 6. run the frontend
+# 7. run the frontend
 cd frontend && npm ci && npm run dev   # Vite on http://localhost:5173
 
-# 7. prove the stack: backend tests + E2E journey
-cd backend && python -m pytest tests/ -q
-python scripts/e2e_journey.py
+# 8. prove the stack: backend tests + E2E journey
+cd backend && .venv/bin/python -m pytest tests/ -q
+.venv/bin/python ../scripts/e2e_journey.py
 ```
 
 Login with a seeded organizer account to reach admin views; seeded participant accounts exercise the participant loop.
@@ -63,7 +66,9 @@ Login with a seeded organizer account to reach admin views; seeded participant a
 
 ## Common pitfalls
 
-- Portable pg binaries: if `scripts/dev_db.sh` cannot find `initdb`/`pg_ctl`, the default path `../tools/pg17/bin` is missing; set `PG_BIN` to your PostgreSQL 17 `bin` directory.
+- Port conflicts: if another PostgreSQL cluster already serves 127.0.0.1:5434 (a container, another checkout), `scripts/dev_db.sh` says so and you pick a free port with `PGPORT=`; mirror that port in `backend/.env` and `backend/tests/conftest.py` (`PGPORT` env is honored).
+- Foreign PYTHONPATH: if your shell sources something like ROS, its `PYTHONPATH` entries rank ahead of the venv and can shadow pinned deps (pytest may even auto-load foreign plugins). Run project Python commands as `env -u PYTHONPATH .venv/bin/python ...` or unset `PYTHONPATH` first; `scripts/run_dev.sh` already strips it.
+- Binaries: if `scripts/dev_db.sh` reports no `initdb`/`pg_ctl` found, no supported install was detected; set `PG_BIN` to a PostgreSQL `bin` directory.
 - Roles: `app_api` cannot read `gt` by design. If a query fails with permission denied, you are in the wrong session, not hitting a bug.
 - Rate limiter restarts: limits are in-process and reset when the API restarts (L-05); do not tune limits from a single restart test.
 - Stage lifecycle: a stage must go sealed->armed->started through the admin API. Direct state edits cause validation-order failures in submissions.

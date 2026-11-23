@@ -19,8 +19,11 @@ BACKEND = REPO_ROOT / "backend"
 sys.path.insert(0, str(BACKEND))
 
 TEST_DB = "bughunt_test"
-APP_URL = f"postgresql+psycopg://app_api:app_api_dev@127.0.0.1:5433/{TEST_DB}"
-GT_URL = f"postgresql+psycopg://gt_admin:gt_admin_dev@127.0.0.1:5433/{TEST_DB}"
+# Port follows PGPORT (dev cluster default 5434; the CI service container
+# exports PGPORT=5433). Keep scripts/dev_db.sh and backend/.env in sync.
+PGPORT = os.environ.get("PGPORT", "5434")
+APP_URL = f"postgresql+psycopg://app_api:app_api_dev@127.0.0.1:{PGPORT}/{TEST_DB}"
+GT_URL = f"postgresql+psycopg://gt_admin:gt_admin_dev@127.0.0.1:{PGPORT}/{TEST_DB}"
 
 os.environ["DATABASE_URL_APP"] = APP_URL
 os.environ["DATABASE_URL_GT"] = GT_URL
