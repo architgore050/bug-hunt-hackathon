@@ -65,7 +65,7 @@ export const Activate: React.FC = () => {
 
         {activatedEmail ? (
           <div className="border border-[#437A55] bg-[#437A55]/10 p-5 space-y-3 font-mono text-xs">
-            <div className="text-xs font-bold text-[#437A55] uppercase">
+            <div className="text-xs font-bold text-[#5FA57F] uppercase">
               CLEARANCE VERIFIED FOR {activatedEmail}
             </div>
             <p className="text-[#B4B9C4] font-sans text-xs">
@@ -122,7 +122,7 @@ export const Activate: React.FC = () => {
                   <div key={i} className="flex items-center gap-2 text-[11px]">
                     <span
                       className={`w-3.5 h-3.5 flex items-center justify-center font-bold text-[10px] ${
-                        chk.pass ? 'bg-[#437A55] text-white' : 'bg-[#20242B] text-[#555C68]'
+                        chk.pass ? 'bg-[#437A55] text-white' : 'bg-[#20242B] text-[#7F8896]'
                       }`}
                     >
                       {chk.pass ? '✓' : '•'}

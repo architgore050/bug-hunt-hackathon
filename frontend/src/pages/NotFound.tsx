@@ -6,7 +6,7 @@ export const NotFound: React.FC = () => {
     <div className="min-h-[70vh] flex items-center justify-center p-6 font-mono">
       <div className="max-w-md w-full border border-[#2D333D] bg-[#14161A] p-7 space-y-6 flex flex-col justify-between min-h-[320px]">
         <div className="space-y-3">
-          <div className="inline-block px-2 py-0.5 text-[10px] font-bold bg-[#BD3A3A]/20 text-[#BD3A3A] border border-[#BD3A3A] uppercase tracking-wider">
+          <div className="inline-block px-2 py-0.5 text-[10px] font-bold bg-[#BD3A3A]/20 text-[#D96A5F] border border-[#BD3A3A] uppercase tracking-wider">
             EX-404 // INVALID CHANNEL DETECTED
           </div>
           <h1 className="text-2xl font-black uppercase text-[#EAECE8] tracking-tight">

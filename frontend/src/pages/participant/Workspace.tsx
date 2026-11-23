@@ -267,11 +267,11 @@ export const Workspace: React.FC = () => {
             <span
               className={
                 draftStatus === 'saved'
-                  ? 'text-[#437A55] font-bold'
+                  ? 'text-[#5FA57F] font-bold'
                   : draftStatus === 'saving'
                   ? 'text-[#E5A83B] font-bold'
                   : draftStatus === 'conflict'
-                  ? 'text-[#BD3A3A] font-bold'
+                  ? 'text-[#D96A5F] font-bold'
                   : 'text-[#7F8896]'
               }
             >
@@ -279,7 +279,7 @@ export const Workspace: React.FC = () => {
             </span>
           </div>
           {cooldownRemaining !== null && (
-            <div className="px-3 py-1 bg-[#BD3A3A]/10 border border-[#BD3A3A] text-[#BD3A3A] font-bold">
+            <div className="px-3 py-1 bg-[#BD3A3A]/10 border border-[#BD3A3A] text-[#D96A5F] font-bold">
               COOLDOWN: {cooldownRemaining}s
             </div>
           )}
@@ -372,7 +372,7 @@ export const Workspace: React.FC = () => {
                     }`}
                   >
                     <span className="truncate">{file.path}</span>
-                    <span className="text-[10px] text-[#555C68]">{file.line_count}L</span>
+                    <span className="text-[10px] text-[#7F8896]">{file.line_count}L</span>
                   </button>
                 );
               })}
@@ -411,7 +411,7 @@ export const Workspace: React.FC = () => {
                               : 'hover:bg-[#181B20] text-[#B4B9C4]'
                           }`}
                         >
-                          <td className="w-10 px-2 py-0.5 text-right text-[10px] text-[#555C68] select-none border-r border-[#2D333D]/60 bg-[#0E1013]">
+                          <td className="w-10 px-2 py-0.5 text-right text-[10px] text-[#7F8896] select-none border-r border-[#2D333D]/60 bg-[#0E1013]">
                             {lineNum}
                           </td>
                           <td className="px-3 py-0.5 whitespace-pre font-mono text-xs">
@@ -464,13 +464,13 @@ export const Workspace: React.FC = () => {
             {receipt && (
               <div className="instr-bezel p-3 border border-[#437A55] bg-[#437A55]/10 space-y-1">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-[#437A55]">TRANSMISSION ACKNOWLEDGED</span>
+                  <span className="font-bold text-[#5FA57F]">TRANSMISSION ACKNOWLEDGED</span>
                   {receipt.replay && (
                     <span className="text-[10px] text-[#E5A83B] font-bold">[REPLAY]</span>
                   )}
                 </div>
                 <div className="text-[11px] text-[#EAECE8]">
-                  RECEIPT: <code className="font-bold text-[#437A55]">{receipt.receipt_code}</code>
+                  RECEIPT: <code className="font-bold text-[#5FA57F]">{receipt.receipt_code}</code>
                 </div>
               </div>
             )}

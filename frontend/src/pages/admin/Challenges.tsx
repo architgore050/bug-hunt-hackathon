@@ -120,8 +120,8 @@ export const AdminChallenges: React.FC = () => {
           <span
             className={`px-3 py-1 font-bold border ${
               stepUpActive
-                ? 'border-[#437A55] bg-[#437A55]/10 text-[#437A55]'
-                : 'border-[#BD3A3A] bg-[#BD3A3A]/10 text-[#BD3A3A]'
+                ? 'border-[#437A55] bg-[#437A55]/10 text-[#5FA57F]'
+                : 'border-[#BD3A3A] bg-[#BD3A3A]/10 text-[#D96A5F]'
             }`}
           >
             {stepUpActive ? 'STEP-UP RE-AUTH ACTIVE (5 MIN)' : 'STEP-UP ELEVATION REQUIRED'}
@@ -201,7 +201,7 @@ export const AdminChallenges: React.FC = () => {
 
             {challengeId && (
               <div className="pt-4 border-t border-[#2D333D] space-y-3 font-mono text-xs">
-                <div className="text-[#437A55] font-bold">CONTAINER INITIALIZED: {challengeId}</div>
+                <div className="text-[#5FA57F] font-bold">CONTAINER INITIALIZED: {challengeId}</div>
 
                 <form onSubmit={handleUploadFile} className="space-y-2">
                   <label className="block text-[#7F8896] uppercase text-[10px]">
@@ -222,7 +222,7 @@ export const AdminChallenges: React.FC = () => {
                   </button>
                 </form>
 
-                {uploadStatus && <div className="text-[#437A55]">{uploadStatus}</div>}
+                {uploadStatus && <div className="text-[#5FA57F]">{uploadStatus}</div>}
 
                 <div className="pt-2">
                   <button
@@ -236,7 +236,7 @@ export const AdminChallenges: React.FC = () => {
                 </div>
 
                 {freezeHash && (
-                  <div className="text-[#437A55] font-bold text-[11px]">
+                  <div className="text-[#5FA57F] font-bold text-[11px]">
                     HASH: {freezeHash.substring(0, 16)}...
                   </div>
                 )}
@@ -295,7 +295,7 @@ export const AdminChallenges: React.FC = () => {
             </form>
 
             {testResultStatus && (
-              <div className="pt-2 font-mono text-xs text-[#437A55] font-bold">
+              <div className="pt-2 font-mono text-xs text-[#5FA57F] font-bold">
                 {testResultStatus}
               </div>
             )}

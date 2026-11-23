@@ -165,7 +165,7 @@ export const SubmissionDetailPage: React.FC = () => {
           {submission.flag_code && (
             <div>
               <span className="text-[#7F8896] block uppercase text-[10px] mb-1">Flag Payload:</span>
-              <div className="instr-bezel p-2 text-[#437A55] font-bold">
+              <div className="instr-bezel p-2 text-[#5FA57F] font-bold">
                 {submission.flag_code}
               </div>
             </div>
@@ -188,7 +188,7 @@ export const SubmissionDetailPage: React.FC = () => {
               </div>
               <div className="flex justify-between py-1 border-b border-[#2D333D]">
                 <span className="text-[#7F8896]">POINTS ASSIGNED</span>
-                <span className="font-bold text-[#437A55]">+{submission.points ?? 0} PTS</span>
+                <span className="font-bold text-[#5FA57F]">+{submission.points ?? 0} PTS</span>
               </div>
             </div>
           ) : (
@@ -207,7 +207,7 @@ export const SubmissionDetailPage: React.FC = () => {
           telemetryTag="ARBITRATION"
         >
           {disputeSuccess ? (
-            <div className="instr-bezel p-3 border border-[#437A55] text-[#437A55] font-bold text-xs">
+            <div className="instr-bezel p-3 border border-[#437A55] text-[#5FA57F] font-bold text-xs">
               Dispute successfully queued. Examiner escalation pending.
             </div>
           ) : (

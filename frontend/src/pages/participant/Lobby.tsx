@@ -110,7 +110,7 @@ export const Lobby: React.FC = () => {
                   <span className="w-2 h-2 rounded-full bg-[#437A55]" />
                   <span className="text-[#EAECE8]">FastAPI Platform Backbone</span>
                 </div>
-                <span className="text-[#437A55] font-bold">TRANSMITTING</span>
+                <span className="text-[#5FA57F] font-bold">TRANSMITTING</span>
               </div>
 
               <div className="flex items-center justify-between p-2.5 bg-[#14161A] border border-[#2D333D]">
@@ -124,7 +124,7 @@ export const Lobby: React.FC = () => {
                     Assigned Unit: <strong>{team ? team.name : 'Unassigned'}</strong>
                   </span>
                 </div>
-                <span className={team ? 'text-[#437A55] font-bold' : 'text-[#BD3A3A] font-bold'}>
+                <span className={team ? 'text-[#5FA57F] font-bold' : 'text-[#D96A5F] font-bold'}>
                   {team ? 'LOCKED' : 'PENDING'}
                 </span>
               </div>
@@ -139,7 +139,7 @@ export const Lobby: React.FC = () => {
                   <span className="text-[#EAECE8]">Charter Ratification</span>
                 </div>
                 {rulesAccepted ? (
-                  <span className="text-[#437A55] font-bold">RATIFIED</span>
+                  <span className="text-[#5FA57F] font-bold">RATIFIED</span>
                 ) : (
                   <button
                     type="button"
@@ -164,7 +164,7 @@ export const Lobby: React.FC = () => {
                 <span
                   className={
                     round?.status === 'active'
-                      ? 'text-[#437A55] font-bold'
+                      ? 'text-[#5FA57F] font-bold'
                       : 'text-[#E5A83B] font-bold'
                   }
                 >
@@ -189,7 +189,7 @@ export const Lobby: React.FC = () => {
               to="/app/submissions"
               className="instr-bezel p-3.5 hover:border-[#E5A83B] transition-colors block"
             >
-              <span className="text-[10px] text-[#437A55] font-bold block mb-1">
+              <span className="text-[10px] text-[#5FA57F] font-bold block mb-1">
                 CH-03 // TRANSMISSIONS
               </span>
               <span className="text-[#EAECE8] font-bold">HMAC Receipts &rarr;</span>
@@ -198,7 +198,7 @@ export const Lobby: React.FC = () => {
               to="/app/leaderboard"
               className="instr-bezel p-3.5 hover:border-[#E5A83B] transition-colors block"
             >
-              <span className="text-[10px] text-[#467499] font-bold block mb-1">
+              <span className="text-[10px] text-[#6FA3C6] font-bold block mb-1">
                 CH-05 // BOARD
               </span>
               <span className="text-[#EAECE8] font-bold">Live Standings &rarr;</span>
@@ -267,7 +267,7 @@ export const Lobby: React.FC = () => {
               </div>
               <div className="flex justify-between py-1">
                 <span className="text-[#7F8896]">LEVEL</span>
-                <span className="text-[#437A55] font-bold uppercase">{user?.role}</span>
+                <span className="text-[#5FA57F] font-bold uppercase">{user?.role}</span>
               </div>
             </div>
           </InstrumentRack>

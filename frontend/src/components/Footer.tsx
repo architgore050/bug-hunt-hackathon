@@ -16,7 +16,7 @@ export const Footer: React.FC = () => {
             <p className="text-xs text-[#7F8896] max-w-md font-sans leading-relaxed">
               Precision software diagnostic platform designed for Fall Back 2026. Certified by the Software Development Club, VIT Bhopal University.
             </p>
-            <div className="text-[10px] text-[#555C68] tracking-wider uppercase">
+            <div className="text-[10px] text-[#7F8896] tracking-wider uppercase">
               SPEC CALIBRATION: IEC-61508 HARNESS • CLOCK: ASIA/KOLKATA [IST]
             </div>
           </div>
@@ -48,7 +48,7 @@ export const Footer: React.FC = () => {
             <div className="text-[10px] uppercase tracking-widest text-[#EAECE8] font-bold">
               Instrument Telemetry
             </div>
-            <div className="text-[10px] text-[#555C68] space-y-1">
+            <div className="text-[10px] text-[#7F8896] space-y-1">
               <div>CLOCK TOLERANCE: ±5ms NTP</div>
               <div>IDEMPOTENCY: STRICT HASH REPLAY</div>
               <div>LEDGER: CRYPTOGRAPHIC OUTBOX</div>
@@ -56,7 +56,7 @@ export const Footer: React.FC = () => {
           </div>
         </div>
 
-        <div className="pt-6 flex flex-wrap items-center justify-between gap-4 text-[10px] text-[#555C68]">
+        <div className="pt-6 flex flex-wrap items-center justify-between gap-4 text-[10px] text-[#7F8896]">
           <span>© 2026 Software Development Club, VIT Bhopal University.</span>
           <span className="tracking-widest uppercase">DIAGNOSTIC BENCH RI-2026</span>
         </div>

@@ -105,8 +105,8 @@ export const Leaderboard: React.FC = () => {
                       )}
                     </td>
                     <td className="p-3 font-bold text-[#EAECE8]">{row.team_name}</td>
-                    <td className="p-3 font-bold text-sm text-[#437A55]">{row.score} PTS</td>
-                    <td className="p-3 text-[#BD3A3A]">{row.invalid_reports}</td>
+                    <td className="p-3 font-bold text-sm text-[#5FA57F]">{row.score} PTS</td>
+                    <td className="p-3 text-[#D96A5F]">{row.invalid_reports}</td>
                     <td className="p-3 text-[#7F8896]">
                       {row.last_accepted ? formatIST(row.last_accepted) : '—'}
                     </td>

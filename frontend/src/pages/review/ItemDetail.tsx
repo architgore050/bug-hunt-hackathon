@@ -119,7 +119,7 @@ export const ReviewItemDetailPage: React.FC = () => {
       </div>
 
       {decisionSuccess && (
-        <div className="instr-bezel p-3 border border-[#437A55] text-[#437A55] font-bold text-xs font-mono">
+        <div className="instr-bezel p-3 border border-[#437A55] text-[#5FA57F] font-bold text-xs font-mono">
           DECISION RECORDED TO LEDGER. Returning to queue...
         </div>
       )}
@@ -188,7 +188,7 @@ export const ReviewItemDetailPage: React.FC = () => {
                           key={lineNum}
                           className={isTarget ? 'bg-[#E5A83B]/25 font-bold' : ''}
                         >
-                          <td className="w-10 px-2 py-0.5 text-right text-[10px] text-[#555C68] border-r border-[#2D333D]">
+                          <td className="w-10 px-2 py-0.5 text-right text-[10px] text-[#7F8896] border-r border-[#2D333D]">
                             {lineNum}
                           </td>
                           <td className="px-3 py-0.5 whitespace-pre font-mono text-[11px] text-[#EAECE8]">
@@ -213,10 +213,11 @@ export const ReviewItemDetailPage: React.FC = () => {
           >
             <form onSubmit={handleDecision} className="space-y-4 font-mono text-xs">
               <div>
-                <label className="block text-[#EAECE8] font-bold uppercase text-[10px] mb-1">
+                <label htmlFor="review-decision" className="block text-[#EAECE8] font-bold uppercase text-[10px] mb-1">
                   Primary Classification
                 </label>
                 <select
+                  id="review-decision"
                   value={decision}
                   onChange={(e) => setDecision(e.target.value as ReviewDecision)}
                   className="w-full bg-[#101216] border border-[#2D333D] px-2.5 py-1.5 text-xs text-[#EAECE8] font-bold focus:border-[#E5A83B] focus:outline-none"
@@ -256,6 +257,7 @@ export const ReviewItemDetailPage: React.FC = () => {
                       max={1}
                       step={0.05}
                       value={rubric[key]}
+                      aria-label={`Rubric score for ${label}`}
                       onChange={(e) =>
                         setRubric((prev) => ({ ...prev, [key]: parseFloat(e.target.value) }))
                       }
@@ -266,10 +268,11 @@ export const ReviewItemDetailPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[#7F8896] uppercase text-[10px] mb-1">
+                <label htmlFor="review-notes" className="block text-[#7F8896] uppercase text-[10px] mb-1">
                   Examiner Audit Notes
                 </label>
                 <textarea
+                  id="review-notes"
                   rows={3}
                   maxLength={2000}
                   value={notes}

@@ -32,7 +32,7 @@ export const Navigation: React.FC = () => {
           <span className="hidden sm:inline">SDC // VIT BHOPAL</span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[#437A55] font-bold flex items-center gap-1">
+          <span className="text-[#5FA57F] font-bold flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-[#437A55]" />
             CLK LOCKED:
           </span>

@@ -23,7 +23,7 @@ export const AnnunciatorBar: React.FC<AnnunciatorBarProps> = ({
     neutral: 'bg-[#2D333D] text-[#EAECE8] border-[#3D4654]',
   };
 
-  const inactiveStyle = 'bg-[#14161A] text-[#555C68] border-[#2D333D]';
+  const inactiveStyle = 'bg-[#14161A] text-[#7F8896] border-[#2D333D]';
 
   return (
     <div

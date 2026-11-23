@@ -22,9 +22,9 @@ export const DetentCounter: React.FC<DetentCounterProps> = ({
   if (isPaused) {
     toneColor = 'text-[#7F8896]';
   } else if (isExpired) {
-    toneColor = 'text-[#BD3A3A]';
+    toneColor = 'text-[#D96A5F]';
   } else if (secondsRemaining !== null && secondsRemaining <= 300) {
-    toneColor = 'text-[#BD3A3A]';
+    toneColor = 'text-[#D96A5F]';
   }
 
   const sizeClasses = {
@@ -46,9 +46,9 @@ export const DetentCounter: React.FC<DetentCounterProps> = ({
           {isPaused ? (
             <span className="text-[#E5A83B] font-bold">[CLOCK HALTED]</span>
           ) : isExpired ? (
-            <span className="text-[#BD3A3A] font-bold">[WINDOW TERMINATED]</span>
+            <span className="text-[#D96A5F] font-bold">[WINDOW TERMINATED]</span>
           ) : (
-            <span className="text-[#437A55] font-bold flex items-center gap-1">
+            <span className="text-[#5FA57F] font-bold flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-[#437A55]" />
               TIME SYNC LOCK
             </span>

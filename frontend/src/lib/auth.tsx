@@ -128,9 +128,9 @@ export const RequireRole: React.FC<{
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#111215] text-[#ECEEF2] flex items-center justify-center font-mono">
-        <div className="flex items-center gap-3 border border-[#2B2E35] bg-[#181A1F] px-6 py-4">
-          <div className="w-2.5 h-2.5 bg-[#C04A36] animate-pulse" />
+      <div className="min-h-screen bg-[#0E1013] text-[#EAECE8] flex items-center justify-center font-mono">
+        <div className="flex items-center gap-3 border border-[#2D333D] bg-[#181B20] px-6 py-4">
+          <div className="w-2.5 h-2.5 bg-[#E5A83B] animate-pulse" />
           <span className="text-sm tracking-wider uppercase">Authenticating Credential...</span>
         </div>
       </div>
@@ -143,19 +143,19 @@ export const RequireRole: React.FC<{
 
   if (role && !roles.includes(role)) {
     return (
-      <div className="min-h-screen bg-[#111215] text-[#ECEEF2] flex items-center justify-center p-6">
-        <div className="max-w-md w-full border border-[#C04A36] bg-[#181A1F] p-8 space-y-4">
-          <div className="inline-block px-2.5 py-0.5 text-xs font-mono bg-[#C04A36]/20 text-[#C04A36] border border-[#C04A36]">
+      <div className="min-h-screen bg-[#0E1013] text-[#EAECE8] flex items-center justify-center p-6">
+        <div className="max-w-md w-full border border-[#BD3A3A] bg-[#181B20] p-8 space-y-4">
+          <div className="inline-block px-2.5 py-0.5 text-xs font-mono bg-[#BD3A3A]/20 text-[#D96A5F] border border-[#BD3A3A]">
             EX-403: ACCESS DENIED
           </div>
-          <h1 className="text-2xl font-serif font-bold text-[#ECEEF2]">Authorization Deficit</h1>
-          <p className="text-sm text-[#868A94]">
-            Your credential role <code className="text-[#CF8B38] font-mono">[{role}]</code> lacks clearance for this sector. Requires: <code className="text-[#ECEEF2] font-mono">[{roles.join(', ')}]</code>.
+          <h1 className="text-2xl font-serif font-bold text-[#EAECE8]">Authorization Deficit</h1>
+          <p className="text-sm text-[#7F8896]">
+            Your credential role <code className="text-[#E5A83B] font-mono">[{role}]</code> lacks clearance for this sector. Requires: <code className="text-[#EAECE8] font-mono">[{roles.join(', ')}]</code>.
           </p>
           <div className="pt-2">
             <a
               href="/"
-              className="inline-block border border-[#2B2E35] px-4 py-2 text-xs font-mono uppercase tracking-wider text-[#ECEEF2] hover:bg-[#2B2E35]"
+              className="inline-block border border-[#2D333D] px-4 py-2 text-xs font-mono uppercase tracking-wider text-[#EAECE8] hover:bg-[#2D333D]"
             >
               Return to Public Docket
             </a>

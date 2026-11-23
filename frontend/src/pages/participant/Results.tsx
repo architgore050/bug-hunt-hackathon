@@ -65,14 +65,14 @@ export const Results: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="instr-bezel p-4 font-mono">
               <span className="text-[10px] text-[#7F8896] uppercase block">Total Points</span>
-              <span className="text-3xl font-black text-[#437A55] mt-1 block">
+              <span className="text-3xl font-black text-[#5FA57F] mt-1 block">
                 {results.total} <span className="text-xs text-[#7F8896]">PTS</span>
               </span>
             </div>
 
             <div className="instr-bezel p-4 font-mono">
               <span className="text-[10px] text-[#7F8896] uppercase block">Penalties</span>
-              <span className="text-3xl font-black text-[#BD3A3A] mt-1 block">
+              <span className="text-3xl font-black text-[#D96A5F] mt-1 block">
                 -{results.penalties} <span className="text-xs text-[#7F8896]">PTS</span>
               </span>
             </div>
@@ -115,7 +115,7 @@ export const Results: React.FC = () => {
                       <td className="p-3 text-[#7F8896]">{formatIST(entry.received_at)}</td>
                       <td
                         className={`p-3 text-right font-bold ${
-                          entry.points >= 0 ? 'text-[#437A55]' : 'text-[#BD3A3A]'
+                          entry.points >= 0 ? 'text-[#5FA57F]' : 'text-[#D96A5F]'
                         }`}
                       >
                         {entry.points > 0 ? `+${entry.points}` : entry.points}

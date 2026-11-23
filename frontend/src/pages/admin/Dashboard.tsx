@@ -149,6 +149,7 @@ export const AdminDashboard: React.FC = () => {
           <div className="flex items-center gap-2 font-mono text-xs">
             <span className="text-[#7F8896]">TARGET:</span>
             <select
+              aria-label="Select event"
               value={selectedEventId}
               onChange={(e) => {
                 setSelectedEventId(e.target.value);
@@ -185,19 +186,19 @@ export const AdminDashboard: React.FC = () => {
               </div>
               <div className="instr-bezel p-3">
                 <span className="text-[#7F8896] block text-[9px] uppercase">Teams Online</span>
-                <span className="text-xl font-black text-[#437A55]">
+                <span className="text-xl font-black text-[#5FA57F]">
                   {String(liveData?.teams_count ?? '—')}
                 </span>
               </div>
               <div className="instr-bezel p-3">
                 <span className="text-[#7F8896] block text-[9px] uppercase">DB App Bus</span>
-                <span className="text-xl font-black text-[#437A55]">
+                <span className="text-xl font-black text-[#5FA57F]">
                   {String(liveData?.db_app ?? 'UP')}
                 </span>
               </div>
               <div className="instr-bezel p-3">
                 <span className="text-[#7F8896] block text-[9px] uppercase">GT Isolation</span>
-                <span className="text-xl font-black text-[#437A55]">
+                <span className="text-xl font-black text-[#5FA57F]">
                   {String(liveData?.db_gt ?? 'ISOLATED')}
                 </span>
               </div>
@@ -257,8 +258,8 @@ export const AdminDashboard: React.FC = () => {
                 <div
                   className={`instr-bezel p-3 space-y-1 ${
                     auditVerify.intact
-                      ? 'border-[#437A55] text-[#437A55]'
-                      : 'border-[#BD3A3A] text-[#BD3A3A]'
+                      ? 'border-[#437A55] text-[#5FA57F]'
+                      : 'border-[#BD3A3A] text-[#D96A5F]'
                   }`}
                 >
                   <div className="font-bold">
@@ -283,8 +284,9 @@ export const AdminDashboard: React.FC = () => {
           >
             <form onSubmit={handleControlStage} className="space-y-3 font-mono text-xs">
               <div>
-                <label className="block text-[#7F8896] uppercase text-[10px] mb-1">State Transition</label>
+                <label htmlFor="stage-action" className="block text-[#7F8896] uppercase text-[10px] mb-1">State Transition</label>
                 <select
+                  id="stage-action"
                   value={stageAction}
                   onChange={(e) => setStageAction(e.target.value)}
                   className="w-full bg-[#101216] border border-[#2D333D] px-2.5 py-1.5 text-xs text-[#EAECE8] focus:border-[#E5A83B] focus:outline-none"
@@ -395,7 +397,7 @@ export const AdminDashboard: React.FC = () => {
                 onClick={() => handleExport('submissions')}
                 className="p-2.5 instr-bezel hover:border-[#E5A83B] text-center"
               >
-                <span className="text-[#437A55] font-bold block text-[11px]">SUBMISSIONS</span>
+                <span className="text-[#5FA57F] font-bold block text-[11px]">SUBMISSIONS</span>
                 <span className="text-[9px] text-[#7F8896]">CSV</span>
               </button>
               <button
@@ -403,7 +405,7 @@ export const AdminDashboard: React.FC = () => {
                 onClick={() => handleExport('ledger')}
                 className="p-2.5 instr-bezel hover:border-[#E5A83B] text-center"
               >
-                <span className="text-[#467499] font-bold block text-[11px]">LEDGER</span>
+                <span className="text-[#6FA3C6] font-bold block text-[11px]">LEDGER</span>
                 <span className="text-[9px] text-[#7F8896]">CSV</span>
               </button>
             </div>

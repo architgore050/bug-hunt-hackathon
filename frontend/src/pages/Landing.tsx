@@ -218,11 +218,11 @@ export const Landing: React.FC = () => {
             telemetryTag="30% WEIGHT"
           >
             <div className="space-y-3">
-              <div className="text-3xl font-black text-[#437A55]">30%</div>
+              <div className="text-3xl font-black text-[#5FA57F]">30%</div>
               <p className="font-sans text-xs text-[#B4B9C4] leading-relaxed">
                 5-metric rubric assessing root cause depth, code craftsmanship, and architectural stability.
               </p>
-              <div className="text-[10px] text-[#BD3A3A] font-bold border-t border-[#2D333D] pt-2">
+              <div className="text-[10px] text-[#D96A5F] font-bold border-t border-[#2D333D] pt-2">
                 PENALTY: -5 PTS PER INVALID REPORT
               </div>
             </div>
@@ -234,11 +234,11 @@ export const Landing: React.FC = () => {
             telemetryTag="20% WEIGHT"
           >
             <div className="space-y-3">
-              <div className="text-3xl font-black text-[#467499]">20%</div>
+              <div className="text-3xl font-black text-[#6FA3C6]">20%</div>
               <p className="font-sans text-xs text-[#B4B9C4] leading-relaxed">
                 Accuracy of line range pinpointing (max 25 lines) and exploit demonstration proofs.
               </p>
-              <div className="text-[10px] text-[#437A55] font-bold border-t border-[#2D333D] pt-2">
+              <div className="text-[10px] text-[#5FA57F] font-bold border-t border-[#2D333D] pt-2">
                 BONUS: UP TO 150 PTS VIA CTF FLAGS
               </div>
             </div>
