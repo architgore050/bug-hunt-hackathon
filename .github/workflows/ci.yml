@@ -60,6 +60,21 @@ jobs:
     timeout-minutes: 15
     env:
       CI_DB: bughunt_test
+      PGPORT: 5433
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:f9cf3e1f0066f0eb0c48707d864f0ac5941e9ff454a072077d97a4d278d07d73 # 17-alpine (Docker Hub)
+        env:
+          POSTGRES_USER: pgadmin
+          POSTGRES_PASSWORD: ""
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U pgadmin"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (actions/checkout)
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0 (actions/setup-python)
@@ -80,7 +95,8 @@ jobs:
           CREATE ROLE app_api LOGIN PASSWORD 'app_api_dev';
           CREATE ROLE gt_admin LOGIN PASSWORD 'gt_admin_dev';
           CREATE ROLE scheduler LOGIN PASSWORD 'scheduler_dev';
-          GRANT USAGE, CREATE ON SCHEMA app TO app_api, gt_admin, scheduler;
+          GRANT USAGE ON SCHEMA app TO app_api, gt_admin, scheduler;
+          GRANT CREATE ON SCHEMA app TO gt_admin;
           ALTER ROLE app_api SET search_path = app;
           ALTER ROLE gt_admin SET search_path = app, gt;
           ALTER ROLE scheduler SET search_path = app;
@@ -92,7 +108,7 @@ jobs:
           GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA gt TO gt_admin;
           GRANT USAGE ON SCHEMA audit TO app_api, gt_admin;
           GRANT INSERT, SELECT ON ALL TABLES IN SCHEMA audit TO app_api, gt_admin;
-          GRANT USAGE, SELECT ON SEQUENCES IN SCHEMA audit TO app_api, gt_admin;
+          GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA audit TO app_api, gt_admin;
           ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT ALL ON TABLES TO app_api, gt_admin, scheduler;
           ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT ALL ON SEQUENCES TO app_api, gt_admin, scheduler;
           ALTER DEFAULT PRIVILEGES IN SCHEMA gt GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO gt_admin;
@@ -130,6 +146,7 @@ jobs:
           --health-retries 10
     env:
       CI_DB: bughunt
+      PGPORT: 5433
       DATABASE_URL_APP: postgresql+psycopg://app_api:app_api_dev@127.0.0.1:5433/bughunt
       DATABASE_URL_GT: postgresql+psycopg://gt_admin:gt_admin_dev@127.0.0.1:5433/bughunt
     steps:
@@ -149,7 +166,8 @@ jobs:
           CREATE ROLE app_api LOGIN PASSWORD 'app_api_dev';
           CREATE ROLE gt_admin LOGIN PASSWORD 'gt_admin_dev';
           CREATE ROLE scheduler LOGIN PASSWORD 'scheduler_dev';
-          GRANT USAGE, CREATE ON SCHEMA app TO app_api, gt_admin, scheduler;
+          GRANT USAGE ON SCHEMA app TO app_api, gt_admin, scheduler;
+          GRANT CREATE ON SCHEMA app TO gt_admin;
           ALTER ROLE app_api SET search_path = app;
           ALTER ROLE gt_admin SET search_path = app, gt;
           ALTER ROLE scheduler SET search_path = app;
@@ -161,7 +179,7 @@ jobs:
           GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA gt TO gt_admin;
           GRANT USAGE ON SCHEMA audit TO app_api, gt_admin;
           GRANT INSERT, SELECT ON ALL TABLES IN SCHEMA audit TO app_api, gt_admin;
-          GRANT USAGE, SELECT ON SEQUENCES IN SCHEMA audit TO app_api, gt_admin;
+          GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA audit TO app_api, gt_admin;
           ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT ALL ON TABLES TO app_api, gt_admin, scheduler;
           ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT ALL ON SEQUENCES TO app_api, gt_admin, scheduler;
           ALTER DEFAULT PRIVILEGES IN SCHEMA gt GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO gt_admin;
