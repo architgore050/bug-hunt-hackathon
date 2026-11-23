@@ -17,7 +17,7 @@ export default function NotFound() {
         <h1 className="display" style={{ fontSize: 'clamp(6.5rem, 13vw, 10rem)', margin: 0 }}>
           404
         </h1>
-        <p className="muted" style={{ margin: '16px 0 0', maxWidth: 'min(100%, 560px)' }}>
+        <p className="muted" style={{ maxWidth: 'min(100%, 560px)' }}>
           The page you tried to open does not exist. Check the address, or go back to the previous page.
         </p>
         <div
