@@ -5,16 +5,16 @@ Kept in the repository for provenance. Future schema changes are hand-written
 ordered SQL files applied by scripts/migrate.sh (ADR-018: plain versioned SQL
 migrations; expand/contract; no destructive changes without a forward fix).
 """
+
 import sys
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parent.parent / "backend"
 sys.path.insert(0, str(BACKEND))
 
-from sqlalchemy.dialects import postgresql  # noqa: E402
-from sqlalchemy.schema import CreateTable, CreateIndex  # noqa: E402
-
 from app import models_app, models_gt  # noqa: E402
+from sqlalchemy.dialects import postgresql  # noqa: E402
+from sqlalchemy.schema import CreateIndex, CreateTable  # noqa: E402
 
 OUT = BACKEND / "migrations" / "0001_init.sql"
 PG_DIALECT = postgresql.dialect()

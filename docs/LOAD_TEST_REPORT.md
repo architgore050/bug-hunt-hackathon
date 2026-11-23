@@ -23,9 +23,9 @@ The tool reports p50 / p95 / p99 latency per endpoint class plus error counts. I
 
 ## 3. Environment requirements
 
-- Portable PostgreSQL 17 binaries (`scripts/dev_db.sh` default `../tools/pg17/bin`, or set `PG_BIN`).
+- PostgreSQL binaries auto-detected by `scripts/dev_db.sh` (portable `../tools/pg17/bin` if present, else system install; override `PG_BIN`).
 - A seeded event: `cd backend && python seed.py --reset` (Fall Back preset).
-- API running (`scripts/run_dev.sh` or uvicorn on 127.0.0.1:8000) and the worker running in a second terminal.
+- API running (`scripts/run_dev.sh` or uvicorn on 127.0.0.1:8100) and the worker running in a second terminal.
 - Frontend does not need to run; the tool drives the API directly like the SPA does.
 - Run on hardware comparable to the D1 target (OCI Always Free A1: 4 OCPU ARM, 24 GB RAM) for numbers that transfer; localhost laptop runs are indicative only and should be labelled as such in the results table.
 

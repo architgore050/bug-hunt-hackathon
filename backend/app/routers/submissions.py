@@ -11,27 +11,37 @@ POST /v1/submissions implements the architecture's ordered transaction (8.1):
 
 Deadlines, caps and cooldowns are server-side and race-safe.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
+from .. import security
 from ..audit import audit_write
 from ..db import app_session, uuid7
-from ..deps import get_principal, Principal, require_role, require_rules_accepted, rate_limit
+from ..deps import Principal, get_principal, rate_limit, require_role, require_rules_accepted
 from ..errors import ApiError
-from .. import security
 from ..jobs import enqueue
 
 router = APIRouter(tags=["submissions"])
 
 CATEGORIES = {
-    "logic", "input_validation", "authentication_authorization", "injection", "cryptography",
-    "resource_handling", "concurrency", "error_handling", "configuration",
-    "integration_api_contract", "data_handling", "other",
+    "logic",
+    "input_validation",
+    "authentication_authorization",
+    "injection",
+    "cryptography",
+    "resource_handling",
+    "concurrency",
+    "error_handling",
+    "configuration",
+    "integration_api_contract",
+    "data_handling",
+    "other",
 }
 
 
@@ -93,27 +103,35 @@ def create_submission(
 
     with app_session() as s:
         # --- identity context (server-side only) -------------------------------
-        member = s.execute(
-            text(
-                "SELECT tm.team_id, t.event_id, t.status AS team_status, e.tenant_id, e.status AS event_status "
-                "FROM app.team_members tm JOIN app.teams t ON t.id = tm.team_id "
-                "JOIN app.events e ON e.id = t.event_id WHERE tm.user_id = CAST(:u AS uuid) LIMIT 1"
-            ),
-            {"u": p.id},
-        ).mappings().first()
+        member = (
+            s.execute(
+                text(
+                    "SELECT tm.team_id, t.event_id, t.status AS team_status, e.tenant_id, e.status AS event_status "
+                    "FROM app.team_members tm JOIN app.teams t ON t.id = tm.team_id "
+                    "JOIN app.events e ON e.id = t.event_id WHERE tm.user_id = CAST(:u AS uuid) LIMIT 1"
+                ),
+                {"u": p.id},
+            )
+            .mappings()
+            .first()
+        )
         if member is None:
             raise ApiError("AUTH_FORBIDDEN", message="You are not assigned to a team for this event.")
         if member["team_status"] != "active":
             raise ApiError("AUTH_FORBIDDEN", message="This team cannot submit.")
 
         # --- idempotency reservation (unique (author_id, idempotency_key)) -----
-        existing = s.execute(
-            text(
-                "SELECT id, receipt_code, received_at, status, payload_hash FROM app.submissions "
-                "WHERE author_id = CAST(:u AS uuid) AND idempotency_key = :k"
-            ),
-            {"u": p.id, "k": idempotency_key},
-        ).mappings().first()
+        existing = (
+            s.execute(
+                text(
+                    "SELECT id, receipt_code, received_at, status, payload_hash FROM app.submissions "
+                    "WHERE author_id = CAST(:u AS uuid) AND idempotency_key = :k"
+                ),
+                {"u": p.id, "k": idempotency_key},
+            )
+            .mappings()
+            .first()
+        )
         if existing is not None:
             if existing["payload_hash"] != payload_hash:
                 raise ApiError("IDEMPOTENCY_CONFLICT")
@@ -121,15 +139,19 @@ def create_submission(
             return _receipt(existing, member, replay=True)
 
         # --- lock the stage row, then read the DB clock ONCE (ADR-012) ---------
-        stage = s.execute(
-            text(
-                "SELECT st.id, st.status, st.starts_at, st.ends_at, st.grace_seconds, st.config, st.rule_set_hash, "
-                "e.id AS event_id, e.status AS event_status "
-                "FROM app.stages st JOIN app.events e ON e.id = st.event_id "
-                "WHERE e.id = CAST(:ev AS uuid) ORDER BY st.ordinal DESC LIMIT 1 FOR UPDATE"
-            ),
-            {"ev": str(member["event_id"])},
-        ).mappings().first()
+        stage = (
+            s.execute(
+                text(
+                    "SELECT st.id, st.status, st.starts_at, st.ends_at, st.grace_seconds, st.config, st.rule_set_hash, "
+                    "e.id AS event_id, e.status AS event_status "
+                    "FROM app.stages st JOIN app.events e ON e.id = st.event_id "
+                    "WHERE e.id = CAST(:ev AS uuid) ORDER BY st.ordinal DESC LIMIT 1 FOR UPDATE"
+                ),
+                {"ev": str(member["event_id"])},
+            )
+            .mappings()
+            .first()
+        )
         if stage is None:
             raise ApiError("ROUND_NOT_ACTIVE")
         now = s.execute(text("SELECT clock_timestamp()")).scalar_one()  # the ONLY acceptance clock
@@ -175,9 +197,7 @@ def create_submission(
                 raise ApiError("SUBMISSION_INVALID", details={"challenge": "No challenge assigned to your team."})
             challenge_id = str(ch[0])
             f = s.execute(
-                text(
-                    "SELECT 1 FROM app.challenge_files WHERE challenge_version_id = CAST(:c AS uuid) AND path = :p"
-                ),
+                text("SELECT 1 FROM app.challenge_files WHERE challenge_version_id = CAST(:c AS uuid) AND path = :p"),
                 {"c": challenge_id, "p": body.file_path},
             ).first()
             if f is None:
@@ -258,7 +278,7 @@ def create_submission(
                 "ph": payload_hash,
                 "status": status0,
                 "receipt": receipt,
-                "title": (body.title or (f"Flag submission" if body.kind == "ctf_flag" else "Report"))[:160],
+                "title": (body.title or ("Flag submission" if body.kind == "ctf_flag" else "Report"))[:160],
                 "fp": body.file_path,
                 "ls": body.line_start,
                 "le": body.line_end,
@@ -288,7 +308,13 @@ def create_submission(
             event_scope=f"event:{member['event_id']}",
         )
     return _receipt(
-        {"id": submission_id, "receipt_code": receipt, "received_at": now, "status": status0, "payload_hash": payload_hash},
+        {
+            "id": submission_id,
+            "receipt_code": receipt,
+            "received_at": now,
+            "status": status0,
+            "payload_hash": payload_hash,
+        },
         member,
         replay=False,
     )
@@ -298,7 +324,9 @@ def _receipt(row, member, *, replay: bool) -> dict:
     return {
         "submission_id": str(row["id"]),
         "receipt_code": row["receipt_code"],
-        "received_at": row["received_at"].isoformat() if isinstance(row["received_at"], datetime) else str(row["received_at"]),
+        "received_at": row["received_at"].isoformat()
+        if isinstance(row["received_at"], datetime)
+        else str(row["received_at"]),
         "status": "received",
         "replay": replay,
         "team_id": str(member["team_id"]) if member else None,
@@ -309,20 +337,30 @@ def _receipt(row, member, *, replay: bool) -> dict:
 def my_submissions(p: Principal = Depends(get_principal)):
     require_role("participant")(p)
     with app_session() as s:
-        rows = s.execute(
-            text(
-                "SELECT id, kind, title, file_path, line_start, line_end, category, status, receipt_code, "
-                "received_at, flag_code, feedback_released, matched_bug_code, points_visible "
-                "FROM app.submissions WHERE author_id = CAST(:u AS uuid) ORDER BY received_at DESC LIMIT 200"
-            ),
-            {"u": p.id},
-        ).mappings().all()
+        rows = (
+            s.execute(
+                text(
+                    "SELECT id, kind, title, file_path, line_start, line_end, category, status, receipt_code, "
+                    "received_at, flag_code, feedback_released, matched_bug_code, points_visible "
+                    "FROM app.submissions WHERE author_id = CAST(:u AS uuid) ORDER BY received_at DESC LIMIT 200"
+                ),
+                {"u": p.id},
+            )
+            .mappings()
+            .all()
+        )
     out = []
     for r in rows:
         item = {
-            "id": str(r["id"]), "kind": r["kind"], "title": r["title"], "file_path": r["file_path"],
-            "line_start": r["line_start"], "line_end": r["line_end"], "category": r["category"],
-            "receipt_code": r["receipt_code"], "received_at": r["received_at"].isoformat(),
+            "id": str(r["id"]),
+            "kind": r["kind"],
+            "title": r["title"],
+            "file_path": r["file_path"],
+            "line_start": r["line_start"],
+            "line_end": r["line_end"],
+            "category": r["category"],
+            "receipt_code": r["receipt_code"],
+            "received_at": r["received_at"].isoformat(),
             "flag_code": r["flag_code"] if r["kind"] == "ctf_flag" else None,
         }
         # feedback_mode=hidden until release (INT-01): statuses coarse before release
@@ -331,7 +369,11 @@ def my_submissions(p: Principal = Depends(get_principal)):
             item["matched_bug_code"] = r["matched_bug_code"]
             item["points_visible"] = float(r["points_visible"] or 0)
         else:
-            item["status"] = "received" if r["status"] in ("received", "matched_auto", "needs_review", "in_review", "decided", "ledgered") else r["status"]
+            item["status"] = (
+                "received"
+                if r["status"] in ("received", "matched_auto", "needs_review", "in_review", "decided", "ledgered")
+                else r["status"]
+            )
         out.append(item)
     return {"submissions": out}
 
@@ -340,21 +382,31 @@ def my_submissions(p: Principal = Depends(get_principal)):
 def my_submission(submission_id: str, p: Principal = Depends(get_principal)):
     require_role("participant")(p)
     with app_session() as s:
-        r = s.execute(
-            text(
-                "SELECT id, kind, title, file_path, line_start, line_end, category, status, receipt_code, "
-                "received_at, payload, feedback_released, matched_bug_code, points_visible "
-                "FROM app.submissions WHERE id = CAST(:sid AS uuid) AND author_id = CAST(:u AS uuid)"
-            ),
-            {"sid": submission_id, "u": p.id},
-        ).mappings().first()
+        r = (
+            s.execute(
+                text(
+                    "SELECT id, kind, title, file_path, line_start, line_end, category, status, receipt_code, "
+                    "received_at, payload, feedback_released, matched_bug_code, points_visible "
+                    "FROM app.submissions WHERE id = CAST(:sid AS uuid) AND author_id = CAST(:u AS uuid)"
+                ),
+                {"sid": submission_id, "u": p.id},
+            )
+            .mappings()
+            .first()
+        )
     if r is None:
         # 404, not 403: existence of others' submissions is not disclosed (SEC-02)
         raise ApiError("NOT_FOUND")
     return {
-        "id": str(r["id"]), "kind": r["kind"], "title": r["title"], "file_path": r["file_path"],
-        "line_start": r["line_start"], "line_end": r["line_end"], "category": r["category"],
-        "receipt_code": r["receipt_code"], "received_at": r["received_at"].isoformat(),
+        "id": str(r["id"]),
+        "kind": r["kind"],
+        "title": r["title"],
+        "file_path": r["file_path"],
+        "line_start": r["line_start"],
+        "line_end": r["line_end"],
+        "category": r["category"],
+        "receipt_code": r["receipt_code"],
+        "received_at": r["received_at"].isoformat(),
         "payload": r["payload"],
         "released": bool(r["feedback_released"]),
         "matched_bug_code": r["matched_bug_code"] if r["feedback_released"] else None,
@@ -388,9 +440,18 @@ def create_dispute(submission_id: str, body: DisputeIn, request: Request, p: Pri
             ),
             {"id": str(uuid7()), "sid": submission_id, "t": str(r[1]), "st": body.statement},
         )
-        s.execute(text("UPDATE app.submissions SET status='disputed' WHERE id = CAST(:sid AS uuid)"), {"sid": submission_id})
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="dispute.created", entity_type="submission",
-                    entity_id=submission_id, request_id=request.state.request_id)
+        s.execute(
+            text("UPDATE app.submissions SET status='disputed' WHERE id = CAST(:sid AS uuid)"), {"sid": submission_id}
+        )
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="dispute.created",
+            entity_type="submission",
+            entity_id=submission_id,
+            request_id=request.state.request_id,
+        )
     return {"ok": True}
 
 
@@ -403,10 +464,16 @@ class DraftIn(BaseModel):
 def get_draft(challenge_id: str, p: Principal = Depends(get_principal)):
     require_role("participant")(p)
     with app_session() as s:
-        row = s.execute(
-            text("SELECT payload, version, updated_at FROM app.drafts WHERE author_id = CAST(:u AS uuid) AND challenge_version_id = CAST(:c AS uuid)"),
-            {"u": p.id, "c": challenge_id},
-        ).mappings().first()
+        row = (
+            s.execute(
+                text(
+                    "SELECT payload, version, updated_at FROM app.drafts WHERE author_id = CAST(:u AS uuid) AND challenge_version_id = CAST(:c AS uuid)"
+                ),
+                {"u": p.id, "c": challenge_id},
+            )
+            .mappings()
+            .first()
+        )
     if row is None:
         return {"payload": {}, "version": 0, "updated_at": None}
     return {"payload": row["payload"], "version": row["version"], "updated_at": row["updated_at"].isoformat()}
@@ -417,7 +484,9 @@ def put_draft(challenge_id: str, body: DraftIn, p: Principal = Depends(get_princ
     require_role("participant")(p)
     with app_session() as s:
         row = s.execute(
-            text("SELECT version FROM app.drafts WHERE author_id = CAST(:u AS uuid) AND challenge_version_id = CAST(:c AS uuid) FOR UPDATE"),
+            text(
+                "SELECT version FROM app.drafts WHERE author_id = CAST(:u AS uuid) AND challenge_version_id = CAST(:c AS uuid) FOR UPDATE"
+            ),
             {"u": p.id, "c": challenge_id},
         ).first()
         if row is None:
@@ -426,14 +495,21 @@ def put_draft(challenge_id: str, body: DraftIn, p: Principal = Depends(get_princ
                     "INSERT INTO app.drafts (id, author_id, challenge_version_id, payload, version) VALUES "
                     "(CAST(:id AS uuid), CAST(:u AS uuid), CAST(:c AS uuid), CAST(:p AS jsonb), 1)"
                 ),
-                {"id": str(uuid7()), "u": p.id, "c": challenge_id, "p": __import__("json").dumps(body.payload, default=str)},
+                {
+                    "id": str(uuid7()),
+                    "u": p.id,
+                    "c": challenge_id,
+                    "p": __import__("json").dumps(body.payload, default=str),
+                },
             )
             return {"version": 1}
         if body.version is not None and int(body.version) != int(row[0]):
             raise ApiError("DRAFT_VERSION_CONFLICT")
         s.execute(
-            text("UPDATE app.drafts SET payload = CAST(:p AS jsonb), version = version + 1, updated_at = now() "
-                 "WHERE author_id = CAST(:u AS uuid) AND challenge_version_id = CAST(:c AS uuid)"),
+            text(
+                "UPDATE app.drafts SET payload = CAST(:p AS jsonb), version = version + 1, updated_at = now() "
+                "WHERE author_id = CAST(:u AS uuid) AND challenge_version_id = CAST(:c AS uuid)"
+            ),
             {"p": __import__("json").dumps(body.payload, default=str), "u": p.id, "c": challenge_id},
         )
         return {"version": int(row[0]) + 1}

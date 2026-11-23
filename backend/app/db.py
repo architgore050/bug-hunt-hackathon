@@ -10,14 +10,17 @@ Two SQLAlchemy engines model the trust boundary from the architecture (§9.2):
 A test (tests/test_gt_isolation.py) connects with the real app_api role and
 asserts that reading gt raises a permission error.
 """
+
 from __future__ import annotations
 
 import os
+import time
 import uuid
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .config import settings
@@ -42,7 +45,7 @@ GtSession = sessionmaker(bind=gt_engine, expire_on_commit=False, autoflush=False
 
 
 @contextmanager
-def app_session() -> "Session":
+def app_session() -> Session:
     s = AppSession()
     try:
         yield s
@@ -55,7 +58,7 @@ def app_session() -> "Session":
 
 
 @contextmanager
-def gt_session() -> "Session":
+def gt_session() -> Session:
     s = GtSession()
     try:
         yield s
@@ -74,12 +77,10 @@ def db_now(session: Session):
 
 # --- identifiers -------------------------------------------------------------
 
-def uuid7() -> uuid.UUID:
-    """UUIDv7: time-sortable, opaque. Sequential IDs are never an access control (spec §0)."""
-    ts_ms = int(uuid.uuid1().time // 10_000)  # not used; keep simple below
-    # 48-bit unix millisecond timestamp
-    import time
 
+def uuid7() -> uuid.UUID:
+    """UUIDv7: time-sortable, opaque. Sequential IDs are never an access control (spec section 0)."""
+    # 48-bit unix millisecond timestamp
     ts = int(time.time() * 1000) & ((1 << 48) - 1)
     rand_a = int.from_bytes(os.urandom(2), "big") & 0x0FFF  # 12 bits
     rand_b = int.from_bytes(os.urandom(8), "big") & ((1 << 62) - 1)  # 62 bits
@@ -100,12 +101,12 @@ def health_probe() -> dict:
         with app_engine.connect() as c:
             out["database_app"] = "up"
             out["clock"] = c.execute(text("SELECT clock_timestamp()")).scalar_one().isoformat()
-    except Exception as e:  # pragma: no cover
+    except SQLAlchemyError as e:  # pragma: no cover
         out["database_app_error"] = str(e.__class__.__name__)
     try:
         with gt_engine.connect() as c:
             c.execute(text("SELECT 1"))
             out["database_gt"] = "up"
-    except Exception as e:  # pragma: no cover
+    except SQLAlchemyError as e:  # pragma: no cover
         out["database_gt_error"] = str(e.__class__.__name__)
     return out
