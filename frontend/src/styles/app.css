@@ -74,6 +74,20 @@ body {
   padding: 28px 0 64px;
 }
 
+/* ---------- not found (EX-404) ---------- */
+
+.notfound-panel {
+  min-height: calc(100vh - var(--header-h));
+}
+
+.notfound-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 100%;
+}
+
 .stack {
   display: grid;
   gap: 16px;
