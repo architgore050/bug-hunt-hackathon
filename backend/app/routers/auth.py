@@ -68,13 +68,36 @@ def login(body: LoginIn, request: Request, response: Response):
         if user["status"] == "disqualified":
             raise ApiError("AUTH_FORBIDDEN", message="This account was disqualified. Contact the organizers.")
 
-        # concurrent session limit (AUTH-10)
-        active = s.execute(
-            text("SELECT count(*) FROM app.sessions WHERE user_id = CAST(:u AS uuid) AND revoked_at IS NULL"),
+        # Concurrent session limit (AUTH-10), hardened with reclaim + eviction:
+        # 1) Reclaim zombie sessions: a session whose refresh tokens are all
+        #    expired/revoked can never refresh again, so it must not hold a
+        #    slot forever (this was a permanent lockout path).
+        # 2) If live sessions are still at the cap, evict the oldest live
+        #    session (revoked, token family revoked, audited) so a new sign-in
+        #    always succeeds. The cap bounds live sessions; it must never lock
+        #    a legitimate user out of their own account.
+        # The user-row lock serializes concurrent logins for one user so two
+        # racing sign-ins cannot exceed the cap.
+        s.execute(text("SELECT id FROM app.users WHERE id = CAST(:u AS uuid) FOR UPDATE"), {"u": str(user["id"])})
+        s.execute(
+            text(
+                "UPDATE app.sessions SET revoked_at = now() "
+                "WHERE user_id = CAST(:u AS uuid) AND revoked_at IS NULL "
+                "AND NOT EXISTS (SELECT 1 FROM app.refresh_tokens rt "
+                "  WHERE rt.session_id = app.sessions.id AND rt.status = 'active' AND rt.expires_at > now())"
+            ),
             {"u": str(user["id"])},
-        ).scalar_one()
-        if int(active) >= settings.max_sessions_per_user:
-            raise ApiError("AUTH_FORBIDDEN", message="Maximum concurrent sessions reached. Sign out another device and try again.")
+        )
+        live = s.execute(
+            text("SELECT id FROM app.sessions WHERE user_id = CAST(:u AS uuid) AND revoked_at IS NULL ORDER BY created_at ASC"),
+            {"u": str(user["id"])},
+        ).scalars().all()
+        while len(live) >= settings.max_sessions_per_user:
+            victim = str(live.pop(0))
+            s.execute(text("UPDATE app.sessions SET revoked_at = now() WHERE id = CAST(:sid AS uuid)"), {"sid": victim})
+            s.execute(text("UPDATE app.refresh_tokens SET status='revoked' WHERE session_id = CAST(:sid AS uuid)"), {"sid": victim})
+            audit_write(s, actor_id=str(user["id"]), actor_role=user["role"], action="auth.session_evicted",
+                        entity_type="session", entity_id=victim, request_id=request.state.request_id)
 
         session_id = str(uuid7())
         s.execute(

@@ -106,3 +106,67 @@ def test_refresh_rotation_and_reuse_detection(client):
     client.cookies.set("bhctf_refresh", old_cookie)
     r2 = client.post("/v1/auth/refresh", headers={"Origin": "http://localhost:5173", "X-BHCTF-Client": "web"})
     assert r2.status_code == 200
+
+
+def _login(client, email):
+    r = client.post("/v1/auth/login", json={"email": email, "password": "Dev-only!Passw0rd!"})
+    r.raise_for_status()
+    return r.json()["access_token"]
+
+
+def _auth(token):
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_login_evicts_oldest_session_instead_of_lockout(client):
+    """AUTH-10 (hardened): the cap bounds live sessions but must never lock a
+    legitimate user out. A third sign-in evicts the oldest live session."""
+    email = "p3.team1@example.com"
+    t1 = _login(client, email)
+    t2 = _login(client, email)
+    t3 = _login(client, email)  # must succeed: eviction, not 403 lockout
+
+    sessions = client.get("/v1/me/sessions", headers=_auth(t3)).json()
+    assert len(sessions) == 2  # cap invariant: at most max live sessions
+
+    # the evicted (oldest) session's access token is rejected server-side
+    r = client.get("/v1/me", headers=_auth(t1))
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "AUTH_SESSION_REVOKED"
+    # the two live sessions still work
+    assert client.get("/v1/me", headers=_auth(t2)).status_code == 200
+    assert client.get("/v1/me", headers=_auth(t3)).status_code == 200
+
+    # eviction is audited
+    from sqlalchemy import text
+
+    from app.db import app_session
+
+    with app_session() as s:
+        n = s.execute(text("SELECT count(*) FROM audit.entries WHERE action = 'auth.session_evicted'")).scalar_one()
+    assert n >= 1
+
+
+def test_zombie_sessions_do_not_hold_slots(client):
+    """A session whose refresh tokens are all expired can never refresh again;
+    it must be reclaimed at next login instead of holding a slot forever."""
+    email = "p4.team1@example.com"
+    t1 = _login(client, email)
+    sid1 = client.get("/v1/me/sessions", headers=_auth(t1)).json()[0]["id"]
+
+    from sqlalchemy import text
+
+    from app.db import app_session
+
+    with app_session() as s:
+        s.execute(
+            text("UPDATE app.refresh_tokens SET expires_at = now() - interval '1 hour' WHERE session_id = CAST(:sid AS uuid)"),
+            {"sid": sid1},
+        )
+
+    # two further logins must both succeed: the zombie is reclaimed, no eviction needed
+    t2 = _login(client, email)
+    t3 = _login(client, email)
+    live_ids = {s["id"] for s in client.get("/v1/me/sessions", headers=_auth(t3)).json()}
+    assert sid1 not in live_ids
+    assert client.get("/v1/me", headers=_auth(t2)).status_code == 200
