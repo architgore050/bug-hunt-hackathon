@@ -21,9 +21,9 @@ class Settings(BaseSettings):
 
     # --- database -----------------------------------------------------------
     # The participant/admin API connects as app_api which CANNOT read the gt schema.
-    database_url_app: str = "postgresql+psycopg://app_api:app_api_dev@127.0.0.1:5433/bughunt"
+    database_url_app: str = "postgresql+psycopg://app_api:app_api_dev@127.0.0.1:5434/bughunt"
     # Only the evaluator/ground-truth paths use this restricted connection.
-    database_url_gt: str = "postgresql+psycopg://gt_admin:gt_admin_dev@127.0.0.1:5433/bughunt"
+    database_url_gt: str = "postgresql+psycopg://gt_admin:gt_admin_dev@127.0.0.1:5434/bughunt"
     db_pool_size: int = 8
     db_max_overflow: int = 4
 

@@ -12,14 +12,14 @@ Two profiles exist.
 
 Prerequisites:
 
-- Python 3.12 venv (the scripts default to `/home/z/my-project/tools/venv/bin/python`, override with `PYTHON=`).
-- PostgreSQL 17 portable binaries under `$REPO_ROOT/../tools/pg17/bin` (override with `PG_BIN=`).
+- Python 3.12 (the scripts default to `python3`, override with `PYTHON=`).
+- PostgreSQL 16 or 17 binaries, auto-detected: `$REPO_ROOT/../tools/pg17/bin` if present, else `initdb`/`psql` on PATH, else the newest `/usr/lib/postgresql/*/bin` (override with `PG_BIN=`).
 - Node.js for the frontend.
 
 Steps:
 
 1. Database and roles: `bash scripts/dev_db.sh`.
-   - Starts PostgreSQL on 127.0.0.1:5433 (initdb into `../tools/pgdata` on first run, log `../tools/pg.log`).
+   - Starts PostgreSQL on 127.0.0.1:5434 (initdb into `../tools/pgdata` on first run, log `../tools/pg.log`).
    - Creates database `bughunt` (override `DB=`) with schemas `app`, `gt`, `audit`.
    - Creates roles `app_api` / `gt_admin` / `scheduler` (dev passwords) and grants per the trust boundary, including default privileges for future tables.
 2. Migrations: `bash scripts/migrate.sh`.

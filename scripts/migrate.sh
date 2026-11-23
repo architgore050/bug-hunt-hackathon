@@ -4,11 +4,25 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PG_BIN="${PG_BIN:-$REPO_ROOT/../tools/pg17/bin}"
-PGPORT="${PGPORT:-5433}"
+PGPORT="${PGPORT:-5434}"
 PGHOST="${PGHOST:-127.0.0.1}"
 PGUSER="${PGUSER:-pgadmin}"   # migrations run as the database owner (DDL); runtime roles never migrate
 PGPASSWORD="${PGPASSWORD:-}"
+# Same binary discovery as scripts/dev_db.sh: PG_BIN, then ../tools/pg17/bin,
+# then initdb on PATH, then the newest /usr/lib/postgresql/*/bin.
+if [ -z "${PG_BIN:-}" ]; then
+  if [ -x "$REPO_ROOT/../tools/pg17/bin/psql" ]; then
+    PG_BIN="$REPO_ROOT/../tools/pg17/bin"
+  elif command -v psql >/dev/null 2>&1; then
+    PG_BIN="$(dirname "$(command -v psql)")"
+  else
+    PG_BIN="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -n 1)"
+  fi
+fi
+if [ -z "$PG_BIN" ] || [ ! -x "$PG_BIN/psql" ]; then
+  echo "ERROR: no psql found. Install PostgreSQL or set PG_BIN=/path/to/postgres/bin." >&2
+  exit 1
+fi
 export PATH="$PG_BIN:$PATH"
 export PGHOST PGPORT PGUSER PGPASSWORD
 

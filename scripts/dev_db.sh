@@ -13,11 +13,29 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PG_BIN="${PG_BIN:-$REPO_ROOT/../tools/pg17/bin}"
 PGDATA="${PGDATA:-$REPO_ROOT/../tools/pgdata}"
-PGPORT="${PGPORT:-5433}"
+PGPORT="${PGPORT:-5434}"
 PGUSER="pgadmin"
 
+# Locate PostgreSQL binaries. Preference order:
+#   1. PG_BIN if set explicitly
+#   2. portable cluster at ../tools/pg17/bin (if present)
+#   3. initdb already on PATH
+#   4. newest system install under /usr/lib/postgresql/*/bin
+if [ -z "${PG_BIN:-}" ]; then
+  if [ -x "$REPO_ROOT/../tools/pg17/bin/initdb" ]; then
+    PG_BIN="$REPO_ROOT/../tools/pg17/bin"
+  elif command -v initdb >/dev/null 2>&1; then
+    PG_BIN="$(dirname "$(command -v initdb)")"
+  else
+    PG_BIN="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -n 1)"
+  fi
+fi
+if [ -z "$PG_BIN" ] || [ ! -x "$PG_BIN/initdb" ] || [ ! -x "$PG_BIN/pg_ctl" ]; then
+  echo "ERROR: no PostgreSQL binaries found (need initdb and pg_ctl)." >&2
+  echo "       Install PostgreSQL or set PG_BIN=/path/to/postgres/bin." >&2
+  exit 1
+fi
 export PATH="$PG_BIN:$PATH"
 
 # Start PostgreSQL if it is not already running.
@@ -33,7 +51,11 @@ if ! pg_isready -h 127.0.0.1 -p "$PGPORT" >/dev/null 2>&1; then
   fi
   # The data directory must be owner-only or the server refuses to start.
   chmod 700 "$PGDATA"
+  if [ ! -s "$PGDATA/PG_VERSION" ]; then
+    initdb -D "$PGDATA" -U "$PGUSER" --auth=trust -E UTF8 >/dev/null
+  fi
   # Empty runtime directories do not survive some environment restores.
+  # Must run AFTER initdb: initdb refuses a non-empty data directory.
   for d in pg_notify pg_tblspc pg_replslot pg_twophase pg_stat pg_stat_tmp \
            pg_commit_ts pg_dynshmem pg_snapshots pg_subtrans pg_xact \
            pg_wal/archive_status pg_wal/summaries \
@@ -41,9 +63,6 @@ if ! pg_isready -h 127.0.0.1 -p "$PGPORT" >/dev/null 2>&1; then
            pg_multixact/members pg_multixact/offsets; do
     mkdir -p "$PGDATA/$d"
   done
-  if [ ! -s "$PGDATA/PG_VERSION" ]; then
-    initdb -D "$PGDATA" -U "$PGUSER" --auth=trust -E UTF8 >/dev/null
-  fi
   pg_ctl -D "$PGDATA" -l "$REPO_ROOT/../tools/pg.log" \
     -o "-p $PGPORT -k /tmp -c listen_addresses=127.0.0.1" start
   sleep 1
@@ -52,13 +71,19 @@ fi
 # Fail fast if the port is served by a different PostgreSQL cluster (a system
 # service, a container, another checkout). psql -w never prompts for a
 # password: our cluster uses trust auth, so pgadmin needs NO password at all.
-PGDATA="$(cd "$PGDATA" && pwd)"   # canonical form: SHOW data_directory never contains ".."
+# Canonicalize PGDATA only when it exists: a foreign cluster on this port can
+# mean our data directory was never created, and cd must not crash the script
+# before the check below can report the conflict.
+if [ -d "$PGDATA" ]; then
+  PGDATA="$(cd "$PGDATA" && pwd)"   # canonical form: SHOW data_directory never contains ".."
+fi
 SERVED_DIR="$(psql -w -h 127.0.0.1 -p "$PGPORT" -U "$PGUSER" -d postgres -tAc "SHOW data_directory" 2>/dev/null || true)"
 SERVED_DIR="${SERVED_DIR%/}"
 if [ "$SERVED_DIR" != "${PGDATA%/}" ]; then
   echo "ERROR: 127.0.0.1:$PGPORT is served by another PostgreSQL cluster (data dir: ${SERVED_DIR:-<unreachable or auth required>})." >&2
   echo "       This platform's dev cluster uses trust auth: pgadmin has no password." >&2
-  echo "       Pick a free port instead, e.g.: PGPORT=5434 DB=\${DB:-bughunt} $0" >&2
+  echo "       Pick a free port instead, e.g.: PGPORT=5435 DB=\${DB:-bughunt} $0" >&2
+  echo "       (remember to use the same PGPORT in backend/.env and backend/tests)" >&2
   exit 1
 fi
 

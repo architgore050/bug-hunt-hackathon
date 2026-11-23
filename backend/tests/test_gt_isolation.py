@@ -8,11 +8,11 @@ from __future__ import annotations
 import psycopg
 import pytest
 
-from conftest import participant_client
+from conftest import APP_URL, GT_URL, participant_client
 
-
-APP_DSN = "postgresql://app_api:app_api_dev@127.0.0.1:5433/bughunt_test"
-GT_DSN = "postgresql://gt_admin:gt_admin_dev@127.0.0.1:5433/bughunt_test"
+# Same DSNs as conftest (PGPORT-aware), in plain libpq form for psycopg.
+APP_DSN = APP_URL.replace("+psycopg", "")
+GT_DSN = GT_URL.replace("+psycopg", "")
 
 
 def test_app_role_cannot_read_gt_bugs():

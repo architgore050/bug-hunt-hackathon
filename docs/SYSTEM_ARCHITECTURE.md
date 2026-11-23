@@ -170,6 +170,6 @@ Safety: no `dangerouslySetInnerHTML` anywhere in `frontend/src` (verified by gre
 
 ## 9. Deployment profiles
 
-- D0 (local dev, what actually runs today): portable PostgreSQL 17 binaries under `../tools/pg17` on port 5433, databases `bughunt` and `bughunt_test`, roles `app_api` / `gt_admin` / `scheduler`, uvicorn on 8100, `worker.py`, Vite on 5173. Scripts: `scripts/dev_db.sh`, `scripts/migrate.sh`, `scripts/run_dev.sh`.
+- D0 (local dev, what actually runs today): PostgreSQL binaries auto-detected by the scripts (portable `../tools/pg17` if present, else system install; PostgreSQL 16 or 17), dev cluster on port 5434, databases `bughunt` and `bughunt_test`, roles `app_api` / `gt_admin` / `scheduler`, uvicorn on 8100, `worker.py`, Vite on 5173. Scripts: `scripts/dev_db.sh`, `scripts/migrate.sh`, `scripts/run_dev.sh`.
 - D1 (target, not yet materialized in-repo): one OCI Always Free Ampere A1 VM (2 OCPU / 12 GB) running the API, worker and PostgreSQL behind Cloudflare DNS/TLS/Tunnel, static SPA on Cloudflare Pages. Capacity targets and the qualification gate are in `PERFORMANCE_AND_CAPACITY.md`; the procedure is in `DEPLOYMENT_RUNBOOK.md`.
 - D2 (multi-domain, resilient) is explicitly out of scope for v1 (`config.py` profile comment).
