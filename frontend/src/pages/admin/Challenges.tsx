@@ -119,8 +119,8 @@ export const AdminChallenges: React.FC = () => {
           <span
             className={`px-3 py-1 font-bold border uppercase tracking-[0.12em] ${
               stepUpActive
-                ? 'border-[#3F7A68] bg-[#3F7A68]/10 text-[#3F7A68]'
-                : 'border-[#C44D3F] bg-[#C44D3F]/10 text-[#C44D3F]'
+                ? 'border-[#3F7A68] bg-[#3F7A68]/10 text-[#63A98D]'
+                : 'border-[#C44D3F] bg-[#C44D3F]/10 text-[#E0836F]'
             }`}
           >
             {stepUpActive ? 'STEP-UP ACTIVE (5 MIN)' : 'STEP-UP REQUIRED'}
@@ -138,7 +138,7 @@ export const AdminChallenges: React.FC = () => {
           subtitle="Terrain authoring and test evidence entry require elevated credentials."
         >
           <form onSubmit={handleStepUp} className="space-y-4 max-w-md font-mono text-xs">
-            <p className="text-xs font-sans text-[#718294] leading-relaxed">
+            <p className="text-xs font-sans text-[#7E8FA1] leading-relaxed">
               Confirm your passphrase to open the ground-truth desk. Elevation holds for five
               minutes.
             </p>
@@ -209,7 +209,7 @@ export const AdminChallenges: React.FC = () => {
 
               {challengeId && (
                 <div className="mt-4 pt-4 border-t border-[#22303F] space-y-4 font-mono text-xs">
-                  <div className="text-[#3F7A68] font-bold">TERRAIN ID: {challengeId}</div>
+                  <div className="text-[#63A98D] font-bold">TERRAIN ID: {challengeId}</div>
 
                   <form onSubmit={handleUploadFile} className="space-y-3">
                     <label htmlFor="gt-file" className="coordinate block">
@@ -231,21 +231,21 @@ export const AdminChallenges: React.FC = () => {
                     </button>
                   </form>
 
-                  {uploadStatus && <div className="text-[#3F7A68]">{uploadStatus}</div>}
+                  {uploadStatus && <div className="text-[#63A98D]">{uploadStatus}</div>}
 
                   <div className="pt-2">
                     <button
                       type="button"
                       onClick={handleFreeze}
                       disabled={loading}
-                      className="px-4 py-2 border border-[#CF824B] text-[#CF824B] font-bold uppercase tracking-[0.12em] hover:bg-[#CF824B]/10 disabled:opacity-50 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#CF824B]"
+                      className="px-4 py-2 border border-[#CF824B] text-[#E2A56B] font-bold uppercase tracking-[0.12em] hover:bg-[#CF824B]/10 disabled:opacity-50 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#CF824B]"
                     >
                       Freeze terrain (lock ground truth)
                     </button>
                   </div>
 
                   {freezeHash && (
-                    <div className="text-[#3F7A68] font-bold break-all">
+                    <div className="text-[#63A98D] font-bold break-all">
                       FROZEN CONTENT HASH: {freezeHash.substring(0, 16)}...
                     </div>
                   )}
@@ -303,14 +303,14 @@ export const AdminChallenges: React.FC = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-4 py-2 bg-[#3F7A68] text-[#E2E8EE] font-bold uppercase tracking-[0.14em] disabled:opacity-50 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
+                  className="px-4 py-2 bg-[#3F7A68] text-white font-bold uppercase tracking-[0.14em] disabled:opacity-50 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
                 >
                   Record test evidence
                 </button>
               </form>
 
               {testResultStatus && (
-                <div className="mt-3 pt-3 border-t border-[#22303F] font-mono text-xs text-[#3F7A68] font-bold">
+                <div className="mt-3 pt-3 border-t border-[#22303F] font-mono text-xs text-[#63A98D] font-bold">
                   {testResultStatus}
                 </div>
               )}

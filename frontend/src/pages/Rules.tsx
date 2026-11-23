@@ -48,7 +48,7 @@ export const Rules: React.FC = () => {
         <h1 className="text-3xl sm:text-4xl font-serif font-black text-[#E2E8EE]">
           Rules of the survey
         </h1>
-        <div className="flex flex-wrap items-center gap-3 pt-1 text-xs font-mono text-[#718294] uppercase tracking-[0.12em]">
+        <div className="flex flex-wrap items-center gap-3 pt-1 text-xs font-mono text-[#7E8FA1] uppercase tracking-[0.12em]">
           <SectorBadge
             label={rules?.version ? `VERSION: ${rules.version}` : 'UNFROZEN DRAFT'}
             tone="elevation"
@@ -67,7 +67,7 @@ export const Rules: React.FC = () => {
 
       <div className="topo-panel bg-[#111A27] p-6 sm:p-8 space-y-6 text-sm text-[#B6C2CE] font-sans leading-relaxed">
         {loading ? (
-          <div className="font-mono text-xs text-[#718294]" role="status">
+          <div className="font-mono text-xs text-[#7E8FA1]" role="status">
             Retrieving the authoritative protocol document from the server ledger...
           </div>
         ) : rules?.body_markdown ? (
@@ -123,7 +123,7 @@ export const Rules: React.FC = () => {
         <div className="border border-[#CF824B] bg-[#CF824B]/10 p-6 flex flex-wrap items-center justify-between gap-4 font-mono text-xs">
           <div>
             <div className="text-[#E2E8EE] font-bold text-sm">Mandatory ratification</div>
-            <p className="text-[#CF824B] font-sans text-xs mt-1">
+            <p className="text-[#E2A56B] font-sans text-xs mt-1">
               The survey protocol must be ratified before challenge files open or findings can be filed.
             </p>
           </div>

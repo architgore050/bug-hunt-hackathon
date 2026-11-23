@@ -9,11 +9,11 @@ interface SectorBadgeProps {
 }
 
 const toneClasses: Record<SectorTone, string> = {
-  shear: 'text-[#C44D3F] border-[#C44D3F] bg-[#C44D3F]/10',
-  strain: 'text-[#CF824B] border-[#CF824B] bg-[#CF824B]/10',
-  stabilized: 'text-[#3F7A68] border-[#3F7A68] bg-[#3F7A68]/10',
-  elevation: 'text-[#4A8FA8] border-[#4A8FA8] bg-[#4A8FA8]/10',
-  legend: 'text-[#718294] border-[#22303F] bg-[#0C1220]',
+  shear: 'text-[#E0836F] border-[#C44D3F] bg-[#C44D3F]/10',
+  strain: 'text-[#E2A56B] border-[#CF824B] bg-[#CF824B]/10',
+  stabilized: 'text-[#63A98D] border-[#3F7A68] bg-[#3F7A68]/10',
+  elevation: 'text-[#7FBBD1] border-[#4A8FA8] bg-[#4A8FA8]/10',
+  legend: 'text-[#7E8FA1] border-[#22303F] bg-[#0C1220]',
 };
 
 /**

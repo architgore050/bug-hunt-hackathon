@@ -5,7 +5,7 @@ import { formatIST, getServerNow } from '../lib/time';
 import { SectorBadge } from './SectorBadge';
 
 const linkBase =
-  'px-3 py-1.5 border text-[#718294] hover:text-[#E2E8EE] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]';
+  'px-3 py-1.5 border text-[#7E8FA1] hover:text-[#E2E8EE] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]';
 const linkActive = 'border-[#4A8FA8] text-[#E2E8EE] bg-[#4A8FA8]/10';
 const linkIdle = 'border-transparent';
 
@@ -27,7 +27,7 @@ export const Navigation: React.FC = () => {
     <header className="border-b border-[#22303F] bg-[#0C1220]/95 backdrop-blur-md sticky top-0 z-50">
       {/* Coordinate ruler strip */}
       <div
-        className="border-b border-[#22303F]/70 px-4 py-1 flex items-center justify-between text-[10px] font-mono tracking-[0.14em] uppercase text-[#718294]"
+        className="border-b border-[#22303F]/70 px-4 py-1 flex items-center justify-between text-[10px] font-mono tracking-[0.14em] uppercase text-[#7E8FA1]"
         aria-label="Survey telemetry strip"
       >
         <div className="flex items-center gap-3">
@@ -48,15 +48,15 @@ export const Navigation: React.FC = () => {
         <Link to="/" className="flex items-center gap-3 group text-decoration-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]">
           <span
             aria-hidden="true"
-            className="w-7 h-7 flex items-center justify-center border border-[#4A8FA8] text-[#4A8FA8] font-mono font-bold text-[10px] tracking-tighter"
+            className="w-7 h-7 flex items-center justify-center border border-[#4A8FA8] text-[#7FBBD1] font-mono font-bold text-[10px] tracking-tighter"
           >
             FA
           </span>
           <span>
-            <span className="font-serif font-bold text-lg text-[#E2E8EE] tracking-tight group-hover:text-[#4A8FA8] transition-colors block leading-tight">
+            <span className="font-serif font-bold text-lg text-[#E2E8EE] tracking-tight group-hover:text-[#7FBBD1] transition-colors block leading-tight">
               Bug Hunt CTF
             </span>
-            <span className="block text-[10px] font-mono text-[#718294] uppercase tracking-[0.18em]">
+            <span className="block text-[10px] font-mono text-[#7E8FA1] uppercase tracking-[0.18em]">
               Failure Atlas // Fall Back
             </span>
           </span>
@@ -133,7 +133,7 @@ export const Navigation: React.FC = () => {
           <div className="flex items-center gap-3 font-mono text-xs">
             <div className="hidden md:flex flex-col text-right">
               <span className="text-[#E2E8EE] font-medium">{user.name || user.email}</span>
-              {team && <span className="text-[10px] text-[#CF824B]">TEAM: {team.name}</span>}
+              {team && <span className="text-[10px] text-[#E2A56B]">TEAM: {team.name}</span>}
             </div>
             <SectorBadge
               label={role || 'user'}
@@ -142,7 +142,7 @@ export const Navigation: React.FC = () => {
             <button
               type="button"
               onClick={logout}
-              className="border border-[#22303F] px-2.5 py-1 text-[11px] text-[#718294] hover:text-[#E2E8EE] hover:border-[#718294] transition-colors uppercase tracking-widest focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
+              className="border border-[#22303F] px-2.5 py-1 text-[11px] text-[#7E8FA1] hover:text-[#E2E8EE] hover:border-[#718294] transition-colors uppercase tracking-widest focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
             >
               Strike Camp
             </button>

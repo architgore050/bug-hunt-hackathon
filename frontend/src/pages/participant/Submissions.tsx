@@ -42,14 +42,14 @@ export const Submissions: React.FC = () => {
           </h1>
         </div>
         <div className="flex items-center gap-2 font-mono text-xs">
-          <div className="topo-panel bg-[#0C1220] px-3 py-1.5 text-[#718294]">
+          <div className="topo-panel bg-[#0C1220] px-3 py-1.5 text-[#7E8FA1]">
             TOTAL: <strong className="text-[#E2E8EE]">{submissions.length}</strong>
           </div>
-          <div className="topo-panel bg-[#0C1220] px-3 py-1.5 text-[#718294]">
-            FAULTS: <strong className="text-[#CF824B]">{bugReports.length}</strong>
+          <div className="topo-panel bg-[#0C1220] px-3 py-1.5 text-[#7E8FA1]">
+            FAULTS: <strong className="text-[#E2A56B]">{bugReports.length}</strong>
           </div>
-          <div className="topo-panel bg-[#0C1220] px-3 py-1.5 text-[#718294]">
-            FLAGS: <strong className="text-[#3F7A68]">{ctfFlags.length}</strong>
+          <div className="topo-panel bg-[#0C1220] px-3 py-1.5 text-[#7E8FA1]">
+            FLAGS: <strong className="text-[#63A98D]">{ctfFlags.length}</strong>
           </div>
         </div>
       </div>
@@ -58,11 +58,11 @@ export const Submissions: React.FC = () => {
 
       <div className="topo-panel bg-[#111A27] overflow-x-auto">
         {loading ? (
-          <div className="p-12 text-center font-mono text-xs text-[#718294]" role="status">
+          <div className="p-12 text-center font-mono text-xs text-[#7E8FA1]" role="status">
             Unsealing the filing log...
           </div>
         ) : submissions.length === 0 ? (
-          <div className="p-12 text-center font-mono text-xs text-[#718294] space-y-3">
+          <div className="p-12 text-center font-mono text-xs text-[#7E8FA1] space-y-3">
             <div>No findings filed yet. The map awaits your survey.</div>
             <Link
               to="/app/workspace"
@@ -73,7 +73,7 @@ export const Submissions: React.FC = () => {
           </div>
         ) : (
           <table className="w-full text-left font-mono text-xs">
-            <thead className="bg-[#0C1220] border-b border-[#22303F] text-[#718294]">
+            <thead className="bg-[#0C1220] border-b border-[#22303F] text-[#7E8FA1]">
               <tr>
                 <th className="p-3.5 uppercase tracking-[0.12em]">Seal</th>
                 <th className="p-3.5 uppercase tracking-[0.12em]">Kind</th>
@@ -87,7 +87,7 @@ export const Submissions: React.FC = () => {
             <tbody className="divide-y divide-[#22303F]">
               {submissions.map((sub) => (
                 <tr key={sub.id} className="hover:bg-[#131C2B] transition-colors">
-                  <td className="p-3.5 font-bold text-[#CF824B]">{sub.receipt_code}</td>
+                  <td className="p-3.5 font-bold text-[#E2A56B]">{sub.receipt_code}</td>
                   <td className="p-3.5">
                     <SectorBadge
                       label={sub.kind === 'ctf_flag' ? 'FLAG' : 'FAULT'}
@@ -97,17 +97,17 @@ export const Submissions: React.FC = () => {
                   <td className="p-3.5 max-w-xs truncate text-[#E2E8EE]">
                     <div className="font-bold">{sub.title || sub.flag_code || 'Untitled finding'}</div>
                     {sub.category && (
-                      <div className="text-[10px] text-[#718294] uppercase tracking-[0.12em]">
+                      <div className="text-[10px] text-[#7E8FA1] uppercase tracking-[0.12em]">
                         {sub.category}
                       </div>
                     )}
                   </td>
-                  <td className="p-3.5 text-[#718294] truncate">
+                  <td className="p-3.5 text-[#7E8FA1] truncate">
                     {sub.file_path
                       ? `${sub.file_path} (L${sub.line_range?.[0]}..${sub.line_range?.[1]})`
                       : '—'}
                   </td>
-                  <td className="p-3.5 text-[#718294] whitespace-nowrap">
+                  <td className="p-3.5 text-[#7E8FA1] whitespace-nowrap">
                     {formatIST(sub.received_at)}
                   </td>
                   <td className="p-3.5">

@@ -72,7 +72,7 @@ const SystemMap: React.FC<{ status: string | undefined }> = ({ status }) => {
           <line x1="170" y1="170" x2="250" y2="170" />
         </g>
       </svg>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-2 border-t border-[#22303F] font-mono text-[10px] text-[#718294] uppercase tracking-[0.12em]">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-2 border-t border-[#22303F] font-mono text-[10px] text-[#7E8FA1] uppercase tracking-[0.12em]">
         {sectors.map((s) => (
           <div key={s.id} className="flex justify-between py-0.5">
             <span>{s.id}: {s.label}</span>
@@ -90,7 +90,7 @@ const STRATA = [
     phase: 'Reconnaissance & Setup',
     window: '30 MIN',
     depth: 'SURFACE LAYER',
-    tone: 'text-[#4A8FA8]',
+    tone: 'text-[#7FBBD1]',
     bar: 'bg-[#4A8FA8]/25 border-[#4A8FA8]',
     body: 'Ratify the survey protocol, open the assigned challenge repository, run baseline tests and chart the exposed surface: routes, handlers, configuration.',
   },
@@ -99,7 +99,7 @@ const STRATA = [
     phase: 'Fault-Line Isolation',
     window: '35 MIN',
     depth: 'UPPER STRATA',
-    tone: 'text-[#CF824B]',
+    tone: 'text-[#E2A56B]',
     bar: 'bg-[#CF824B]/20 border-[#CF824B]',
     body: 'Trace execution flows toward the discontinuities. Pin exact line coordinates, classify each fracture against the 12-vector taxonomy, and draft your evidence.',
   },
@@ -108,7 +108,7 @@ const STRATA = [
     phase: 'Structural Repair & CTF Expeditions',
     window: '60 MIN',
     depth: 'DEEP STRATA',
-    tone: 'text-[#C44D3F]',
+    tone: 'text-[#E0836F]',
     bar: 'bg-[#C44D3F]/20 border-[#C44D3F]',
     body: 'Anchor the repair: patch the root cause, not the symptom. Deep crevices hide bonus CTF flags for teams that survey past the obvious faults.',
   },
@@ -117,7 +117,7 @@ const STRATA = [
     phase: 'Stabilization Proof',
     window: '25 MIN',
     depth: 'BEDROCK',
-    tone: 'text-[#3F7A68]',
+    tone: 'text-[#63A98D]',
     bar: 'bg-[#3F7A68]/20 border-[#3F7A68]',
     body: 'Reviewers verify each anchor: automated suites re-run, rubrics are scored, and the cryptographic ledger certifies the final stabilized map.',
   },
@@ -147,10 +147,10 @@ export const Landing: React.FC = () => {
       <section className="atlas-grid-bg border-b border-[#22303F] relative overflow-hidden">
         <ContourField className="absolute inset-x-0 bottom-0 h-64 w-full opacity-60" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 relative">
-          <div className="flex flex-wrap items-center justify-between gap-3 py-3 border-b border-[#22303F]/70 text-[10px] font-mono uppercase tracking-[0.14em] text-[#718294]">
+          <div className="flex flex-wrap items-center justify-between gap-3 py-3 border-b border-[#22303F]/70 text-[10px] font-mono uppercase tracking-[0.14em] text-[#7E8FA1]">
             <div className="flex items-center gap-3">
               <span className="w-2 h-2 bg-[#C44D3F]" aria-hidden="true" />
-              <span className="text-[#CF824B] font-bold">SURVEY REF: FB-2026-11</span>
+              <span className="text-[#E2A56B] font-bold">SURVEY REF: FB-2026-11</span>
               <span className="hidden sm:inline">STRUCTURAL INTEGRITY COMPETITION</span>
             </div>
             <SectorBadge
@@ -164,7 +164,7 @@ export const Landing: React.FC = () => {
               <p className="coordinate">FALL BACK // OFFICIAL FAILURE ATLAS EXPEDITION</p>
               <h1 className="font-serif text-[#E2E8EE] leading-[1.02] text-5xl sm:text-6xl lg:text-7xl tracking-tight">
                 Survey the fractures.
-                <span className="block elevation-callout font-normal text-[#4A8FA8] text-4xl sm:text-5xl lg:text-6xl mt-2">
+                <span className="block elevation-callout font-normal text-[#7FBBD1] text-4xl sm:text-5xl lg:text-6xl mt-2">
                   Chart the recovery.
                 </span>
               </h1>
@@ -176,7 +176,7 @@ export const Landing: React.FC = () => {
               <div className="flex flex-wrap items-center gap-4 pt-1">
                 <Link
                   to="/activate"
-                  className="px-6 py-3 bg-[#C44D3F] text-[#E2E8EE] font-mono text-sm uppercase tracking-[0.14em] font-bold border border-[#C44D3F] hover:bg-[#A83E32] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
+                  className="px-6 py-3 bg-[#C44D3F] text-white font-mono text-sm uppercase tracking-[0.14em] font-bold border border-[#C44D3F] hover:bg-[#A83E32] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
                 >
                   Begin the expedition
                 </Link>
@@ -187,7 +187,7 @@ export const Landing: React.FC = () => {
                   Read the survey protocol
                 </Link>
               </div>
-              <div className="flex flex-wrap gap-x-8 gap-y-2 pt-4 font-mono text-[11px] text-[#718294] uppercase tracking-[0.12em]">
+              <div className="flex flex-wrap gap-x-8 gap-y-2 pt-4 font-mono text-[11px] text-[#7E8FA1] uppercase tracking-[0.12em]">
                 <span>HOST: SOFTWARE DEVELOPMENT CLUB</span>
                 <span>SITE: VIT BHOPAL UNIVERSITY</span>
                 <span>WINDOW: {event?.duration_minutes ?? 150} MIN</span>
@@ -246,7 +246,7 @@ export const Landing: React.FC = () => {
                       <tr key={row.n} className={row.mark ? 'bg-[#C44D3F]/15' : ''}>
                         <td
                           className={`w-12 px-2 py-0.5 text-right select-none border-r border-[#22303F] ${
-                            row.mark ? 'text-[#C44D3F] font-bold' : 'text-[#5A6B7C]'
+                            row.mark ? 'text-[#E0836F] font-bold' : 'text-[#7E8FA1]'
                           }`}
                         >
                           {row.n}
@@ -259,9 +259,9 @@ export const Landing: React.FC = () => {
                   </tbody>
                 </table>
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-3 font-mono text-[11px] text-[#718294] uppercase tracking-[0.12em]">
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-3 font-mono text-[11px] text-[#7E8FA1] uppercase tracking-[0.12em]">
                 <span>TAXONOMY VECTOR: AUTHORIZATION</span>
-                <span className="text-[#C44D3F] font-bold">STRESS: HIGH</span>
+                <span className="text-[#E0836F] font-bold">STRESS: HIGH</span>
               </div>
             </TopoPanel>
           </div>
@@ -277,7 +277,7 @@ export const Landing: React.FC = () => {
                   ['Receive your seal', 'Every filing returns an HMAC receipt code: immutable proof your survey reached the desk.'],
                 ].map(([head, body], i) => (
                   <li key={i} className="flex gap-3">
-                    <span className="font-mono text-[#4A8FA8] font-bold shrink-0" aria-hidden="true">
+                    <span className="font-mono text-[#7FBBD1] font-bold shrink-0" aria-hidden="true">
                       {String(i + 1).padStart(2, '0')}
                     </span>
                     <span>
@@ -302,7 +302,7 @@ export const Landing: React.FC = () => {
         <h2 className="font-serif text-3xl sm:text-4xl font-bold text-[#E2E8EE] max-w-2xl">
           The survey descends in four strata.
         </h2>
-        <p className="text-sm text-[#718294] max-w-xl pt-3 font-sans leading-relaxed">
+        <p className="text-sm text-[#7E8FA1] max-w-xl pt-3 font-sans leading-relaxed">
           150 minutes, server-clock governed. Each band closes on the round clock; the deepest
           faults only surface in the final hours.
         </p>
@@ -315,8 +315,8 @@ export const Landing: React.FC = () => {
             >
               <div className="md:w-36 shrink-0 font-mono">
                 <div className={`text-sm font-bold ${s.tone}`}>{s.band}</div>
-                <div className="coordinate mt-1">{s.depth}</div>
-                <div className="text-[11px] text-[#718294] mt-0.5">{s.window}</div>
+                <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-[#B6C2CE] mt-1">{s.depth}</div>
+                <div className="text-[11px] text-[#B6C2CE] mt-0.5">{s.window}</div>
               </div>
               <div className="flex-1">
                 <h3 className="font-serif font-bold text-lg text-[#E2E8EE]">{s.phase}</h3>
@@ -356,7 +356,7 @@ export const Landing: React.FC = () => {
             <div className="bg-[#3F7A68]/30 border-r border-[#090E16] flex items-center justify-center font-mono text-xs text-[#E2E8EE] tracking-widest" style={{ width: '20%' }}>
               20
             </div>
-            <div className="bg-[#22303F]/50 flex items-center justify-center font-mono text-xs text-[#718294] tracking-widest flex-1">
+            <div className="bg-[#22303F]/50 flex items-center justify-center font-mono text-xs text-[#7E8FA1] tracking-widest flex-1">
               BONUS
             </div>
           </div>
@@ -366,28 +366,28 @@ export const Landing: React.FC = () => {
               {
                 t: 'Automated functional tests',
                 w: '50%',
-                tone: 'text-[#4A8FA8]',
+                tone: 'text-[#7FBBD1]',
                 body: 'Test suites execute against your repaired build. A broken suite anchors nothing.',
                 p: 'No points while the suite fails',
               },
               {
                 t: 'Human expert review',
                 w: '30%',
-                tone: 'text-[#CF824B]',
+                tone: 'text-[#E2A56B]',
                 body: 'Reviewers score a five-metric rubric: functionality, root cause, code quality, testing, evidence.',
                 p: '-5 points per invalid finding',
               },
               {
                 t: 'Evidence & report quality',
                 w: '20%',
-                tone: 'text-[#3F7A68]',
+                tone: 'text-[#63A98D]',
                 body: 'Clarity of the root cause narrative, impact analysis and reproduction accuracy.',
                 p: 'Capped rubric deduction',
               },
               {
                 t: 'CTF flag bonus',
                 w: 'CAP',
-                tone: 'text-[#718294]',
+                tone: 'text-[#7E8FA1]',
                 body: 'Flags recovered from deep crevices verify cryptographically and top up the ledger.',
                 p: 'Capped at the configured bonus limit',
               },
@@ -398,7 +398,7 @@ export const Landing: React.FC = () => {
                 </div>
                 <h3 className="font-serif font-bold text-[#E2E8EE]">{c.t}</h3>
                 <p className="text-xs text-[#B6C2CE] font-sans leading-relaxed">{c.body}</p>
-                <p className="text-[11px] font-mono text-[#718294] uppercase tracking-[0.1em] pt-1 border-t border-[#22303F]">
+                <p className="text-[11px] font-mono text-[#7E8FA1] uppercase tracking-[0.1em] pt-1 border-t border-[#22303F]">
                   {c.p}
                 </p>
               </div>
@@ -440,7 +440,7 @@ export const Landing: React.FC = () => {
               <p className="text-sm text-[#B6C2CE] font-sans leading-relaxed">{t.b}</p>
               <Link
                 to={t.link.to}
-                className="inline-block pt-3 font-mono text-[11px] uppercase tracking-[0.14em] text-[#4A8FA8] hover:text-[#5BA3BC] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
+                className="inline-block pt-3 font-mono text-[11px] uppercase tracking-[0.14em] text-[#7FBBD1] hover:text-[#5BA3BC] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
               >
                 {t.link.label} &rarr;
               </Link>
@@ -465,7 +465,7 @@ export const Landing: React.FC = () => {
             <div className="pt-4 flex flex-wrap gap-4 font-mono text-xs">
               <Link
                 to="/activate"
-                className="px-6 py-3 bg-[#C44D3F] text-[#E2E8EE] font-bold uppercase tracking-[0.14em] hover:bg-[#A83E32] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
+                className="px-6 py-3 bg-[#C44D3F] text-white font-bold uppercase tracking-[0.14em] hover:bg-[#A83E32] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
               >
                 Activate with invite token
               </Link>

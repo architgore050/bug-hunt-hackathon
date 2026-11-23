@@ -64,8 +64,8 @@ export const Lobby: React.FC = () => {
         <div className="flex items-center gap-3">
           {team && (
             <div className="topo-panel bg-[#0C1220] px-3.5 py-1.5 font-mono text-xs">
-              <span className="text-[#718294]">BEACON CODE: </span>
-              <span className="font-bold text-[#CF824B]">{team.join_code}</span>
+              <span className="text-[#7E8FA1]">BEACON CODE: </span>
+              <span className="font-bold text-[#E2A56B]">{team.join_code}</span>
             </div>
           )}
           <SectorBadge
@@ -104,7 +104,7 @@ export const Lobby: React.FC = () => {
                   <span aria-hidden="true" className={`w-2 h-2 ${true ? 'bg-[#3F7A68]' : ''}`} />
                   <span className="text-[#E2E8EE]">Platform survey channel</span>
                 </div>
-                <span className="text-[#3F7A68] font-bold">CONNECTED</span>
+                <span className="text-[#63A98D] font-bold">CONNECTED</span>
               </div>
 
               <div className="flex items-center justify-between py-2.5 border-b border-[#22303F]">
@@ -118,7 +118,7 @@ export const Lobby: React.FC = () => {
                     <strong className="font-bold">{team ? team.name : 'Unassigned'}</strong>
                   </span>
                 </div>
-                <span className={team ? 'text-[#3F7A68] font-bold' : 'text-[#C44D3F] font-bold'}>
+                <span className={team ? 'text-[#63A98D] font-bold' : 'text-[#E0836F] font-bold'}>
                   {team ? 'TRIANGULATED' : 'PENDING'}
                 </span>
               </div>
@@ -132,7 +132,7 @@ export const Lobby: React.FC = () => {
                   <span className="text-[#E2E8EE]">Survey protocol ratification</span>
                 </div>
                 {rulesAccepted ? (
-                  <span className="text-[#3F7A68] font-bold">RATIFIED</span>
+                  <span className="text-[#63A98D] font-bold">RATIFIED</span>
                 ) : (
                   <button
                     type="button"
@@ -160,8 +160,8 @@ export const Lobby: React.FC = () => {
                 <span
                   className={
                     round?.status === 'active'
-                      ? 'text-[#3F7A68] font-bold'
-                      : 'text-[#CF824B] font-bold'
+                      ? 'text-[#63A98D] font-bold'
+                      : 'text-[#E2A56B] font-bold'
                   }
                 >
                   {round?.status === 'active' ? 'OPEN' : 'AWAITS STRATUM ARM'}
@@ -175,21 +175,21 @@ export const Lobby: React.FC = () => {
               to="/app/workspace"
               className="topo-panel bg-[#111A27] p-4 hover:border-[#4A8FA8] transition-colors block focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
             >
-              <span className="text-[#4A8FA8] font-bold block mb-1 uppercase tracking-[0.12em]">01 // Field desk</span>
+              <span className="text-[#7FBBD1] font-bold block mb-1 uppercase tracking-[0.12em]">01 // Field desk</span>
               <span className="text-[#E2E8EE] font-bold">Survey & file &rarr;</span>
             </Link>
             <Link
               to="/app/submissions"
               className="topo-panel bg-[#111A27] p-4 hover:border-[#4A8FA8] transition-colors block focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
             >
-              <span className="text-[#CF824B] font-bold block mb-1 uppercase tracking-[0.12em]">02 // Filings</span>
+              <span className="text-[#E2A56B] font-bold block mb-1 uppercase tracking-[0.12em]">02 // Filings</span>
               <span className="text-[#E2E8EE] font-bold">Receipts & seals &rarr;</span>
             </Link>
             <Link
               to="/app/leaderboard"
               className="topo-panel bg-[#111A27] p-4 hover:border-[#4A8FA8] transition-colors block focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
             >
-              <span className="text-[#3F7A68] font-bold block mb-1 uppercase tracking-[0.12em]">03 // Peaks</span>
+              <span className="text-[#63A98D] font-bold block mb-1 uppercase tracking-[0.12em]">03 // Peaks</span>
               <span className="text-[#E2E8EE] font-bold">Elevation table &rarr;</span>
             </Link>
           </div>
@@ -204,7 +204,7 @@ export const Lobby: React.FC = () => {
           >
             <div className="space-y-3 font-mono text-xs">
               {announcements.length === 0 ? (
-                <div className="text-center py-8 text-[#718294]">
+                <div className="text-center py-8 text-[#7E8FA1]">
                   No telegrams dispatched by the command post yet.
                 </div>
               ) : (
@@ -244,20 +244,20 @@ export const Lobby: React.FC = () => {
           <TopoPanel sector="IDENTITY" coords="REF: SURVEYOR DOSSIER" title="Surveyor dossier">
             <div className="space-y-2 font-mono text-xs">
               <div className="flex justify-between py-1.5 border-b border-[#22303F]">
-                <span className="text-[#718294] uppercase tracking-[0.12em]">Surveyor</span>
+                <span className="text-[#7E8FA1] uppercase tracking-[0.12em]">Surveyor</span>
                 <span className="text-[#E2E8EE] font-bold">{user?.name || '—'}</span>
               </div>
               <div className="flex justify-between py-1.5 border-b border-[#22303F]">
-                <span className="text-[#718294] uppercase tracking-[0.12em]">Email</span>
+                <span className="text-[#7E8FA1] uppercase tracking-[0.12em]">Email</span>
                 <span className="text-[#E2E8EE]">{user?.email}</span>
               </div>
               <div className="flex justify-between py-1.5 border-b border-[#22303F]">
-                <span className="text-[#718294] uppercase tracking-[0.12em]">Team</span>
-                <span className="text-[#CF824B] font-bold">{team?.name || 'Unassigned'}</span>
+                <span className="text-[#7E8FA1] uppercase tracking-[0.12em]">Team</span>
+                <span className="text-[#E2A56B] font-bold">{team?.name || 'Unassigned'}</span>
               </div>
               <div className="flex justify-between py-1.5">
-                <span className="text-[#718294] uppercase tracking-[0.12em]">Clearance</span>
-                <span className="text-[#3F7A68] font-bold uppercase">{user?.role}</span>
+                <span className="text-[#7E8FA1] uppercase tracking-[0.12em]">Clearance</span>
+                <span className="text-[#63A98D] font-bold uppercase">{user?.role}</span>
               </div>
             </div>
           </TopoPanel>

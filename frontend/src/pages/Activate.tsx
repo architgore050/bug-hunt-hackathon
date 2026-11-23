@@ -53,7 +53,7 @@ export const Activate: React.FC = () => {
           <h1 className="text-2xl font-serif font-black text-[#E2E8EE]">
             Claim your quadrant
           </h1>
-          <p className="text-xs text-[#718294] font-sans leading-relaxed">
+          <p className="text-xs text-[#7E8FA1] font-sans leading-relaxed">
             Redeem your single-use invitation token, set a passphrase, and ratify the survey
             protocol.
           </p>
@@ -61,7 +61,7 @@ export const Activate: React.FC = () => {
 
         {activatedEmail ? (
           <div className="border border-[#3F7A68] bg-[#3F7A68]/10 p-6 space-y-4 font-mono text-xs">
-            <div className="text-sm font-bold text-[#3F7A68] uppercase tracking-[0.14em]">
+            <div className="text-sm font-bold text-[#63A98D] uppercase tracking-[0.14em]">
               Quadrant secured
             </div>
             <p className="text-[#B6C2CE] font-sans text-xs leading-relaxed">
@@ -121,12 +121,12 @@ export const Activate: React.FC = () => {
                     <span
                       aria-hidden="true"
                       className={`w-3.5 h-3.5 flex items-center justify-center font-bold text-[10px] ${
-                        chk.pass ? 'bg-[#3F7A68] text-[#E2E8EE]' : 'bg-[#22303F] text-[#718294]'
+                        chk.pass ? 'bg-[#3F7A68] text-white' : 'bg-[#22303F] text-[#7E8FA1]'
                       }`}
                     >
                       {chk.pass ? '+' : '-'}
                     </span>
-                    <span className={chk.pass ? 'text-[#E2E8EE]' : 'text-[#718294]'}>
+                    <span className={chk.pass ? 'text-[#E2E8EE]' : 'text-[#7E8FA1]'}>
                       {chk.label}
                     </span>
                   </div>
@@ -142,7 +142,7 @@ export const Activate: React.FC = () => {
                 />
                 <span className="text-xs font-sans text-[#B6C2CE] leading-tight">
                   I have read and ratify the{' '}
-                  <Link to="/rules" target="_blank" className="text-[#4A8FA8] underline">
+                  <Link to="/rules" target="_blank" className="text-[#7FBBD1] underline">
                     Survey Protocol (Rules)
                   </Link>{' '}
                   and agree to the safe harbor terms.
@@ -152,7 +152,7 @@ export const Activate: React.FC = () => {
               <button
                 type="submit"
                 disabled={!canSubmit || loading}
-                className="w-full py-3 bg-[#C44D3F] text-[#E2E8EE] font-bold uppercase tracking-[0.14em] hover:bg-[#A83E32] disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#CF824B]"
+                className="w-full py-3 bg-[#C44D3F] text-white font-bold uppercase tracking-[0.14em] hover:bg-[#A83E32] disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#CF824B]"
               >
                 {loading ? 'Securing quadrant...' : 'Ratify & activate'}
               </button>

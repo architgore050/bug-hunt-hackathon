@@ -131,7 +131,7 @@ export const RequireRole: React.FC<{
       <div className="min-h-screen bg-[#090E16] text-[#E2E8EE] flex items-center justify-center p-6">
         <div
           role="status"
-          className="topo-panel bg-[#111A27] px-6 py-4 flex items-center gap-3 font-mono text-xs tracking-widest uppercase text-[#718294]"
+          className="topo-panel bg-[#111A27] px-6 py-4 flex items-center gap-3 font-mono text-xs tracking-widest uppercase text-[#7E8FA1]"
         >
           <span className="w-2.5 h-2.5 bg-[#4A8FA8] beacon-pulse" aria-hidden="true" />
           <span>Triangulating credential...</span>
@@ -148,15 +148,15 @@ export const RequireRole: React.FC<{
     return (
       <div className="min-h-screen bg-[#090E16] text-[#E2E8EE] flex items-center justify-center p-6">
         <div className="topo-panel bg-[#111A27] max-w-md w-full p-8 space-y-4">
-          <span className="inline-block px-2 py-0.5 text-[11px] font-mono tracking-[0.14em] uppercase border border-[#C44D3F] bg-[#C44D3F]/10 text-[#C44D3F]">
+          <span className="inline-block px-2 py-0.5 text-[11px] font-mono tracking-[0.14em] uppercase border border-[#C44D3F] bg-[#C44D3F]/10 text-[#E0836F]">
             SECTOR SEALED: ACCESS DENIED
           </span>
           <h1 className="text-2xl font-serif font-bold text-[#E2E8EE]">
             Outside your survey quadrant
           </h1>
-          <p className="text-sm text-[#718294] leading-relaxed">
+          <p className="text-sm text-[#7E8FA1] leading-relaxed">
             Your credential role{' '}
-            <code className="text-[#CF824B] font-mono">[{role}]</code> is not cleared for this
+            <code className="text-[#E2A56B] font-mono">[{role}]</code> is not cleared for this
             sector. Required clearance:{' '}
             <code className="text-[#E2E8EE] font-mono">[{roles.join(', ')}]</code>.
           </p>

@@ -45,12 +45,12 @@ export const Results: React.FC = () => {
       {error ? <ErrorBanner error={error} onRetry={fetchResults} /> : null}
 
       {loading ? (
-        <div className="p-12 text-center font-mono text-xs text-[#718294]" role="status">
+        <div className="p-12 text-center font-mono text-xs text-[#7E8FA1]" role="status">
           Auditing the certified ledger...
         </div>
       ) : !results?.released ? (
-        <div className="topo-panel bg-[#111A27] p-8 text-center font-mono text-xs text-[#718294] space-y-2">
-          <div className="text-sm font-bold text-[#CF824B] uppercase tracking-[0.14em]">
+        <div className="topo-panel bg-[#111A27] p-8 text-center font-mono text-xs text-[#7E8FA1] space-y-2">
+          <div className="text-sm font-bold text-[#E2A56B] uppercase tracking-[0.14em]">
             LEDGER SEALED
           </div>
           <p className="font-sans text-xs">
@@ -63,14 +63,14 @@ export const Results: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="topo-panel border-[#3F7A68] bg-[#111A27] p-5 font-mono">
               <span className="coordinate block">Certified total</span>
-              <span className="text-3xl font-bold text-[#3F7A68] mt-1 block">
-                {results.total} <span className="text-xs text-[#718294]">PTS</span>
+              <span className="text-3xl font-bold text-[#63A98D] mt-1 block">
+                {results.total} <span className="text-xs text-[#7E8FA1]">PTS</span>
               </span>
             </div>
             <div className="topo-panel bg-[#111A27] p-5 font-mono">
               <span className="coordinate block">Penalties</span>
-              <span className="text-3xl font-bold text-[#C44D3F] mt-1 block">
-                -{results.penalties} <span className="text-xs text-[#718294]">PTS</span>
+              <span className="text-3xl font-bold text-[#E0836F] mt-1 block">
+                -{results.penalties} <span className="text-xs text-[#7E8FA1]">PTS</span>
               </span>
             </div>
             <div className="topo-panel bg-[#111A27] p-5 font-mono sm:col-span-2">
@@ -78,7 +78,7 @@ export const Results: React.FC = () => {
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 text-xs">
                 {Object.entries(results.by_component || {}).map(([comp, pts]) => (
                   <div key={comp} className="flex justify-between border-b border-[#22303F]/70 pb-1">
-                    <span className="text-[#718294] uppercase truncate">{comp}:</span>
+                    <span className="text-[#7E8FA1] uppercase truncate">{comp}:</span>
                     <span className="font-bold text-[#E2E8EE]">{pts}</span>
                   </div>
                 ))}
@@ -89,7 +89,7 @@ export const Results: React.FC = () => {
           <TopoPanel sector="LD-01" coords="REF: TRANSACTIONS" title="Ledger transactions">
             <div className="overflow-x-auto">
               <table className="w-full text-left font-mono text-xs">
-                <thead className="bg-[#0C1220] border-b border-[#22303F] text-[#718294]">
+                <thead className="bg-[#0C1220] border-b border-[#22303F] text-[#7E8FA1]">
                   <tr>
                     <th className="p-3 uppercase tracking-[0.12em]">Seal</th>
                     <th className="p-3 uppercase tracking-[0.12em]">Component</th>
@@ -101,13 +101,13 @@ export const Results: React.FC = () => {
                 <tbody className="divide-y divide-[#22303F]">
                   {results.entries.map((entry, i) => (
                     <tr key={i} className="hover:bg-[#131C2B]">
-                      <td className="p-3 text-[#CF824B] font-bold">{entry.receipt_code || 'SYSTEM'}</td>
+                      <td className="p-3 text-[#E2A56B] font-bold">{entry.receipt_code || 'SYSTEM'}</td>
                       <td className="p-3 uppercase text-[#E2E8EE]">{entry.component}</td>
                       <td className="p-3 text-[#C6D2DC]">{entry.matched_bug_code || entry.reason_code}</td>
-                      <td className="p-3 text-[#718294]">{formatIST(entry.received_at)}</td>
+                      <td className="p-3 text-[#7E8FA1]">{formatIST(entry.received_at)}</td>
                       <td
                         className={`p-3 text-right font-bold ${
-                          entry.points >= 0 ? 'text-[#3F7A68]' : 'text-[#C44D3F]'
+                          entry.points >= 0 ? 'text-[#63A98D]' : 'text-[#E0836F]'
                         }`}
                       >
                         {entry.points > 0 ? `+${entry.points}` : entry.points}

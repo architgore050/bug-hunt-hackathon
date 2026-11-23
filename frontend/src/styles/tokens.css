@@ -17,6 +17,13 @@
   --atlas-moss: #3F7A68;
   --atlas-cyan: #4A8FA8;
   --atlas-text: #E2E8EE;
-  --atlas-muted: #718294;
+  --atlas-muted: #7E8FA1;
   --atlas-hairline: #22303F;
+
+  /* Text-safe tints: saturated bases stay for borders, fills and graphics
+     (>=3:1 non-text); text uses these lighter tints (>=4.5:1 WCAG AA). */
+  --atlas-shear-text: #E0836F;
+  --atlas-moss-text: #63A98D;
+  --atlas-cyan-text: #7FBBD1;
+  --atlas-copper-text: #E2A56B;
 }

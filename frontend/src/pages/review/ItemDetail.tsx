@@ -67,7 +67,7 @@ export const ReviewItemDetailPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 text-center font-mono text-xs text-[#718294]" role="status">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 text-center font-mono text-xs text-[#7E8FA1]" role="status">
         Unrolling the survey chart for this filing...
       </div>
     );
@@ -102,13 +102,13 @@ export const ReviewItemDetailPage: React.FC = () => {
           </h1>
         </div>
         <div className="flex items-center gap-3 font-mono text-xs">
-          <div className="topo-panel bg-[#0C1220] px-3 py-1.5 text-[#718294]">
+          <div className="topo-panel bg-[#0C1220] px-3 py-1.5 text-[#7E8FA1]">
             TEAM FILINGS: <strong className="text-[#E2E8EE]">{item.team_total_reports}</strong>
           </div>
           <SectorBadge label={`LOCK: ${item.status.toUpperCase()}`} tone="strain" />
           <Link
             to="/review"
-            className="px-3 py-1.5 border border-[#22303F] text-xs font-mono text-[#718294] hover:text-[#E2E8EE] uppercase tracking-[0.12em]"
+            className="px-3 py-1.5 border border-[#22303F] text-xs font-mono text-[#7E8FA1] hover:text-[#E2E8EE] uppercase tracking-[0.12em]"
           >
             &larr; Ledger
           </Link>
@@ -117,7 +117,7 @@ export const ReviewItemDetailPage: React.FC = () => {
 
       {decisionSuccess && (
         <div
-          className="border border-[#3F7A68] bg-[#3F7A68]/10 p-4 font-mono text-xs text-[#3F7A68] font-bold uppercase tracking-[0.12em]"
+          className="border border-[#3F7A68] bg-[#3F7A68]/10 p-4 font-mono text-xs text-[#63A98D] font-bold uppercase tracking-[0.12em]"
           role="status"
         >
           VERDICT INSCRIBED IN THE LEDGER. Returning to the queue...
@@ -138,7 +138,7 @@ export const ReviewItemDetailPage: React.FC = () => {
                 </div>
                 <div>
                   <span className="coordinate block">HMAC SEAL</span>
-                  <span className="text-[#CF824B] font-bold">{sub.receipt_code}</span>
+                  <span className="text-[#E2A56B] font-bold">{sub.receipt_code}</span>
                 </div>
                 <div>
                   <span className="coordinate block">FILED</span>
@@ -204,7 +204,7 @@ export const ReviewItemDetailPage: React.FC = () => {
                         <tr key={lineNum} className={isTarget ? 'bg-[#C44D3F]/25 font-bold' : ''}>
                           <td
                             className={`w-12 px-2 py-0.5 text-right text-[10px] border-r border-[#22303F] ${
-                              isTarget ? 'text-[#C44D3F]' : 'text-[#5A6B7C]'
+                              isTarget ? 'text-[#E0836F]' : 'text-[#7E8FA1]'
                             }`}
                           >
                             {lineNum}
@@ -302,7 +302,7 @@ export const ReviewItemDetailPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full py-3 bg-[#C44D3F] text-[#E2E8EE] font-bold uppercase tracking-[0.14em] hover:bg-[#A83E32] disabled:opacity-50 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#CF824B]"
+                className="w-full py-3 bg-[#C44D3F] text-white font-bold uppercase tracking-[0.14em] hover:bg-[#A83E32] disabled:opacity-50 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#CF824B]"
               >
                 {submitting ? 'Inscribing verdict...' : 'Inscribe verdict & update ledger'}
               </button>

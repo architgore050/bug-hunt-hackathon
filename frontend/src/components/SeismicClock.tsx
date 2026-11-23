@@ -24,24 +24,24 @@ export const SeismicClock: React.FC<SeismicClockProps> = ({
 
   let toneClass = 'text-[#E2E8EE]';
   let stateLabel = 'SYNCHRONIZED';
-  let stateTone = 'text-[#3F7A68]';
+  let stateTone = 'text-[#63A98D]';
 
   if (isPaused) {
-    toneClass = 'text-[#CF824B]';
+    toneClass = 'text-[#E2A56B]';
     stateLabel = 'TIMER HALTED';
-    stateTone = 'text-[#CF824B]';
+    stateTone = 'text-[#E2A56B]';
   } else if (isExpired) {
-    toneClass = 'text-[#C44D3F]';
+    toneClass = 'text-[#E0836F]';
     stateLabel = 'WINDOW CLOSED';
-    stateTone = 'text-[#C44D3F]';
+    stateTone = 'text-[#E0836F]';
   } else if (secondsRemaining !== null && secondsRemaining <= 120) {
-    toneClass = 'text-[#C44D3F]';
+    toneClass = 'text-[#E0836F]';
     stateLabel = 'FINAL APPROACH';
-    stateTone = 'text-[#C44D3F]';
+    stateTone = 'text-[#E0836F]';
   } else if (secondsRemaining !== null && secondsRemaining <= 600) {
-    toneClass = 'text-[#CF824B]';
+    toneClass = 'text-[#E2A56B]';
     stateLabel = 'CLOSING STRATA';
-    stateTone = 'text-[#CF824B]';
+    stateTone = 'text-[#E2A56B]';
   }
 
   const sizeClasses = {
@@ -52,7 +52,7 @@ export const SeismicClock: React.FC<SeismicClockProps> = ({
 
   return (
     <div className={`topo-panel font-mono p-4 ${className}`}>
-      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-[#718294] pb-1.5 border-b border-[#22303F] mb-3">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-[#7E8FA1] pb-1.5 border-b border-[#22303F] mb-3">
         <span>{label}</span>
         <span className={`${stateTone} flex items-center gap-1.5 font-bold`}>
           {!isPaused && !isExpired && (
@@ -66,11 +66,11 @@ export const SeismicClock: React.FC<SeismicClockProps> = ({
         aria-live="polite"
       >
         {isPaused ? (
-          <span className="text-[#CF824B]">PAUSED</span>
+          <span className="text-[#E2A56B]">PAUSED</span>
         ) : targetIsoDate ? (
           formatted
         ) : (
-          'AWAITING SURVEY WINDOW'
+          'AWAITING START'
         )}
       </div>
       <div className="mt-2 flex justify-between coordinate">

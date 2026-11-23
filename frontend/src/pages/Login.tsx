@@ -45,7 +45,7 @@ export const Login: React.FC = () => {
           <h1 className="text-2xl font-serif font-black text-[#E2E8EE]">
             Sign in to base camp
           </h1>
-          <p className="text-xs text-[#718294] font-sans leading-relaxed">
+          <p className="text-xs text-[#7E8FA1] font-sans leading-relaxed">
             Enter your event email and passphrase to resume your survey.
           </p>
         </div>
@@ -94,7 +94,7 @@ export const Login: React.FC = () => {
           </button>
         </form>
 
-        <div className="pt-4 border-t border-[#22303F]/70 flex items-center justify-between text-xs font-mono text-[#718294]">
+        <div className="pt-4 border-t border-[#22303F]/70 flex items-center justify-between text-xs font-mono text-[#7E8FA1]">
           <Link to="/activate" className="hover:text-[#E2E8EE] transition-colors">
             Have an invite token? Activate
           </Link>

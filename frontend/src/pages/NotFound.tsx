@@ -7,7 +7,7 @@ export const NotFound: React.FC = () => {
       <div className="topo-panel bg-[#111A27] max-w-md w-full p-8 space-y-6 flex flex-col justify-between min-h-[340px]">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <span className="inline-block px-2 py-0.5 text-[11px] font-mono tracking-[0.14em] uppercase border border-[#C44D3F] bg-[#C44D3F]/10 text-[#C44D3F]">
+            <span className="inline-block px-2 py-0.5 text-[11px] font-mono tracking-[0.14em] uppercase border border-[#C44D3F] bg-[#C44D3F]/10 text-[#E0836F]">
               FAULT: UNMAPPED TERRAIN
             </span>
             <span className="coordinate">ERR 404</span>
@@ -15,11 +15,11 @@ export const NotFound: React.FC = () => {
           <h1 className="text-4xl font-serif font-black text-[#E2E8EE]">
             Off the chart.
           </h1>
-          <p className="text-sm font-sans text-[#718294] leading-relaxed">
+          <p className="text-sm font-sans text-[#7E8FA1] leading-relaxed">
             This route corresponds to no published sector, survey desk, or ledger entry on the
             Failure Atlas. The terrain here is unmapped; return to the main chart.
           </p>
-          <div className="font-mono text-[10px] text-[#5A6B7C] uppercase tracking-[0.14em]">
+          <div className="font-mono text-[10px] text-[#7E8FA1] uppercase tracking-[0.14em]">
             COORD: UNKNOWN // QUADRANT: NULL
           </div>
         </div>

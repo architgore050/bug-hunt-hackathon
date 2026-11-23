@@ -40,7 +40,7 @@ export const TopoPanel: React.FC<TopoPanelProps> = ({
           <div className="space-y-1">
             <div className="flex items-center gap-2.5 flex-wrap">
               {sector && (
-                <span className="px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-[0.14em] uppercase bg-[#4A8FA8]/20 text-[#4A8FA8] border border-[#4A8FA8]/40">
+                <span className="px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-[0.14em] uppercase bg-[#4A8FA8]/20 text-[#7FBBD1] border border-[#4A8FA8]/40">
                   {sector}
                 </span>
               )}
@@ -51,7 +51,7 @@ export const TopoPanel: React.FC<TopoPanelProps> = ({
                 {title}
               </h2>
             )}
-            {subtitle && <p className="text-xs text-[#718294]">{subtitle}</p>}
+            {subtitle && <p className="text-xs text-[#7E8FA1]">{subtitle}</p>}
           </div>
           {action && <div className="flex items-center gap-2">{action}</div>}
         </header>

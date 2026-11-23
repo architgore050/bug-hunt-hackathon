@@ -57,7 +57,7 @@ export const SubmissionDetailPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 text-center font-mono text-xs text-[#718294]" role="status">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 text-center font-mono text-xs text-[#7E8FA1]" role="status">
         Unsealing the filing envelope...
       </div>
     );
@@ -92,7 +92,7 @@ export const SubmissionDetailPage: React.FC = () => {
           <SectorBadge label={`STATUS: ${submission.status.toUpperCase()}`} tone="elevation" />
           <Link
             to="/app/submissions"
-            className="px-3 py-1.5 border border-[#22303F] text-xs font-mono text-[#718294] hover:text-[#E2E8EE] uppercase tracking-[0.12em] transition-colors"
+            className="px-3 py-1.5 border border-[#22303F] text-xs font-mono text-[#7E8FA1] hover:text-[#E2E8EE] uppercase tracking-[0.12em] transition-colors"
           >
             &larr; Log
           </Link>
@@ -114,7 +114,7 @@ export const SubmissionDetailPage: React.FC = () => {
             {submission.file_path && (
               <div>
                 <span className="coordinate block">COORDINATE</span>
-                <span className="text-[#CF824B] font-bold">
+                <span className="text-[#E2A56B] font-bold">
                   {submission.file_path} (L{submission.line_range?.[0]}..{submission.line_range?.[1]})
                 </span>
               </div>
@@ -166,7 +166,7 @@ export const SubmissionDetailPage: React.FC = () => {
           {submission.flag_code && (
             <div className="space-y-1">
               <span className="coordinate block">Recovered flag</span>
-              <div className="p-3 bg-[#0C1220] border border-[#3F7A68] text-[#3F7A68] font-bold">
+              <div className="p-3 bg-[#0C1220] border border-[#3F7A68] text-[#63A98D] font-bold">
                 {submission.flag_code}
               </div>
             </div>
@@ -185,16 +185,16 @@ export const SubmissionDetailPage: React.FC = () => {
           {submission.matched_bug_code ? (
             <div className="space-y-2">
               <div className="flex justify-between py-1.5 border-b border-[#2A3B50]">
-                <span className="text-[#718294] uppercase tracking-[0.12em]">MATCHED GROUND-TRUTH FAULT</span>
+                <span className="text-[#7E8FA1] uppercase tracking-[0.12em]">MATCHED GROUND-TRUTH FAULT</span>
                 <span className="font-bold text-[#E2E8EE]">{submission.matched_bug_code}</span>
               </div>
               <div className="flex justify-between py-1.5 border-b border-[#2A3B50]">
-                <span className="text-[#718294] uppercase tracking-[0.12em]">POINTS ANCHORED</span>
-                <span className="font-bold text-[#3F7A68]">{submission.points ?? 0} PTS</span>
+                <span className="text-[#7E8FA1] uppercase tracking-[0.12em]">POINTS ANCHORED</span>
+                <span className="font-bold text-[#63A98D]">{submission.points ?? 0} PTS</span>
               </div>
             </div>
           ) : (
-            <div className="py-2 text-[#718294]">
+            <div className="py-2 text-[#7E8FA1]">
               <span className="font-bold text-[#E2E8EE] uppercase tracking-[0.12em]">
                 EVALUATION SEALED:
               </span>{' '}
@@ -209,7 +209,7 @@ export const SubmissionDetailPage: React.FC = () => {
       {submission.matched_bug_code && submission.status !== 'disputed' && (
         <TopoPanel sector="FD-03" coords="REF: CONTESTATION" title="Contest this evaluation">
           {disputeSuccess ? (
-            <div className="border border-[#3F7A68] bg-[#3F7A68]/10 p-4 font-mono text-xs text-[#3F7A68]">
+            <div className="border border-[#3F7A68] bg-[#3F7A68]/10 p-4 font-mono text-xs text-[#63A98D]">
               Dispute filed. The verification panel has been notified for secondary arbitration.
             </div>
           ) : (

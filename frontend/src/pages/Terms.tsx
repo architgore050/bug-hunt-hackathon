@@ -9,7 +9,7 @@ export const Terms: React.FC = () => {
         <h1 className="text-3xl sm:text-4xl font-serif font-black text-[#E2E8EE]">
           Terms of engagement & safe harbor
         </h1>
-        <p className="text-sm font-sans text-[#718294]">
+        <p className="text-sm font-sans text-[#7E8FA1]">
           Authorization boundaries, liability, and the obligations of every survey party.
         </p>
       </div>

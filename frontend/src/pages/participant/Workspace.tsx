@@ -263,12 +263,12 @@ export const Workspace: React.FC = () => {
 
   const draftTone =
     draftStatus === 'saved'
-      ? 'text-[#3F7A68] font-bold'
+      ? 'text-[#63A98D] font-bold'
       : draftStatus === 'saving'
-      ? 'text-[#CF824B] font-bold'
+      ? 'text-[#E2A56B] font-bold'
       : draftStatus === 'conflict'
-      ? 'text-[#C44D3F] font-bold'
-      : 'text-[#718294]';
+      ? 'text-[#E0836F] font-bold'
+      : 'text-[#7E8FA1]';
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
@@ -282,13 +282,13 @@ export const Workspace: React.FC = () => {
         </div>
         <div className="flex items-center gap-3 font-mono text-xs">
           <div className="topo-panel bg-[#0C1220] px-3 py-1.5">
-            <span className="text-[#718294]">DRAFT:</span>
+            <span className="text-[#7E8FA1]">DRAFT:</span>
             <span className={`ml-1.5 uppercase tracking-[0.12em] ${draftTone}`} aria-live="polite">
               {draftStatus.toUpperCase()}
             </span>
           </div>
           {cooldownRemaining !== null && (
-            <div className="px-3 py-1.5 border border-[#C44D3F] bg-[#C44D3F]/10 text-[#C44D3F] font-bold uppercase tracking-[0.12em]">
+            <div className="px-3 py-1.5 border border-[#C44D3F] bg-[#C44D3F]/10 text-[#E0836F] font-bold uppercase tracking-[0.12em]">
               COOLDOWN: {cooldownRemaining}s
             </div>
           )}
@@ -300,7 +300,7 @@ export const Workspace: React.FC = () => {
       {!rulesAccepted && (
         <div className="border border-[#CF824B] bg-[#CF824B]/10 p-4 text-xs font-mono text-[#E2E8EE] flex flex-wrap items-center justify-between gap-3">
           <span>The survey protocol must be ratified before challenge terrain becomes accessible.</span>
-          <a href="/app" className="underline font-bold text-[#CF824B]">
+          <a href="/app" className="underline font-bold text-[#E2A56B]">
             Ratify at base camp &rarr;
           </a>
         </div>
@@ -340,7 +340,7 @@ export const Workspace: React.FC = () => {
 
             {searchResults.length > 0 && (
               <div className="mt-3 border border-[#22303F] bg-[#0C1220] p-2 max-h-40 overflow-y-auto space-y-1.5 font-mono text-[11px]">
-                <div className="coordinate text-[#CF824B]">
+                <div className="coordinate text-[#E2A56B]">
                   STRIKE POINTS ({searchResults.length})
                 </div>
                 {searchResults.map((hit, i) => (
@@ -354,9 +354,9 @@ export const Workspace: React.FC = () => {
                         setLineEnd(hit.line_number);
                       }
                     }}
-                    className="w-full text-left truncate block text-[#718294] hover:text-[#E2E8EE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
+                    className="w-full text-left truncate block text-[#7E8FA1] hover:text-[#E2E8EE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
                   >
-                    <span className="text-[#CF824B]">L{hit.line_number}:</span> {hit.text}
+                    <span className="text-[#E2A56B]">L{hit.line_number}:</span> {hit.text}
                   </button>
                 ))}
               </div>
@@ -364,7 +364,7 @@ export const Workspace: React.FC = () => {
 
             <div className="space-y-1 pt-3 max-h-[500px] overflow-y-auto font-mono text-xs">
               {loadingAssignment ? (
-                <div className="text-[#718294] py-4 text-center" role="status">
+                <div className="text-[#7E8FA1] py-4 text-center" role="status">
                   Charting terrain...
                 </div>
               ) : assignment?.files?.length ? (
@@ -381,16 +381,16 @@ export const Workspace: React.FC = () => {
                       className={`w-full text-left px-2.5 py-2 flex items-center justify-between border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8] ${
                         isSelected
                           ? 'border-[#4A8FA8] bg-[#4A8FA8]/10 text-[#E2E8EE] font-bold'
-                          : 'border-transparent text-[#718294] hover:text-[#E2E8EE] hover:bg-[#1A273A]'
+                          : 'border-transparent text-[#7E8FA1] hover:text-[#E2E8EE] hover:bg-[#1A273A]'
                       }`}
                     >
                       <span className="truncate">{file.path}</span>
-                      <span className="text-[10px] text-[#5A6B7C]">{file.line_count}L</span>
+                      <span className="text-[10px] text-[#7E8FA1]">{file.line_count}L</span>
                     </button>
                   );
                 })
               ) : (
-                <div className="text-[#718294] py-4 text-center">
+                <div className="text-[#7E8FA1] py-4 text-center">
                   No terrain delivered yet. Layers appear once the stratum arms.
                 </div>
               )}
@@ -405,14 +405,14 @@ export const Workspace: React.FC = () => {
             coords={selectedFile ? `FILE: ${selectedFile}` : 'NO FILE LOADED'}
             title="Inspection view"
             action={
-              <span className="font-mono text-[11px] text-[#718294]">
+              <span className="font-mono text-[11px] text-[#7E8FA1]">
                 SELECTED: L{lineStart} - L{lineEnd} ({Math.abs(lineEnd - lineStart) + 1} lines)
               </span>
             }
           >
             <div className="max-h-[600px] overflow-y-auto font-mono text-xs leading-relaxed border border-[#22303F] bg-[#0C1220] select-text">
               {loadingFile ? (
-                <div className="p-8 text-center text-[#718294]" role="status">
+                <div className="p-8 text-center text-[#7E8FA1]" role="status">
                   Reading stratum...
                 </div>
               ) : fileContent?.content ? (
@@ -439,7 +439,7 @@ export const Workspace: React.FC = () => {
                         >
                           <td
                             className={`w-14 px-3 py-0.5 text-right text-[11px] select-none border-r border-[#22303F] bg-[#090E16] ${
-                              isSelected ? 'text-[#C44D3F] font-bold' : 'text-[#5A6B7C]'
+                              isSelected ? 'text-[#E0836F] font-bold' : 'text-[#7E8FA1]'
                             }`}
                           >
                             {lineNum}
@@ -453,7 +453,7 @@ export const Workspace: React.FC = () => {
                   </tbody>
                 </table>
               ) : (
-                <div className="p-8 text-center text-[#718294]">
+                <div className="p-8 text-center text-[#7E8FA1]">
                   Select a terrain layer to inspect its strata. Click a line to set the fault
                   start; shift-click to extend the span.
                 </div>
@@ -477,7 +477,7 @@ export const Workspace: React.FC = () => {
                 className={`px-3 py-1.5 uppercase font-bold text-xs border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8] ${
                   activeTab === 'report'
                     ? 'border-[#C44D3F] bg-[#C44D3F]/10 text-[#E2E8EE]'
-                    : 'border-transparent text-[#718294] hover:text-[#E2E8EE]'
+                    : 'border-transparent text-[#7E8FA1] hover:text-[#E2E8EE]'
                 }`}
               >
                 Fault report
@@ -489,7 +489,7 @@ export const Workspace: React.FC = () => {
                 className={`px-3 py-1.5 uppercase font-bold text-xs border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8] ${
                   activeTab === 'flag'
                     ? 'border-[#3F7A68] bg-[#3F7A68]/10 text-[#E2E8EE]'
-                    : 'border-transparent text-[#718294] hover:text-[#E2E8EE]'
+                    : 'border-transparent text-[#7E8FA1] hover:text-[#E2E8EE]'
                 }`}
               >
                 Flag (bonus)
@@ -501,20 +501,20 @@ export const Workspace: React.FC = () => {
             {receipt && (
               <div className="mt-3 border border-[#3F7A68] bg-[#3F7A68]/10 p-3 space-y-1.5 font-mono text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-[#3F7A68] uppercase tracking-[0.12em]">
+                  <span className="font-bold text-[#63A98D] uppercase tracking-[0.12em]">
                     FILING SEALED
                   </span>
                   {receipt.replay && (
-                    <span className="text-[10px] text-[#CF824B] font-bold uppercase">
+                    <span className="text-[10px] text-[#E2A56B] font-bold uppercase">
                       [REPLAY ACK]
                     </span>
                   )}
                 </div>
                 <div className="text-[11px] text-[#E2E8EE]">
                   HMAC SEAL:{' '}
-                  <code className="font-bold text-[#3F7A68]">{receipt.receipt_code}</code>
+                  <code className="font-bold text-[#63A98D]">{receipt.receipt_code}</code>
                 </div>
-                <div className="text-[10px] text-[#718294]">
+                <div className="text-[10px] text-[#7E8FA1]">
                   RECEIVED AT: {receipt.received_at}
                 </div>
               </div>
@@ -559,8 +559,8 @@ export const Workspace: React.FC = () => {
                         onClick={() => setSeverity(sev)}
                         className={`py-1 text-center uppercase text-[10px] font-bold border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8] ${
                           severity === sev
-                            ? 'border-[#C44D3F] bg-[#C44D3F] text-[#E2E8EE]'
-                            : 'border-[#22303F] text-[#718294] hover:bg-[#1A273A]'
+                            ? 'border-[#C44D3F] bg-[#C44D3F] text-white'
+                            : 'border-[#22303F] text-[#7E8FA1] hover:bg-[#1A273A]'
                         }`}
                       >
                         {sev}
@@ -651,7 +651,7 @@ export const Workspace: React.FC = () => {
                 <button
                   type="submit"
                   disabled={submitting || cooldownRemaining !== null}
-                  className="w-full py-2.5 bg-[#C44D3F] text-[#E2E8EE] font-bold uppercase tracking-[0.14em] hover:bg-[#A83E32] disabled:opacity-40 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#CF824B]"
+                  className="w-full py-2.5 bg-[#C44D3F] text-white font-bold uppercase tracking-[0.14em] hover:bg-[#A83E32] disabled:opacity-40 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#CF824B]"
                 >
                   {submitting
                     ? 'Sealing filing...'
@@ -662,7 +662,7 @@ export const Workspace: React.FC = () => {
               </form>
             ) : (
               <form onSubmit={handleSubmitFlag} className="mt-3 space-y-4 font-mono text-xs">
-                <p className="text-xs text-[#718294] font-sans leading-relaxed">
+                <p className="text-xs text-[#7E8FA1] font-sans leading-relaxed">
                   Recovered a bonus flag from a deep crevice? Enter the exact code below. Verified
                   flags add capped bonus points to the ledger.
                 </p>
@@ -687,7 +687,7 @@ export const Workspace: React.FC = () => {
                 <button
                   type="submit"
                   disabled={submitting || !flagCode.trim()}
-                  className="w-full py-2.5 bg-[#3F7A68] text-[#E2E8EE] font-bold uppercase tracking-[0.14em] hover:bg-[#356B5C] disabled:opacity-40 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
+                  className="w-full py-2.5 bg-[#3F7A68] text-white font-bold uppercase tracking-[0.14em] hover:bg-[#356B5C] disabled:opacity-40 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
                 >
                   {submitting ? 'Verifying flag...' : 'Submit the flag'}
                 </button>

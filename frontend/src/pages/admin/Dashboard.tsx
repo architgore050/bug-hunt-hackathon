@@ -143,7 +143,7 @@ export const AdminDashboard: React.FC = () => {
         </div>
         {events.length > 0 && (
           <div className="flex items-center gap-2 font-mono text-xs">
-            <label htmlFor="adm-event" className="text-[#718294] uppercase tracking-[0.12em]">
+            <label htmlFor="adm-event" className="text-[#7E8FA1] uppercase tracking-[0.12em]">
               Event
             </label>
             <select
@@ -174,25 +174,25 @@ export const AdminDashboard: React.FC = () => {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-xs">
               <div className="border border-[#22303F] bg-[#0C1220] p-3">
                 <span className="coordinate block">Review backlog</span>
-                <span className="text-xl font-bold text-[#CF824B]">
+                <span className="text-xl font-bold text-[#E2A56B]">
                   {String(liveData?.review_backlog ?? '0')}
                 </span>
               </div>
               <div className="border border-[#22303F] bg-[#0C1220] p-3">
                 <span className="coordinate block">Teams online</span>
-                <span className="text-xl font-bold text-[#3F7A68]">
+                <span className="text-xl font-bold text-[#63A98D]">
                   {String(liveData?.teams_count ?? '—')}
                 </span>
               </div>
               <div className="border border-[#22303F] bg-[#0C1220] p-3">
                 <span className="coordinate block">DB app</span>
-                <span className="text-xl font-bold text-[#3F7A68]">
+                <span className="text-xl font-bold text-[#63A98D]">
                   {String(liveData?.db_app ?? 'UP')}
                 </span>
               </div>
               <div className="border border-[#22303F] bg-[#0C1220] p-3">
                 <span className="coordinate block">DB ground truth</span>
-                <span className="text-xl font-bold text-[#3F7A68]">
+                <span className="text-xl font-bold text-[#63A98D]">
                   {String(liveData?.db_gt ?? 'ISOLATED')}
                 </span>
               </div>
@@ -207,7 +207,7 @@ export const AdminDashboard: React.FC = () => {
           >
             <div className="space-y-2 font-mono text-xs">
               {readiness.length === 0 ? (
-                <div className="text-[#718294] py-2">No readiness items returned for this event.</div>
+                <div className="text-[#7E8FA1] py-2">No readiness items returned for this event.</div>
               ) : (
                 readiness.map((item) => (
                   <button
@@ -222,8 +222,8 @@ export const AdminDashboard: React.FC = () => {
                         aria-hidden="true"
                         className={`w-4 h-4 flex items-center justify-center font-bold text-[10px] ${
                           item.state === 'checked'
-                            ? 'bg-[#3F7A68] text-[#E2E8EE]'
-                            : 'bg-[#22303F] text-[#718294]'
+                            ? 'bg-[#3F7A68] text-white'
+                            : 'bg-[#22303F] text-[#7E8FA1]'
                         }`}
                       >
                         {item.state === 'checked' ? '+' : '-'}
@@ -232,7 +232,7 @@ export const AdminDashboard: React.FC = () => {
                     </div>
                     <span
                       className={`font-bold uppercase tracking-[0.12em] ${
-                        item.state === 'checked' ? 'text-[#3F7A68]' : 'text-[#C44D3F]'
+                        item.state === 'checked' ? 'text-[#63A98D]' : 'text-[#E0836F]'
                       }`}
                     >
                       {item.state.toUpperCase()}
@@ -257,15 +257,15 @@ export const AdminDashboard: React.FC = () => {
                 <div
                   className={`border p-3 space-y-1 ${
                     auditVerify.intact
-                      ? 'border-[#3F7A68] bg-[#3F7A68]/10 text-[#3F7A68]'
-                      : 'border-[#C44D3F] bg-[#C44D3F]/10 text-[#C44D3F]'
+                      ? 'border-[#3F7A68] bg-[#3F7A68]/10 text-[#63A98D]'
+                      : 'border-[#C44D3F] bg-[#C44D3F]/10 text-[#E0836F]'
                   }`}
                   role="status"
                 >
                   <div className="font-bold uppercase tracking-[0.12em]">
                     {auditVerify.intact ? 'CHAIN INTACT: NO TAMPERING DETECTED' : 'CHAIN BROKEN'}
                   </div>
-                  <div className="text-[11px] text-[#718294]">
+                  <div className="text-[11px] text-[#7E8FA1]">
                     SCOPE: {auditVerify.scope} • VERIFIED: {auditVerify.verified} / {auditVerify.entries}
                     {auditVerify.broken_at !== null ? ` • BROKEN AT: ${auditVerify.broken_at}` : ''}
                   </div>
@@ -339,11 +339,11 @@ export const AdminDashboard: React.FC = () => {
                       className={`py-1 text-center uppercase text-[10px] font-bold border tracking-[0.12em] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8] ${
                         annSev === s
                           ? s === 'critical'
-                            ? 'border-[#C44D3F] bg-[#C44D3F] text-[#E2E8EE]'
+                            ? 'border-[#C44D3F] bg-[#C44D3F] text-white'
                             : s === 'warning'
                             ? 'border-[#CF824B] bg-[#CF824B] text-[#090E16]'
                             : 'border-[#4A8FA8] bg-[#4A8FA8] text-[#090E16]'
-                          : 'border-[#22303F] text-[#718294]'
+                          : 'border-[#22303F] text-[#7E8FA1]'
                       }`}
                     >
                       {s}
@@ -371,7 +371,7 @@ export const AdminDashboard: React.FC = () => {
               <button
                 type="submit"
                 disabled={postingAnn || !annBody.trim()}
-                className="w-full py-2 bg-[#C44D3F] text-[#E2E8EE] font-bold uppercase tracking-[0.14em] hover:bg-[#A83E32] disabled:opacity-40 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#CF824B]"
+                className="w-full py-2 bg-[#C44D3F] text-white font-bold uppercase tracking-[0.14em] hover:bg-[#A83E32] disabled:opacity-40 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#CF824B]"
               >
                 {postingAnn ? 'Broadcasting...' : 'Dispatch telegram'}
               </button>
@@ -382,9 +382,9 @@ export const AdminDashboard: React.FC = () => {
             <div className="grid grid-cols-3 gap-2 font-mono text-xs">
               {(
                 [
-                  ['results', 'RESULTS', 'text-[#4A8FA8]'],
-                  ['submissions', 'FILINGS', 'text-[#3F7A68]'],
-                  ['ledger', 'LEDGER', 'text-[#CF824B]'],
+                  ['results', 'RESULTS', 'text-[#7FBBD1]'],
+                  ['submissions', 'FILINGS', 'text-[#63A98D]'],
+                  ['ledger', 'LEDGER', 'text-[#E2A56B]'],
                 ] as const
               ).map(([kind, label, tone]) => (
                 <button
@@ -394,7 +394,7 @@ export const AdminDashboard: React.FC = () => {
                   className="p-2.5 border border-[#22303F] hover:border-[#718294] text-center transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
                 >
                   <span className={`${tone} font-bold block`}>{label}</span>
-                  <span className="text-[10px] text-[#718294]">CSV</span>
+                  <span className="text-[10px] text-[#7E8FA1]">CSV</span>
                 </button>
               ))}
             </div>
@@ -403,12 +403,12 @@ export const AdminDashboard: React.FC = () => {
           <TopoPanel sector="CP-07" coords="REF: ARBITRATION" title="Open disputes">
             <div className="space-y-3 font-mono text-xs max-h-60 overflow-y-auto">
               {disputes.length === 0 ? (
-                <div className="text-center py-4 text-[#718294]">No disputes on the docket.</div>
+                <div className="text-center py-4 text-[#7E8FA1]">No disputes on the docket.</div>
               ) : (
                 disputes.map((disp) => (
                   <div key={disp.id} className="border border-[#22303F] p-3 space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-[#CF824B] font-bold">{disp.receipt_code}</span>
+                      <span className="text-[#E2A56B] font-bold">{disp.receipt_code}</span>
                       <SectorBadge
                         label={disp.status}
                         tone={disp.status === 'pending' ? 'strain' : 'legend'}
@@ -420,14 +420,14 @@ export const AdminDashboard: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => handleResolveDispute(disp.id, 'upheld')}
-                          className="px-2 py-1 bg-[#3F7A68] text-[#E2E8EE] text-[10px] font-bold uppercase tracking-[0.12em] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
+                          className="px-2 py-1 bg-[#3F7A68] text-white text-[10px] font-bold uppercase tracking-[0.12em] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
                         >
                           Uphold (+10 pts)
                         </button>
                         <button
                           type="button"
                           onClick={() => handleResolveDispute(disp.id, 'rejected')}
-                          className="px-2 py-1 bg-[#C44D3F] text-[#E2E8EE] text-[10px] font-bold uppercase tracking-[0.12em] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
+                          className="px-2 py-1 bg-[#C44D3F] text-white text-[10px] font-bold uppercase tracking-[0.12em] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4A8FA8]"
                         >
                           Reject
                         </button>

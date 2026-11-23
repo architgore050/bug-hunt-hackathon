@@ -9,7 +9,7 @@ export const Privacy: React.FC = () => {
         <h1 className="text-3xl sm:text-4xl font-serif font-black text-[#E2E8EE]">
           Privacy notice
         </h1>
-        <p className="text-sm font-sans text-[#718294]">
+        <p className="text-sm font-sans text-[#7E8FA1]">
           How surveyor credentials, telemetry and filed evidence are handled on the platform.
         </p>
       </div>
@@ -21,7 +21,7 @@ export const Privacy: React.FC = () => {
             scripts, advertising pixels, analytics trackers, or commercial telemetry engines are
             loaded at any point of the survey.
           </p>
-          <ul className="space-y-2 font-mono text-xs text-[#718294] list-none p-0 m-0">
+          <ul className="space-y-2 font-mono text-xs text-[#7E8FA1] list-none p-0 m-0">
             <li className="border-l-2 border-[#22303F] pl-3">
               Authentication refresh cookies are first-party HttpOnly cookies scoped to
               /v1/auth/refresh.
