@@ -108,41 +108,41 @@ export const Lobby: React.FC = () => {
             <div className="space-y-3 font-mono text-xs">
               <div className="flex items-center justify-between py-2 border-b border-[#DDD7CA]">
                 <div className="flex items-center gap-2">
-                  <span className="text-[#3E7259] font-bold">✓</span>
+                  <span className="text-[#5EA57E] font-bold">✓</span>
                   <span className="text-[#181A1F]">Platform Backend Interface</span>
                 </div>
-                <span className="text-[#3E7259] font-bold">CONNECTED</span>
+                <span className="text-[#5EA57E] font-bold">CONNECTED</span>
               </div>
 
               <div className="flex items-center justify-between py-2 border-b border-[#DDD7CA]">
                 <div className="flex items-center gap-2">
-                  <span className={team ? 'text-[#3E7259] font-bold' : 'text-[#C04A36] font-bold'}>
+                  <span className={team ? 'text-[#5EA57E] font-bold' : 'text-[#E2715A] font-bold'}>
                     {team ? '✓' : '✗'}
                   </span>
                   <span className="text-[#181A1F]">
                     Team Assignment: <strong className="font-bold">{team ? team.name : 'Unassigned'}</strong>
                   </span>
                 </div>
-                <span className={team ? 'text-[#3E7259] font-bold' : 'text-[#C04A36] font-bold'}>
+                <span className={team ? 'text-[#5EA57E] font-bold' : 'text-[#E2715A] font-bold'}>
                   {team ? 'VERIFIED' : 'PENDING'}
                 </span>
               </div>
 
               <div className="flex items-center justify-between py-2 border-b border-[#DDD7CA]">
                 <div className="flex items-center gap-2">
-                  <span className={rulesAccepted ? 'text-[#3E7259] font-bold' : 'text-[#C04A36] font-bold'}>
+                  <span className={rulesAccepted ? 'text-[#5EA57E] font-bold' : 'text-[#E2715A] font-bold'}>
                     {rulesAccepted ? '✓' : '✗'}
                   </span>
                   <span className="text-[#181A1F]">Competition Rules Ratification</span>
                 </div>
                 {rulesAccepted ? (
-                  <span className="text-[#3E7259] font-bold">RATIFIED</span>
+                  <span className="text-[#5EA57E] font-bold">RATIFIED</span>
                 ) : (
                   <button
                     type="button"
                     onClick={handleAcceptRules}
                     disabled={accepting}
-                    className="px-2.5 py-1 bg-[#C04A36] text-[#ECEEF2] font-bold uppercase hover:bg-[#A83827]"
+                    className="px-2.5 py-1 bg-[#C04A36] text-white font-bold uppercase hover:bg-[#A83827]"
                   >
                     {accepting ? 'Accepting...' : 'Accept Rules Now'}
                   </button>
@@ -154,7 +154,7 @@ export const Lobby: React.FC = () => {
                   <span
                     className={
                       round?.status === 'active' || round?.status === 'armed'
-                        ? 'text-[#3E7259] font-bold'
+                        ? 'text-[#5EA57E] font-bold'
                         : 'text-[#CF8B38] font-bold'
                     }
                   >
@@ -165,7 +165,7 @@ export const Lobby: React.FC = () => {
                 <span
                   className={
                     round?.status === 'active'
-                      ? 'text-[#3E7259] font-bold'
+                      ? 'text-[#5EA57E] font-bold'
                       : 'text-[#CF8B38] font-bold'
                   }
                 >
@@ -181,7 +181,7 @@ export const Lobby: React.FC = () => {
               to="/app/workspace"
               className="border border-[#2B2E35] bg-[#181A1F] p-4 hover:border-[#C04A36] transition-colors block"
             >
-              <span className="text-[#C04A36] font-bold block mb-1">01 // CODE WORKSPACE</span>
+              <span className="text-[#E2715A] font-bold block mb-1">01 // CODE WORKSPACE</span>
               <span className="text-[#ECEEF2] font-bold">Investigate & File &rarr;</span>
             </Link>
             <Link
@@ -195,7 +195,7 @@ export const Lobby: React.FC = () => {
               to="/app/leaderboard"
               className="border border-[#2B2E35] bg-[#181A1F] p-4 hover:border-[#C04A36] transition-colors block"
             >
-              <span className="text-[#3E7259] font-bold block mb-1">03 // STANDINGS</span>
+              <span className="text-[#5EA57E] font-bold block mb-1">03 // STANDINGS</span>
               <span className="text-[#ECEEF2] font-bold">Leaderboard &rarr;</span>
             </Link>
           </div>
@@ -268,7 +268,7 @@ export const Lobby: React.FC = () => {
               </div>
               <div className="flex justify-between py-1">
                 <span className="text-[#868A94]">ROLE CLEARANCE</span>
-                <span className="text-[#3E7259] font-bold uppercase">{user?.role}</span>
+                <span className="text-[#5EA57E] font-bold uppercase">{user?.role}</span>
               </div>
             </div>
           </ExhibitCard>

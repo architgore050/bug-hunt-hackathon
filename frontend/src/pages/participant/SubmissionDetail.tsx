@@ -168,7 +168,7 @@ export const SubmissionDetailPage: React.FC = () => {
           {submission.flag_code && (
             <div className="space-y-1">
               <span className="text-[#868A94] block uppercase">Captured Flag Code:</span>
-              <div className="p-3 bg-[#111215] border border-[#3E7259] text-[#3E7259] font-bold">
+              <div className="p-3 bg-[#111215] border border-[#3E7259] text-[#5EA57E] font-bold">
                 {submission.flag_code}
               </div>
             </div>
@@ -192,7 +192,7 @@ export const SubmissionDetailPage: React.FC = () => {
               </div>
               <div className="flex justify-between py-1 border-b border-[#DDD7CA]">
                 <span className="text-[#6A665D]">POINTS AWARDED</span>
-                <span className="font-bold text-[#3E7259]">{submission.points ?? 0} PTS</span>
+                <span className="font-bold text-[#5EA57E]">{submission.points ?? 0} PTS</span>
               </div>
             </div>
           ) : (
@@ -211,7 +211,7 @@ export const SubmissionDetailPage: React.FC = () => {
           title="File Formal Evaluation Dispute"
         >
           {disputeSuccess ? (
-            <div className="border border-[#3E7259] bg-[#3E7259]/10 p-4 font-mono text-xs text-[#3E7259]">
+            <div className="border border-[#3E7259] bg-[#3E7259]/10 p-4 font-mono text-xs text-[#5EA57E]">
               Dispute successfully filed. Review team has been notified for secondary arbitration.
             </div>
           ) : (
@@ -235,7 +235,7 @@ export const SubmissionDetailPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={disputing || statement.trim().length < 10}
-                className="px-4 py-2 bg-[#C04A36] text-[#ECEEF2] font-bold uppercase hover:bg-[#A83827] disabled:opacity-40 transition-colors"
+                className="px-4 py-2 bg-[#C04A36] text-white font-bold uppercase hover:bg-[#A83827] disabled:opacity-40 transition-colors"
               >
                 {disputing ? 'Submitting Dispute...' : 'File Dispute'}
               </button>

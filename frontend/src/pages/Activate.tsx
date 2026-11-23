@@ -66,7 +66,7 @@ export const Activate: React.FC = () => {
 
         {activatedEmail ? (
           <div className="border border-[#3E7259] bg-[#3E7259]/10 p-6 space-y-4 font-mono text-xs">
-            <div className="text-sm font-bold text-[#3E7259]">
+            <div className="text-sm font-bold text-[#5EA57E]">
               ACCOUNT ACTIVATED SUCCESSFULLY
             </div>
             <p className="text-[#C4C8D2] font-sans text-xs">
@@ -75,7 +75,7 @@ export const Activate: React.FC = () => {
             <div className="pt-2">
               <Link
                 to="/login"
-                className="inline-block px-5 py-2.5 bg-[#C04A36] text-[#ECEEF2] font-bold uppercase tracking-wider hover:bg-[#A83827] transition-colors"
+                className="inline-block px-5 py-2.5 bg-[#C04A36] text-white font-bold uppercase tracking-wider hover:bg-[#A83827] transition-colors"
               >
                 Proceed to Sign In
               </Link>
@@ -155,7 +155,7 @@ export const Activate: React.FC = () => {
               <button
                 type="submit"
                 disabled={!canSubmit || loading}
-                className="w-full py-3 bg-[#C04A36] text-[#ECEEF2] font-bold uppercase tracking-wider hover:bg-[#A83827] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="w-full py-3 bg-[#C04A36] text-white font-bold uppercase tracking-wider hover:bg-[#A83827] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {loading ? 'Activating Clearance...' : 'Ratify & Activate'}
               </button>

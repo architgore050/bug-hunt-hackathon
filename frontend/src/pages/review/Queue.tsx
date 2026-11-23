@@ -82,7 +82,7 @@ export const ReviewQueue: React.FC = () => {
               onClick={() => setFilter(f)}
               className={`px-3 py-1 uppercase border ${
                 filter === f
-                  ? 'border-[#C04A36] bg-[#C04A36] text-[#ECEEF2] font-bold'
+                  ? 'border-[#C04A36] bg-[#C04A36] text-white font-bold'
                   : 'border-[#2B2E35] text-[#868A94] hover:bg-[#20232A]'
               }`}
             >

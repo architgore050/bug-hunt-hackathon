@@ -33,7 +33,7 @@ export const ErrorBanner: React.FC<ErrorBannerProps> = ({ error, onRetry, classN
     >
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
-          <span className="font-bold px-1.5 py-0.5 bg-[#C04A36] text-[#ECEEF2] text-[10px] uppercase">
+          <span className="font-bold px-1.5 py-0.5 bg-[#C04A36] text-white text-[10px] uppercase">
             {code}
           </span>
           <span className="text-[#868A94]">REF: {requestId}</span>

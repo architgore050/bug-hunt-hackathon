@@ -44,7 +44,7 @@ export const Landing: React.FC = () => {
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pt-10 items-start">
             <div className="lg:col-span-7 space-y-6">
-              <div className="inline-block px-2.5 py-1 text-xs font-mono uppercase tracking-widest text-[#C04A36] border border-[#C04A36]/40 bg-[#C04A36]/5">
+              <div className="inline-block px-2.5 py-1 text-xs font-mono uppercase tracking-widest text-[#E2715A] border border-[#C04A36]/40 bg-[#C04A36]/5">
                 Official Incident Inquiry
               </div>
 
@@ -60,7 +60,7 @@ export const Landing: React.FC = () => {
               <div className="pt-2 flex flex-wrap items-center gap-4">
                 <Link
                   to="/activate"
-                  className="px-6 py-3 bg-[#C04A36] text-[#ECEEF2] font-mono text-sm uppercase tracking-wider font-bold border border-[#C04A36] hover:bg-[#A83827] transition-colors"
+                  className="px-6 py-3 bg-[#C04A36] text-white font-mono text-sm uppercase tracking-wider font-bold border border-[#C04A36] hover:bg-[#A83827] transition-colors"
                 >
                   Activate Clearance
                 </Link>
@@ -125,7 +125,7 @@ export const Landing: React.FC = () => {
       <section className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="border-b border-[#2B2E35] pb-4 mb-8 flex items-baseline justify-between">
           <div>
-            <span className="text-xs font-mono text-[#C04A36] uppercase tracking-widest">
+            <span className="text-xs font-mono text-[#E2715A] uppercase tracking-widest">
               01 // FORENSIC SCOPE
             </span>
             <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#ECEEF2] mt-1">
@@ -150,19 +150,19 @@ export const Landing: React.FC = () => {
               <div className="p-3 bg-[#0E1012] border border-[#2B2E35] text-[#ECEEF2] overflow-x-auto text-[11px] leading-relaxed">
                 <span className="text-[#868A94]">// routes/notes.js - vulnerable handler</span>
                 <br />
-                <span className="text-[#C04A36]">router.get('/notes/:id', async (req, res) =&gt; &#123;</span>
+                <span className="text-[#E2715A]">router.get('/notes/:id', async (req, res) =&gt; &#123;</span>
                 <br />
-                <span className="text-[#C04A36]">&nbsp;&nbsp;const note = await db.get('SELECT * FROM notes WHERE id = ?', [req.params.id]);</span>
+                <span className="text-[#E2715A]">&nbsp;&nbsp;const note = await db.get('SELECT * FROM notes WHERE id = ?', [req.params.id]);</span>
                 <br />
-                <span className="text-[#C04A36]">&nbsp;&nbsp;if (!note) return res.status(404).json(&#123; error: 'Not found' &#125;);</span>
+                <span className="text-[#E2715A]">&nbsp;&nbsp;if (!note) return res.status(404).json(&#123; error: 'Not found' &#125;);</span>
                 <br />
-                <span className="text-[#C04A36]">&nbsp;&nbsp;res.json(note); // Missing author_id verification!</span>
+                <span className="text-[#E2715A]">&nbsp;&nbsp;res.json(note); // Missing author_id verification!</span>
                 <br />
-                <span className="text-[#C04A36]">&#125;);</span>
+                <span className="text-[#E2715A]">&#125;);</span>
               </div>
               <div className="flex items-center justify-between text-[11px] text-[#868A94]">
                 <span>TAXONOMY: AUTHORIZATION</span>
-                <span className="text-[#C04A36] font-bold">SEVERITY: HIGH</span>
+                <span className="text-[#E2715A] font-bold">SEVERITY: HIGH</span>
               </div>
             </div>
           </ExhibitCard>
@@ -178,15 +178,15 @@ export const Landing: React.FC = () => {
               </p>
               <div className="space-y-2 border-t border-[#2B2E35] pt-3 font-mono text-xs">
                 <div className="flex items-start gap-2">
-                  <span className="text-[#C04A36] font-bold">[1]</span>
+                  <span className="text-[#E2715A] font-bold">[1]</span>
                   <span>Pinpoint exact vulnerable lines in the assigned challenge code.</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-[#C04A36] font-bold">[2]</span>
+                  <span className="text-[#E2715A] font-bold">[2]</span>
                   <span>Categorize against the authoritative 12-value vulnerability taxonomy.</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-[#C04A36] font-bold">[3]</span>
+                  <span className="text-[#E2715A] font-bold">[3]</span>
                   <span>Receive tamper-proof HMAC submission receipts for every filing.</span>
                 </div>
               </div>
@@ -198,7 +198,7 @@ export const Landing: React.FC = () => {
       {/* SECTION 03: COMPETITION TIMELINE (P1 TO P4) */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="border-b border-[#2B2E35] pb-4 mb-8">
-          <span className="text-xs font-mono text-[#C04A36] uppercase tracking-widest">
+          <span className="text-xs font-mono text-[#E2715A] uppercase tracking-widest">
             02 // CHRONOLOGY
           </span>
           <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#ECEEF2] mt-1">
@@ -209,7 +209,7 @@ export const Landing: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="border border-[#2B2E35] bg-[#181A1F] p-5 space-y-3">
             <div className="flex justify-between items-center text-xs font-mono">
-              <span className="text-[#C04A36] font-bold">PHASE 01</span>
+              <span className="text-[#E2715A] font-bold">PHASE 01</span>
               <span className="text-[#868A94]">30 MIN</span>
             </div>
             <h3 className="font-serif font-bold text-lg text-[#ECEEF2]">Reconnaissance & Setup</h3>
@@ -231,7 +231,7 @@ export const Landing: React.FC = () => {
 
           <div className="border border-[#2B2E35] bg-[#181A1F] p-5 space-y-3">
             <div className="flex justify-between items-center text-xs font-mono">
-              <span className="text-[#3E7259] font-bold">PHASE 03</span>
+              <span className="text-[#5EA57E] font-bold">PHASE 03</span>
               <span className="text-[#868A94]">60 MIN</span>
             </div>
             <h3 className="font-serif font-bold text-lg text-[#ECEEF2]">Remediation & CTF Quests</h3>
@@ -242,7 +242,7 @@ export const Landing: React.FC = () => {
 
           <div className="border border-[#2B2E35] bg-[#181A1F] p-5 space-y-3">
             <div className="flex justify-between items-center text-xs font-mono">
-              <span className="text-[#4B7B9A] font-bold">PHASE 04</span>
+              <span className="text-[#7BA6C4] font-bold">PHASE 04</span>
               <span className="text-[#868A94]">25 MIN</span>
             </div>
             <h3 className="font-serif font-bold text-lg text-[#ECEEF2]">Verification & Review</h3>
@@ -256,7 +256,7 @@ export const Landing: React.FC = () => {
       {/* SECTION 04: SCORING BALANCE SHEET (50/30/20) */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="border-b border-[#2B2E35] pb-4 mb-8">
-          <span className="text-xs font-mono text-[#C04A36] uppercase tracking-widest">
+          <span className="text-xs font-mono text-[#E2715A] uppercase tracking-widest">
             03 // EVALUATION FORMULA
           </span>
           <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#ECEEF2] mt-1">
@@ -289,7 +289,7 @@ export const Landing: React.FC = () => {
                 <td className="p-4 text-[#C4C8D2] font-sans">
                   5-metric rubric: functionality, root-cause depth, code quality, test rigor, and evidence.
                 </td>
-                <td className="p-4 text-[#C04A36] font-bold">-5 pts per invalid finding</td>
+                <td className="p-4 text-[#E2715A] font-bold">-5 pts per invalid finding</td>
               </tr>
               <tr>
                 <td className="p-4 font-bold text-[#ECEEF2]">Evidence & Report Quality</td>
@@ -300,8 +300,8 @@ export const Landing: React.FC = () => {
                 <td className="p-4 text-[#868A94]">Capped rubric deduction</td>
               </tr>
               <tr className="bg-[#141519]/50">
-                <td className="p-4 font-bold text-[#3E7259]">CTF Flag Side Quests</td>
-                <td className="p-4 text-[#3E7259] font-bold">Bonus (Capped)</td>
+                <td className="p-4 font-bold text-[#5EA57E]">CTF Flag Side Quests</td>
+                <td className="p-4 text-[#5EA57E] font-bold">Bonus (Capped)</td>
                 <td className="p-4 text-[#C4C8D2] font-sans">
                   Cryptographic verification of system flags discovered during deep code review.
                 </td>
@@ -316,7 +316,7 @@ export const Landing: React.FC = () => {
       <section className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="border border-[#C04A36] bg-[#181A1F] p-8 sm:p-12 relative overflow-hidden">
           <div className="max-w-2xl space-y-4">
-            <span className="text-xs font-mono text-[#C04A36] uppercase tracking-widest">
+            <span className="text-xs font-mono text-[#E2715A] uppercase tracking-widest">
               CALL FOR INVESTIGATORS
             </span>
             <h2 className="text-3xl sm:text-4xl font-serif font-black text-[#ECEEF2]">
@@ -328,7 +328,7 @@ export const Landing: React.FC = () => {
             <div className="pt-4 flex flex-wrap gap-4 font-mono text-xs">
               <Link
                 to="/activate"
-                className="px-6 py-3 bg-[#C04A36] text-[#ECEEF2] font-bold uppercase tracking-wider hover:bg-[#A83827] transition-colors"
+                className="px-6 py-3 bg-[#C04A36] text-white font-bold uppercase tracking-wider hover:bg-[#A83827] transition-colors"
               >
                 Activate Account Now
               </Link>

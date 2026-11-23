@@ -129,7 +129,7 @@ export const Rules: React.FC = () => {
             type="button"
             onClick={handleAccept}
             disabled={accepting}
-            className="px-6 py-2.5 bg-[#C04A36] text-[#ECEEF2] font-bold uppercase tracking-wider hover:bg-[#A83827] disabled:opacity-50 transition-colors"
+            className="px-6 py-2.5 bg-[#C04A36] text-white font-bold uppercase tracking-wider hover:bg-[#A83827] disabled:opacity-50 transition-colors"
           >
             {accepting ? 'Recording Acceptance...' : 'Accept Official Rules'}
           </button>

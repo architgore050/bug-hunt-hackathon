@@ -67,14 +67,14 @@ export const Results: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="border border-[#3E7259] bg-[#181A1F] p-5 font-mono">
               <span className="text-[11px] text-[#868A94] uppercase block">Total Certified Score</span>
-              <span className="text-3xl font-bold text-[#3E7259] mt-1 block">
+              <span className="text-3xl font-bold text-[#5EA57E] mt-1 block">
                 {results.total} <span className="text-xs text-[#868A94]">PTS</span>
               </span>
             </div>
 
             <div className="border border-[#2B2E35] bg-[#181A1F] p-5 font-mono">
               <span className="text-[11px] text-[#868A94] uppercase block">Penalties Incurred</span>
-              <span className="text-3xl font-bold text-[#C04A36] mt-1 block">
+              <span className="text-3xl font-bold text-[#E2715A] mt-1 block">
                 -{results.penalties} <span className="text-xs text-[#868A94]">PTS</span>
               </span>
             </div>
@@ -118,7 +118,7 @@ export const Results: React.FC = () => {
                       <td className="p-3 text-[#868A94]">{formatIST(entry.received_at)}</td>
                       <td
                         className={`p-3 text-right font-bold ${
-                          entry.points >= 0 ? 'text-[#3E7259]' : 'text-[#C04A36]'
+                          entry.points >= 0 ? 'text-[#5EA57E]' : 'text-[#E2715A]'
                         }`}
                       >
                         {entry.points > 0 ? `+${entry.points}` : entry.points}

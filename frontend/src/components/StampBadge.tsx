@@ -16,10 +16,10 @@ export const StampBadge: React.FC<StampBadgeProps> = ({
   className = '',
 }) => {
   const toneClasses: Record<StampTone, string> = {
-    danger: 'text-[#C04A36] border-[#C04A36] bg-[#C04A36]/10',
-    success: 'text-[#3E7259] border-[#3E7259] bg-[#3E7259]/10',
+    danger: 'text-[#E2715A] border-[#C04A36] bg-[#C04A36]/10',
+    success: 'text-[#5EA57E] border-[#3E7259] bg-[#3E7259]/10',
     warning: 'text-[#CF8B38] border-[#CF8B38] bg-[#CF8B38]/10',
-    info: 'text-[#4B7B9A] border-[#4B7B9A] bg-[#4B7B9A]/10',
+    info: 'text-[#7BA6C4] border-[#4B7B9A] bg-[#4B7B9A]/10',
     neutral: 'text-[#868A94] border-[#3C404A] bg-[#1E2026]',
   };
 

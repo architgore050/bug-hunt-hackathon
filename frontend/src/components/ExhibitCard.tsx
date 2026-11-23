@@ -42,7 +42,7 @@ export const ExhibitCard: React.FC<ExhibitCardProps> = ({
               {exhibitNumber && (
                 <span
                   className={`px-1.5 py-0.5 font-bold ${
-                    isBuff ? 'bg-[#181A1F] text-[#F3EFE6]' : 'bg-[#C04A36] text-[#ECEEF2]'
+                    isBuff ? 'bg-[#181A1F] text-[#F3EFE6]' : 'bg-[#C04A36] text-white'
                   }`}
                 >
                   {exhibitNumber}

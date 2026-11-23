@@ -22,10 +22,10 @@ export const CountdownDisplay: React.FC<CountdownDisplayProps> = ({
   if (isPaused) {
     toneColor = 'text-[#CF8B38]';
   } else if (isExpired) {
-    toneColor = 'text-[#C04A36]';
+    toneColor = 'text-[#E2715A]';
   } else if (secondsRemaining !== null) {
     if (secondsRemaining <= 120) {
-      toneColor = 'text-[#C04A36]';
+      toneColor = 'text-[#E2715A]';
     } else if (secondsRemaining <= 600) {
       toneColor = 'text-[#CF8B38]';
     }
@@ -44,9 +44,9 @@ export const CountdownDisplay: React.FC<CountdownDisplayProps> = ({
         {isPaused ? (
           <span className="text-[#CF8B38] font-bold">[TIMER PAUSED]</span>
         ) : isExpired ? (
-          <span className="text-[#C04A36] font-bold">[WINDOW CLOSED]</span>
+          <span className="text-[#E2715A] font-bold">[WINDOW CLOSED]</span>
         ) : (
-          <span className="text-[#3E7259] flex items-center gap-1.5">
+          <span className="text-[#5EA57E] flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-[#3E7259] animate-pulse" />
             SYNCHRONIZED
           </span>

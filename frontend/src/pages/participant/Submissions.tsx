@@ -55,7 +55,7 @@ export const Submissions: React.FC = () => {
             REPORTS: <strong className="text-[#CF8B38]">{bugReports.length}</strong>
           </div>
           <div className="border border-[#2B2E35] bg-[#141519] px-3 py-1 text-[#868A94]">
-            FLAGS: <strong className="text-[#3E7259]">{ctfFlags.length}</strong>
+            FLAGS: <strong className="text-[#5EA57E]">{ctfFlags.length}</strong>
           </div>
         </div>
       </div>

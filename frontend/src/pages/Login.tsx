@@ -89,7 +89,7 @@ export const Login: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-[#C04A36] text-[#ECEEF2] font-bold uppercase tracking-wider hover:bg-[#A83827] disabled:opacity-50 transition-colors"
+            className="w-full py-3 bg-[#C04A36] text-white font-bold uppercase tracking-wider hover:bg-[#A83827] disabled:opacity-50 transition-colors"
           >
             {loading ? 'Authenticating...' : 'Sign In'}
           </button>

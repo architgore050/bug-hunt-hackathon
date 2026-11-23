@@ -41,7 +41,7 @@ export const Navigation: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-4">
         {/* Brand */}
         <Link to="/" className="flex items-center gap-3 group text-decoration-none">
-          <div className="w-7 h-7 bg-[#C04A36] text-[#ECEEF2] font-mono font-bold flex items-center justify-center text-xs tracking-tighter">
+          <div className="w-7 h-7 bg-[#C04A36] text-white font-mono font-bold flex items-center justify-center text-xs tracking-tighter">
             BH
           </div>
           <div>
@@ -84,7 +84,7 @@ export const Navigation: React.FC = () => {
               </Link>
               <Link
                 to="/login"
-                className="ml-2 px-3.5 py-1.5 bg-[#C04A36] text-[#ECEEF2] font-semibold border border-[#C04A36] hover:bg-[#A83827] transition-colors"
+                className="ml-2 px-3.5 py-1.5 bg-[#C04A36] text-white font-semibold border border-[#C04A36] hover:bg-[#A83827] transition-colors"
               >
                 Sign In
               </Link>

@@ -125,8 +125,8 @@ export const AdminChallenges: React.FC = () => {
           <span
             className={`px-3 py-1 font-bold border ${
               stepUpActive
-                ? 'border-[#3E7259] bg-[#3E7259]/10 text-[#3E7259]'
-                : 'border-[#C04A36] bg-[#C04A36]/10 text-[#C04A36]'
+                ? 'border-[#3E7259] bg-[#3E7259]/10 text-[#5EA57E]'
+                : 'border-[#C04A36] bg-[#C04A36]/10 text-[#E2715A]'
             }`}
           >
             {stepUpActive ? 'STEP-UP ACTIVE (5 MIN)' : 'STEP-UP RE-AUTH REQUIRED'}
@@ -164,7 +164,7 @@ export const AdminChallenges: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="px-5 py-2.5 bg-[#C04A36] text-[#ECEEF2] font-bold uppercase hover:bg-[#A83827] transition-colors"
+              className="px-5 py-2.5 bg-[#C04A36] text-white font-bold uppercase hover:bg-[#A83827] transition-colors"
             >
               {loading ? 'Verifying...' : 'Authenticate Elevated Clearance'}
             </button>
@@ -203,7 +203,7 @@ export const AdminChallenges: React.FC = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-4 py-2 bg-[#C04A36] text-[#ECEEF2] font-bold uppercase"
+                  className="px-4 py-2 bg-[#C04A36] text-white font-bold uppercase"
                 >
                   Create Challenge Container
                 </button>
@@ -211,7 +211,7 @@ export const AdminChallenges: React.FC = () => {
 
               {challengeId && (
                 <div className="pt-4 border-t border-[#2B2E35] space-y-4 font-mono text-xs">
-                  <div className="text-[#3E7259] font-bold">CHALLENGE ID: {challengeId}</div>
+                  <div className="text-[#5EA57E] font-bold">CHALLENGE ID: {challengeId}</div>
 
                   <form onSubmit={handleUploadFile} className="space-y-3">
                     <label className="block text-[#868A94] uppercase">Upload Source File (512 KiB Max)</label>
@@ -230,7 +230,7 @@ export const AdminChallenges: React.FC = () => {
                     </button>
                   </form>
 
-                  {uploadStatus && <div className="text-[#3E7259]">{uploadStatus}</div>}
+                  {uploadStatus && <div className="text-[#5EA57E]">{uploadStatus}</div>}
 
                   <div className="pt-2">
                     <button
@@ -244,7 +244,7 @@ export const AdminChallenges: React.FC = () => {
                   </div>
 
                   {freezeHash && (
-                    <div className="text-[#3E7259] font-bold">
+                    <div className="text-[#5EA57E] font-bold">
                       FROZEN CONTENT HASH: {freezeHash.substring(0, 16)}...
                     </div>
                   )}
@@ -305,7 +305,7 @@ export const AdminChallenges: React.FC = () => {
               </form>
 
               {testResultStatus && (
-                <div className="pt-3 font-mono text-xs text-[#3E7259] font-bold">
+                <div className="pt-3 font-mono text-xs text-[#5EA57E] font-bold">
                   {testResultStatus}
                 </div>
               )}

@@ -16,7 +16,7 @@ export const Footer: React.FC = () => {
             <p className="text-xs text-[#868A94] max-w-md leading-relaxed font-sans">
               Organized by the Software Development Club at VIT Bhopal University. Dedicated to forensic code auditing, vulnerability containment, and systems reliability.
             </p>
-            <div className="text-[11px] text-[#6A6E78]">
+            <div className="text-[11px] text-[#868A94]">
               SCHEDULED EVENT DATE: 06 DECEMBER 2026 • ASIA/KOLKATA [IST]
             </div>
           </div>
@@ -48,7 +48,7 @@ export const Footer: React.FC = () => {
             <div className="text-[11px] uppercase tracking-wider text-[#ECEEF2] font-bold">
               Docket Verification
             </div>
-            <div className="text-[11px] text-[#6A6E78] space-y-1">
+            <div className="text-[11px] text-[#868A94] space-y-1">
               <div>HASH-CHAIN: SHA-256 LEDGER</div>
               <div>AUTH MODEL: DUAL-KEY SESSION</div>
               <div>IDEMPOTENCY: STRICT REPLAY ENFORCED</div>
@@ -56,7 +56,7 @@ export const Footer: React.FC = () => {
           </div>
         </div>
 
-        <div className="pt-6 flex flex-wrap items-center justify-between gap-4 text-[11px] text-[#6A6E78]">
+        <div className="pt-6 flex flex-wrap items-center justify-between gap-4 text-[11px] text-[#868A94]">
           <span>© 2026 Software Development Club, VIT Bhopal University. All rights reserved.</span>
           <span className="tracking-widest uppercase">CLASSIFIED FOR COMPETITION USE ONLY</span>
         </div>

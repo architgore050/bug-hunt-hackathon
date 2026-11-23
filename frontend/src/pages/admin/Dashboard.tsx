@@ -153,6 +153,7 @@ export const AdminDashboard: React.FC = () => {
           <div className="flex items-center gap-2 font-mono text-xs">
             <span className="text-[#868A94]">EVENT:</span>
             <select
+              aria-label="Select event"
               value={selectedEventId}
               onChange={(e) => {
                 setSelectedEventId(e.target.value);
@@ -190,19 +191,19 @@ export const AdminDashboard: React.FC = () => {
               </div>
               <div className="border border-[#2B2E35] bg-[#111215] p-3">
                 <span className="text-[#868A94] block text-[10px] uppercase">Active Teams</span>
-                <span className="text-xl font-bold text-[#3E7259]">
+                <span className="text-xl font-bold text-[#5EA57E]">
                   {String(liveData?.teams_count ?? '—')}
                 </span>
               </div>
               <div className="border border-[#2B2E35] bg-[#111215] p-3">
                 <span className="text-[#868A94] block text-[10px] uppercase">DB App State</span>
-                <span className="text-xl font-bold text-[#3E7259]">
+                <span className="text-xl font-bold text-[#5EA57E]">
                   {String(liveData?.db_app ?? 'UP')}
                 </span>
               </div>
               <div className="border border-[#2B2E35] bg-[#111215] p-3">
                 <span className="text-[#868A94] block text-[10px] uppercase">DB GT Isolation</span>
-                <span className="text-xl font-bold text-[#3E7259]">
+                <span className="text-xl font-bold text-[#5EA57E]">
                   {String(liveData?.db_gt ?? 'ISOLATED')}
                 </span>
               </div>
@@ -240,7 +241,7 @@ export const AdminDashboard: React.FC = () => {
                   </div>
                   <span
                     className={`font-bold ${
-                      item.state === 'checked' ? 'text-[#3E7259]' : 'text-[#C04A36]'
+                      item.state === 'checked' ? 'text-[#2A5240]' : 'text-[#8F2F22]'
                     }`}
                   >
                     {item.state.toUpperCase()}
@@ -260,7 +261,7 @@ export const AdminDashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={handleVerifyAudit}
-                className="px-4 py-2 bg-[#C04A36] text-[#ECEEF2] font-bold uppercase hover:bg-[#A83827] transition-colors"
+                className="px-4 py-2 bg-[#C04A36] text-white font-bold uppercase hover:bg-[#A83827] transition-colors"
               >
                 Execute Cryptographic Hash-Chain Audit
               </button>
@@ -269,8 +270,8 @@ export const AdminDashboard: React.FC = () => {
                 <div
                   className={`border p-3 space-y-1 ${
                     auditVerify.intact
-                      ? 'border-[#3E7259] bg-[#3E7259]/10 text-[#3E7259]'
-                      : 'border-[#C04A36] bg-[#C04A36]/10 text-[#C04A36]'
+                      ? 'border-[#2A5240] bg-[#3E7259]/10 text-[#2A5240]'
+                      : 'border-[#8F2F22] bg-[#C04A36]/10 text-[#8F2F22]'
                   }`}
                 >
                   <div className="font-bold">
@@ -295,8 +296,9 @@ export const AdminDashboard: React.FC = () => {
           >
             <form onSubmit={handleControlStage} className="space-y-3 font-mono text-xs">
               <div>
-                <label className="block text-[#868A94] uppercase mb-1">Action</label>
+                <label htmlFor="stage-action" className="block text-[#868A94] uppercase mb-1">Action</label>
                 <select
+                  id="stage-action"
                   value={stageAction}
                   onChange={(e) => setStageAction(e.target.value)}
                   className="w-full bg-[#111215] border border-[#2B2E35] px-2.5 py-1.5 text-xs text-[#ECEEF2] focus:outline-none"
@@ -351,10 +353,10 @@ export const AdminDashboard: React.FC = () => {
                       className={`py-1 text-center uppercase text-[10px] font-bold border ${
                         annSev === s
                           ? s === 'critical'
-                            ? 'border-[#C04A36] bg-[#C04A36] text-[#ECEEF2]'
+                            ? 'border-[#C04A36] bg-[#C04A36] text-white'
                             : s === 'warning'
                             ? 'border-[#CF8B38] bg-[#CF8B38] text-[#ECEEF2]'
-                            : 'border-[#4B7B9A] bg-[#4B7B9A] text-[#ECEEF2]'
+                            : 'border-[#4B7B9A] bg-[#4B7B9A] text-white'
                           : 'border-[#2B2E35] text-[#868A94]'
                       }`}
                     >
@@ -380,7 +382,7 @@ export const AdminDashboard: React.FC = () => {
               <button
                 type="submit"
                 disabled={postingAnn || !annBody.trim()}
-                className="w-full py-2 bg-[#C04A36] text-[#ECEEF2] font-bold uppercase hover:bg-[#A83827] disabled:opacity-40 transition-colors"
+                className="w-full py-2 bg-[#C04A36] text-white font-bold uppercase hover:bg-[#A83827] disabled:opacity-40 transition-colors"
               >
                 {postingAnn ? 'Broadcasting...' : 'Broadcast Telegram'}
               </button>
@@ -407,7 +409,7 @@ export const AdminDashboard: React.FC = () => {
                 onClick={() => handleExport('submissions')}
                 className="p-2.5 border border-[#2B2E35] hover:border-[#ECEEF2] text-center"
               >
-                <span className="text-[#3E7259] font-bold block">SUBMISSIONS</span>
+                <span className="text-[#5EA57E] font-bold block">SUBMISSIONS</span>
                 <span className="text-[10px] text-[#868A94]">CSV</span>
               </button>
               <button
@@ -415,7 +417,7 @@ export const AdminDashboard: React.FC = () => {
                 onClick={() => handleExport('ledger')}
                 className="p-2.5 border border-[#2B2E35] hover:border-[#ECEEF2] text-center"
               >
-                <span className="text-[#4B7B9A] font-bold block">LEDGER</span>
+                <span className="text-[#7BA6C4] font-bold block">LEDGER</span>
                 <span className="text-[10px] text-[#868A94]">CSV</span>
               </button>
             </div>

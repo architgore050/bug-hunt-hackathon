@@ -279,11 +279,11 @@ export const Workspace: React.FC = () => {
             <span
               className={
                 draftStatus === 'saved'
-                  ? 'text-[#3E7259] font-bold'
+                  ? 'text-[#5EA57E] font-bold'
                   : draftStatus === 'saving'
                   ? 'text-[#CF8B38] font-bold'
                   : draftStatus === 'conflict'
-                  ? 'text-[#C04A36] font-bold'
+                  ? 'text-[#E2715A] font-bold'
                   : 'text-[#868A94]'
               }
             >
@@ -291,7 +291,7 @@ export const Workspace: React.FC = () => {
             </span>
           </div>
           {cooldownRemaining !== null && (
-            <div className="px-3 py-1 border border-[#C04A36] bg-[#C04A36]/10 text-[#C04A36] font-bold">
+            <div className="px-3 py-1 border border-[#C04A36] bg-[#C04A36]/10 text-[#E2715A] font-bold">
               COOLDOWN: {cooldownRemaining}s
             </div>
           )}
@@ -303,7 +303,7 @@ export const Workspace: React.FC = () => {
       {!rulesAccepted && (
         <div className="border border-[#C04A36] bg-[#C04A36]/10 p-4 text-xs font-mono text-[#ECEEF2] flex items-center justify-between">
           <span>You must accept official competition rules before challenge files become accessible.</span>
-          <a href="/app" className="underline font-bold text-[#C04A36]">
+          <a href="/app" className="underline font-bold text-[#E2715A]">
             Go to Lobby & Ratify Rules &rarr;
           </a>
         </div>
@@ -388,7 +388,7 @@ export const Workspace: React.FC = () => {
                     }`}
                   >
                     <span className="truncate">{file.path}</span>
-                    <span className="text-[10px] text-[#6A6E78]">{file.line_count}L</span>
+                    <span className="text-[10px] text-[#868A94]">{file.line_count}L</span>
                   </button>
                 );
               })}
@@ -427,7 +427,7 @@ export const Workspace: React.FC = () => {
                               : 'hover:bg-[#1E2026] text-[#C4C8D2]'
                           }`}
                         >
-                          <td className="w-12 px-3 py-0.5 text-right text-[11px] text-[#6A6E78] select-none border-r border-[#2B2E35]/60 bg-[#111215]">
+                          <td className="w-12 px-3 py-0.5 text-right text-[11px] text-[#868A94] select-none border-r border-[#2B2E35]/60 bg-[#111215]">
                             {lineNum}
                           </td>
                           <td className="px-4 py-0.5 whitespace-pre font-mono text-xs">
@@ -481,13 +481,13 @@ export const Workspace: React.FC = () => {
             {receipt && (
               <div className="border border-[#3E7259] bg-[#3E7259]/10 p-3 space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-[#3E7259]">SUBMISSION RECEIVED</span>
+                  <span className="font-bold text-[#5EA57E]">SUBMISSION RECEIVED</span>
                   {receipt.replay && (
                     <span className="text-[10px] text-[#CF8B38] font-bold">[REPLAY ACK]</span>
                   )}
                 </div>
                 <div className="text-[11px] text-[#ECEEF2]">
-                  RECEIPT: <code className="font-bold text-[#3E7259]">{receipt.receipt_code}</code>
+                  RECEIPT: <code className="font-bold text-[#5EA57E]">{receipt.receipt_code}</code>
                 </div>
               </div>
             )}
@@ -532,7 +532,7 @@ export const Workspace: React.FC = () => {
                         onClick={() => setSeverity(sev)}
                         className={`py-1 text-center uppercase text-[10px] font-bold border ${
                           severity === sev
-                            ? 'border-[#C04A36] bg-[#C04A36] text-[#ECEEF2]'
+                            ? 'border-[#C04A36] bg-[#C04A36] text-white'
                             : 'border-[#2B2E35] text-[#868A94] hover:bg-[#20232A]'
                         }`}
                       >
@@ -605,7 +605,7 @@ export const Workspace: React.FC = () => {
                 <button
                   type="submit"
                   disabled={submitting || cooldownRemaining !== null}
-                  className="w-full py-2.5 bg-[#C04A36] text-[#ECEEF2] font-bold uppercase tracking-wider hover:bg-[#A83827] disabled:opacity-40 transition-colors"
+                  className="w-full py-2.5 bg-[#C04A36] text-white font-bold uppercase tracking-wider hover:bg-[#A83827] disabled:opacity-40 transition-colors"
                 >
                   {submitting
                     ? 'Transmitting Finding...'

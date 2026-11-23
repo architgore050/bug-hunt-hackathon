@@ -145,7 +145,7 @@ export const RequireRole: React.FC<{
     return (
       <div className="min-h-screen bg-[#111215] text-[#ECEEF2] flex items-center justify-center p-6">
         <div className="max-w-md w-full border border-[#C04A36] bg-[#181A1F] p-8 space-y-4">
-          <div className="inline-block px-2.5 py-0.5 text-xs font-mono bg-[#C04A36]/20 text-[#C04A36] border border-[#C04A36]">
+          <div className="inline-block px-2.5 py-0.5 text-xs font-mono bg-[#C04A36]/20 text-[#E2715A] border border-[#C04A36]">
             EX-403: ACCESS DENIED
           </div>
           <h1 className="text-2xl font-serif font-bold text-[#ECEEF2]">Authorization Deficit</h1>
