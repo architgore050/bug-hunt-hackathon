@@ -20,7 +20,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # fetch-depth: 0 required: gitleaks-action v3 scans `oldest-PR-commit^..newest-PR-commit`
+      # and the individual PR commits must exist in the checkout.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (actions/checkout)
+        with:
+          fetch-depth: 0
       - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0 (gitleaks/gitleaks-action)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -54,6 +58,8 @@ jobs:
     name: Backend tests (pytest + coverage)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      CI_DB: bughunt_test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (actions/checkout)
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0 (actions/setup-python)
@@ -63,10 +69,36 @@ jobs:
           cache-dependency-path: backend/requirements*.txt
       - name: Install backend dependencies
         run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
-      - name: "Database, roles and schemas (scripts/dev_db.sh: trusts the service, creates test DB)"
-        run: bash scripts/dev_db.sh
-        env:
-          DB: bughunt_test
+      # Create database, roles and schemas on the CI service. Mirrors the
+      # dev_db.sh grant block, but runs directly against the service: the CI
+      # service is already up and trusts pgadmin.
+      - name: Create database, roles and schemas
+        run: |
+          psql -h 127.0.0.1 -p 5433 -U pgadmin -d postgres -c "CREATE DATABASE $CI_DB"
+          psql -h 127.0.0.1 -p 5433 -U pgadmin -d $CI_DB -f - <<'SQL'
+          CREATE SCHEMA app; CREATE SCHEMA gt; CREATE SCHEMA audit;
+          CREATE ROLE app_api LOGIN PASSWORD 'app_api_dev';
+          CREATE ROLE gt_admin LOGIN PASSWORD 'gt_admin_dev';
+          CREATE ROLE scheduler LOGIN PASSWORD 'scheduler_dev';
+          GRANT USAGE, CREATE ON SCHEMA app TO app_api, gt_admin, scheduler;
+          ALTER ROLE app_api SET search_path = app;
+          ALTER ROLE gt_admin SET search_path = app, gt;
+          ALTER ROLE scheduler SET search_path = app;
+          GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA app TO app_api, gt_admin, scheduler;
+          GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA app TO app_api, gt_admin, scheduler;
+          GRANT USAGE ON SCHEMA gt TO gt_admin;
+          GRANT CREATE ON SCHEMA gt TO gt_admin;
+          GRANT SELECT ON ALL TABLES IN SCHEMA gt TO gt_admin;
+          GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA gt TO gt_admin;
+          GRANT USAGE ON SCHEMA audit TO app_api, gt_admin;
+          GRANT INSERT, SELECT ON ALL TABLES IN SCHEMA audit TO app_api, gt_admin;
+          GRANT USAGE, SELECT ON SEQUENCES IN SCHEMA audit TO app_api, gt_admin;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT ALL ON TABLES TO app_api, gt_admin, scheduler;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT ALL ON SEQUENCES TO app_api, gt_admin, scheduler;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA gt GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO gt_admin;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA audit GRANT INSERT, SELECT ON TABLES TO app_api, gt_admin;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA audit GRANT USAGE, SELECT ON SEQUENCES TO app_api, gt_admin;
+          SQL
       - name: Apply migrations
         run: bash scripts/migrate.sh
         env:
@@ -97,6 +129,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
+      CI_DB: bughunt
       DATABASE_URL_APP: postgresql+psycopg://app_api:app_api_dev@127.0.0.1:5433/bughunt
       DATABASE_URL_GT: postgresql+psycopg://gt_admin:gt_admin_dev@127.0.0.1:5433/bughunt
     steps:
@@ -108,10 +141,33 @@ jobs:
           cache-dependency-path: backend/requirements*.txt
       - name: Install backend dependencies
         run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
-      - name: "Database, roles and schemas (scripts/dev_db.sh: trusts the service, creates test DB)"
-        run: bash scripts/dev_db.sh
-        env:
-          DB: bughunt
+      - name: Create database, roles and schemas
+        run: |
+          psql -h 127.0.0.1 -p 5433 -U pgadmin -d postgres -c "CREATE DATABASE $CI_DB"
+          psql -h 127.0.0.1 -p 5433 -U pgadmin -d $CI_DB -f - <<'SQL'
+          CREATE SCHEMA app; CREATE SCHEMA gt; CREATE SCHEMA audit;
+          CREATE ROLE app_api LOGIN PASSWORD 'app_api_dev';
+          CREATE ROLE gt_admin LOGIN PASSWORD 'gt_admin_dev';
+          CREATE ROLE scheduler LOGIN PASSWORD 'scheduler_dev';
+          GRANT USAGE, CREATE ON SCHEMA app TO app_api, gt_admin, scheduler;
+          ALTER ROLE app_api SET search_path = app;
+          ALTER ROLE gt_admin SET search_path = app, gt;
+          ALTER ROLE scheduler SET search_path = app;
+          GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA app TO app_api, gt_admin, scheduler;
+          GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA app TO app_api, gt_admin, scheduler;
+          GRANT USAGE ON SCHEMA gt TO gt_admin;
+          GRANT CREATE ON SCHEMA gt TO gt_admin;
+          GRANT SELECT ON ALL TABLES IN SCHEMA gt TO gt_admin;
+          GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA gt TO gt_admin;
+          GRANT USAGE ON SCHEMA audit TO app_api, gt_admin;
+          GRANT INSERT, SELECT ON ALL TABLES IN SCHEMA audit TO app_api, gt_admin;
+          GRANT USAGE, SELECT ON SEQUENCES IN SCHEMA audit TO app_api, gt_admin;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT ALL ON TABLES TO app_api, gt_admin, scheduler;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT ALL ON SEQUENCES TO app_api, gt_admin, scheduler;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA gt GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO gt_admin;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA audit GRANT INSERT, SELECT ON TABLES TO app_api, gt_admin;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA audit GRANT USAGE, SELECT ON SEQUENCES TO app_api, gt_admin;
+          SQL
       - name: Apply migrations
         run: bash scripts/migrate.sh
         env:
