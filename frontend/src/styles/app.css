@@ -1,0 +1,66 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+body {
+  margin: 0;
+  background-color: var(--instr-chassis);
+  color: var(--instr-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.font-sans {
+  font-family: var(--font-sans);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Precision Instrument Rack Panel */
+.instr-rack {
+  background-color: var(--instr-bay);
+  border: 1px solid var(--instr-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.instr-bezel {
+  border: 1px solid var(--instr-border);
+  background-color: var(--instr-panel-recessed);
+}
+
+/* Hardware Annunciator Bar (matte phosphor indicator, zero glow blur) */
+.annunciator-active-amber {
+  background-color: var(--instr-amber);
+  color: #0E1013;
+  font-weight: 700;
+}
+
+.annunciator-active-sage {
+  background-color: var(--instr-sage);
+  color: #FFFFFF;
+  font-weight: 700;
+}
+
+.annunciator-active-crimson {
+  background-color: var(--instr-crimson);
+  color: #FFFFFF;
+  font-weight: 700;
+}
+
+/* Oscilloscope Line Grid */
+.oscilloscope-bg {
+  background-image: 
+    linear-gradient(to right, rgba(45, 51, 61, 0.4) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(45, 51, 61, 0.4) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

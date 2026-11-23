@@ -1,0 +1,24 @@
+@import "@fontsource/archivo/latin.css";
+@import "@fontsource/ibm-plex-mono/latin.css";
+
+:root {
+  --font-sans: 'Archivo', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+
+  /* Concept 02: The Recovery Instrument (Avionics / Dieter Rams Lab Apparatus) */
+  --instr-chassis: #0E1013;
+  --instr-bay: #181B20;
+  --instr-panel: #20242B;
+  --instr-panel-recessed: #14161A;
+  --instr-border: #2D333D;
+  --instr-border-highlight: #3D4654;
+
+  --instr-amber: #E5A83B;
+  --instr-sage: #437A55;
+  --instr-crimson: #BD3A3A;
+  --instr-cyan: #467499;
+
+  --instr-text: #EAECE8;
+  --instr-text-secondary: #B4B9C4;
+  --instr-muted: #7F8896;
+}
