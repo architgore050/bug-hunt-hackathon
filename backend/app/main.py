@@ -101,6 +101,12 @@ def create_app() -> FastAPI:
         status = 200 if probe["database_app"] == "up" else 503
         return JSONResponse(status_code=status, content={"status": "ok" if status == 200 else "degraded", **probe})
 
+    @app.get("/")
+    def root() -> dict:
+        # Root marker so the API URL is not a 404. The user-facing app is the
+        # Vite SPA on the frontend port (default 5173).
+        return {"app": app.title, "status": "ok"}
+
     return app
 
 
