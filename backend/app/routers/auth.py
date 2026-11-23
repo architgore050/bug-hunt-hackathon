@@ -7,21 +7,22 @@
 - POST /auth/password/reset-request + /reset.
 - GET /me, /me/sessions, POST /me/acceptances, POST /auth/step-up.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 
+from .. import security
 from ..audit import audit_write
 from ..config import settings
 from ..db import app_session, uuid7
-from ..deps import get_principal, Principal, rate_limit, check_csrf
+from ..deps import Principal, check_csrf, get_principal, rate_limit
 from ..errors import ApiError
-from .. import security
 
 router = APIRouter(tags=["auth"])
 
@@ -56,11 +57,21 @@ def login(body: LoginIn, request: Request, response: Response):
     rate_limit(f"login:{ip}", limit=20, window_s=60)
     rate_limit(f"login-u:{body.email.lower()}", limit=10, window_s=60)
     with app_session() as s:
-        user = s.execute(
-            text("SELECT id, email, name, role, status, password_hash, token_version FROM app.users WHERE lower(email) = :e"),
-            {"e": body.email.lower()},
-        ).mappings().first()
-        if user is None or not user["password_hash"] or not security.verify_password(body.password, user["password_hash"]):
+        user = (
+            s.execute(
+                text(
+                    "SELECT id, email, name, role, status, password_hash, token_version FROM app.users WHERE lower(email) = :e"
+                ),
+                {"e": body.email.lower()},
+            )
+            .mappings()
+            .first()
+        )
+        if (
+            user is None
+            or not user["password_hash"]
+            or not security.verify_password(body.password, user["password_hash"])
+        ):
             # generic failure: no enumeration (AUTH-1)
             raise ApiError("AUTH_INVALID_CREDENTIALS")
         if user["status"] == "pending":
@@ -88,16 +99,32 @@ def login(body: LoginIn, request: Request, response: Response):
             ),
             {"u": str(user["id"])},
         )
-        live = s.execute(
-            text("SELECT id FROM app.sessions WHERE user_id = CAST(:u AS uuid) AND revoked_at IS NULL ORDER BY created_at ASC"),
-            {"u": str(user["id"])},
-        ).scalars().all()
+        live = (
+            s.execute(
+                text(
+                    "SELECT id FROM app.sessions WHERE user_id = CAST(:u AS uuid) AND revoked_at IS NULL ORDER BY created_at ASC"
+                ),
+                {"u": str(user["id"])},
+            )
+            .scalars()
+            .all()
+        )
         while len(live) >= settings.max_sessions_per_user:
             victim = str(live.pop(0))
             s.execute(text("UPDATE app.sessions SET revoked_at = now() WHERE id = CAST(:sid AS uuid)"), {"sid": victim})
-            s.execute(text("UPDATE app.refresh_tokens SET status='revoked' WHERE session_id = CAST(:sid AS uuid)"), {"sid": victim})
-            audit_write(s, actor_id=str(user["id"]), actor_role=user["role"], action="auth.session_evicted",
-                        entity_type="session", entity_id=victim, request_id=request.state.request_id)
+            s.execute(
+                text("UPDATE app.refresh_tokens SET status='revoked' WHERE session_id = CAST(:sid AS uuid)"),
+                {"sid": victim},
+            )
+            audit_write(
+                s,
+                actor_id=str(user["id"]),
+                actor_role=user["role"],
+                action="auth.session_evicted",
+                entity_type="session",
+                entity_id=victim,
+                request_id=request.state.request_id,
+            )
 
         session_id = str(uuid7())
         s.execute(
@@ -105,7 +132,12 @@ def login(body: LoginIn, request: Request, response: Response):
                 "INSERT INTO app.sessions (id, user_id, ip_hash, user_agent) VALUES "
                 "(CAST(:id AS uuid), CAST(:u AS uuid), :ip, :ua)"
             ),
-            {"id": session_id, "u": str(user["id"]), "ip": security.ip_hash(ip), "ua": request.headers.get("user-agent", "")[:300]},
+            {
+                "id": session_id,
+                "u": str(user["id"]),
+                "ip": security.ip_hash(ip),
+                "ua": request.headers.get("user-agent", "")[:300],
+            },
         )
         token, exp = security.create_access_token(
             user_id=str(user["id"]), session_id=session_id, role=user["role"], token_version=int(user["token_version"])
@@ -122,17 +154,30 @@ def login(body: LoginIn, request: Request, response: Response):
                 "sid": session_id,
                 "u": str(user["id"]),
                 "th": security.token_hash(raw_refresh),
-                "exp": datetime.now(timezone.utc) + timedelta(seconds=settings.refresh_token_ttl_s),
+                "exp": datetime.now(UTC) + timedelta(seconds=settings.refresh_token_ttl_s),
             },
         )
-        audit_write(s, actor_id=str(user["id"]), actor_role=user["role"], action="auth.login",
-                    entity_type="user", entity_id=str(user["id"]), request_id=request.state.request_id)
+        audit_write(
+            s,
+            actor_id=str(user["id"]),
+            actor_role=user["role"],
+            action="auth.login",
+            entity_type="user",
+            entity_id=str(user["id"]),
+            request_id=request.state.request_id,
+        )
     _set_refresh_cookie(response, raw_refresh)
     return {
         "access_token": token,
         "expires_at": exp.isoformat(),
-        "server_time": datetime.now(timezone.utc).isoformat(),
-        "user": {"id": str(user["id"]), "email": user["email"], "name": user["name"], "role": user["role"], "status": user["status"]},
+        "server_time": datetime.now(UTC).isoformat(),
+        "user": {
+            "id": str(user["id"]),
+            "email": user["email"],
+            "name": user["name"],
+            "role": user["role"],
+            "status": user["status"],
+        },
     }
 
 
@@ -144,17 +189,21 @@ def refresh(request: Request, response: Response):
         raise ApiError("AUTH_SESSION_REVOKED")
     th = security.token_hash(raw)
     with app_session() as s:
-        row = s.execute(
-            text(
-                "SELECT rt.id, rt.session_id, rt.user_id, rt.status, rt.expires_at, rt.successor_encrypted, "
-                "rt.rotated_at, u.role, u.status, u.token_version "
-                "FROM app.refresh_tokens rt JOIN app.users u ON u.id = rt.user_id WHERE rt.token_hash = :th"
-            ),
-            {"th": th},
-        ).mappings().first()
+        row = (
+            s.execute(
+                text(
+                    "SELECT rt.id, rt.session_id, rt.user_id, rt.status, rt.expires_at, rt.successor_encrypted, "
+                    "rt.rotated_at, u.role, u.status, u.token_version "
+                    "FROM app.refresh_tokens rt JOIN app.users u ON u.id = rt.user_id WHERE rt.token_hash = :th"
+                ),
+                {"th": th},
+            )
+            .mappings()
+            .first()
+        )
         if row is None:
             raise ApiError("AUTH_SESSION_REVOKED")
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if row["status"] == "revoked" or row["expires_at"] < now:
             raise ApiError("AUTH_SESSION_REVOKED")
         if row["status"] == "rotated":
@@ -165,12 +214,19 @@ def refresh(request: Request, response: Response):
                 successor = security.decrypt_successor(row["successor_encrypted"])
                 if successor:
                     with app_session() as s2:
-                        urow = s2.execute(
-                            text("SELECT id, role, token_version FROM app.users WHERE id = CAST(:u AS uuid)"),
-                            {"u": str(row["user_id"])},
-                        ).mappings().first()
+                        urow = (
+                            s2.execute(
+                                text("SELECT id, role, token_version FROM app.users WHERE id = CAST(:u AS uuid)"),
+                                {"u": str(row["user_id"])},
+                            )
+                            .mappings()
+                            .first()
+                        )
                     token, exp = security.create_access_token(
-                        user_id=str(row["user_id"]), session_id=str(row["session_id"]), role=urow["role"], token_version=int(urow["token_version"])
+                        user_id=str(row["user_id"]),
+                        session_id=str(row["session_id"]),
+                        role=urow["role"],
+                        token_version=int(urow["token_version"]),
                     )
                     _set_refresh_cookie(response, successor)
                     return {"access_token": token, "expires_at": exp.isoformat(), "server_time": now.isoformat()}
@@ -186,10 +242,14 @@ def refresh(request: Request, response: Response):
             raise ApiError("AUTH_SESSION_REVOKED")
 
         # normal rotation
-        urow = s.execute(
-            text("SELECT id, role, status, token_version FROM app.users WHERE id = CAST(:u AS uuid)"),
-            {"u": str(row["user_id"])},
-        ).mappings().first()
+        urow = (
+            s.execute(
+                text("SELECT id, role, status, token_version FROM app.users WHERE id = CAST(:u AS uuid)"),
+                {"u": str(row["user_id"])},
+            )
+            .mappings()
+            .first()
+        )
         if urow is None or urow["status"] != "active":
             raise ApiError("AUTH_SESSION_REVOKED")
         new_raw = security.new_refresh_token()
@@ -214,9 +274,15 @@ def refresh(request: Request, response: Response):
             ),
             {"now": now, "enc": security.encrypt_successor(new_raw), "id": str(row["id"])},
         )
-        s.execute(text("UPDATE app.sessions SET last_seen_at = :now WHERE id = CAST(:sid AS uuid)"), {"now": now, "sid": str(row["session_id"])})
+        s.execute(
+            text("UPDATE app.sessions SET last_seen_at = :now WHERE id = CAST(:sid AS uuid)"),
+            {"now": now, "sid": str(row["session_id"])},
+        )
         token, exp = security.create_access_token(
-            user_id=str(row["user_id"]), session_id=str(row["session_id"]), role=urow["role"], token_version=int(urow["token_version"])
+            user_id=str(row["user_id"]),
+            session_id=str(row["session_id"]),
+            role=urow["role"],
+            token_version=int(urow["token_version"]),
         )
     _set_refresh_cookie(response, new_raw)
     return {"access_token": token, "expires_at": exp.isoformat(), "server_time": now.isoformat()}
@@ -225,9 +291,22 @@ def refresh(request: Request, response: Response):
 @router.post("/auth/logout")
 def logout(request: Request, p: Principal = Depends(get_principal), response: Response = None):
     with app_session() as s:
-        s.execute(text("UPDATE app.refresh_tokens SET status='revoked' WHERE session_id = CAST(:sid AS uuid)"), {"sid": p.session_id})
-        s.execute(text("UPDATE app.sessions SET revoked_at = now() WHERE id = CAST(:sid AS uuid)"), {"sid": p.session_id})
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="auth.logout", entity_type="user", entity_id=p.id, request_id=request.state.request_id)
+        s.execute(
+            text("UPDATE app.refresh_tokens SET status='revoked' WHERE session_id = CAST(:sid AS uuid)"),
+            {"sid": p.session_id},
+        )
+        s.execute(
+            text("UPDATE app.sessions SET revoked_at = now() WHERE id = CAST(:sid AS uuid)"), {"sid": p.session_id}
+        )
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="auth.logout",
+            entity_type="user",
+            entity_id=p.id,
+            request_id=request.state.request_id,
+        )
     resp = JSONResponse({"ok": True})
     _clear_refresh_cookie(resp)
     return resp
@@ -247,12 +326,20 @@ def activate(body: ActivateIn, request: Request):
         raise ApiError("VALIDATION_ERROR", details={"password": f"Minimum {settings.password_min_length} characters."})
     th = security.token_hash(body.invite_token)
     with app_session() as s:
-        inv = s.execute(
-            text("SELECT id, email, team_id, role, used_at, expires_at, event_id FROM app.invites WHERE token_hash = :th"),
-            {"th": th},
-        ).mappings().first()
-        if inv is None or inv["used_at"] is not None or inv["expires_at"] < datetime.now(timezone.utc):
-            raise ApiError("NOT_FOUND", message="This invite is invalid or expired. Request a new invite from the organizers.")
+        inv = (
+            s.execute(
+                text(
+                    "SELECT id, email, team_id, role, used_at, expires_at, event_id FROM app.invites WHERE token_hash = :th"
+                ),
+                {"th": th},
+            )
+            .mappings()
+            .first()
+        )
+        if inv is None or inv["used_at"] is not None or inv["expires_at"] < datetime.now(UTC):
+            raise ApiError(
+                "NOT_FOUND", message="This invite is invalid or expired. Request a new invite from the organizers."
+            )
         user_id = str(uuid7())
         pw_hash = security.hash_password(body.password)
         s.execute(
@@ -262,9 +349,22 @@ def activate(body: ActivateIn, request: Request):
                 "FROM app.events e WHERE e.id = CAST(:ev AS uuid) "
                 "ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, status = 'active' RETURNING id"
             ),
-            {"id": user_id, "email": inv["email"], "role": inv["role"], "pw": pw_hash, "reg": str(uuid7())[:8], "ev": str(inv["event_id"])},
+            {
+                "id": user_id,
+                "email": inv["email"],
+                "role": inv["role"],
+                "pw": pw_hash,
+                "reg": str(uuid7())[:8],
+                "ev": str(inv["event_id"]),
+            },
         )
-        urow = s.execute(text("SELECT id, tenant_id, role, token_version FROM app.users WHERE email = :e"), {"e": inv["email"]}).mappings().first()
+        urow = (
+            s.execute(
+                text("SELECT id, tenant_id, role, token_version FROM app.users WHERE email = :e"), {"e": inv["email"]}
+            )
+            .mappings()
+            .first()
+        )
         s.execute(text("UPDATE app.invites SET used_at = now() WHERE id = CAST(:i AS uuid)"), {"i": str(inv["id"])})
         if inv["team_id"]:
             s.execute(
@@ -282,8 +382,15 @@ def activate(body: ActivateIn, request: Request):
             ),
             {"id": str(uuid7()), "u": str(urow["id"]), "ev": str(inv["event_id"])},
         )
-        audit_write(s, actor_id=str(urow["id"]), actor_role=inv["role"], action="auth.activated",
-                    entity_type="user", entity_id=str(urow["id"]), request_id=request.state.request_id)
+        audit_write(
+            s,
+            actor_id=str(urow["id"]),
+            actor_role=inv["role"],
+            action="auth.activated",
+            entity_type="user",
+            entity_id=str(urow["id"]),
+            request_id=request.state.request_id,
+        )
     return {"ok": True, "email": inv["email"]}
 
 
@@ -294,13 +401,27 @@ class StepUpIn(BaseModel):
 @router.post("/auth/step-up")
 def step_up(body: StepUpIn, request: Request, p: Principal = Depends(get_principal)):
     with app_session() as s:
-        urow = s.execute(text("SELECT password_hash FROM app.users WHERE id = CAST(:u AS uuid)"), {"u": p.id}).mappings().first()
+        urow = (
+            s.execute(text("SELECT password_hash FROM app.users WHERE id = CAST(:u AS uuid)"), {"u": p.id})
+            .mappings()
+            .first()
+        )
         if not urow or not security.verify_password(body.password, urow["password_hash"]):
             rate_limit(f"stepup:{p.id}", limit=5, window_s=300)
             raise ApiError("AUTH_INVALID_CREDENTIALS")
-        s.execute(text("UPDATE app.sessions SET step_up_at = now() WHERE id = CAST(:sid AS uuid)"), {"sid": p.session_id})
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="auth.step_up", entity_type="user", entity_id=p.id, request_id=request.state.request_id)
-    return {"ok": True, "valid_until": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()}
+        s.execute(
+            text("UPDATE app.sessions SET step_up_at = now() WHERE id = CAST(:sid AS uuid)"), {"sid": p.session_id}
+        )
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="auth.step_up",
+            entity_type="user",
+            entity_id=p.id,
+            request_id=request.state.request_id,
+        )
+    return {"ok": True, "valid_until": (datetime.now(UTC) + timedelta(minutes=5)).isoformat()}
 
 
 class ResetRequestIn(BaseModel):
@@ -319,7 +440,12 @@ def reset_request(body: ResetRequestIn, request: Request):
                     "INSERT INTO app.password_resets (id, user_id, token_hash, expires_at) "
                     "VALUES (CAST(:id AS uuid), CAST(:u AS uuid), :th, :exp)"
                 ),
-                {"id": str(uuid7()), "u": str(urow[0]), "th": security.token_hash(raw), "exp": datetime.now(timezone.utc) + timedelta(minutes=30)},
+                {
+                    "id": str(uuid7()),
+                    "u": str(urow[0]),
+                    "th": security.token_hash(raw),
+                    "exp": datetime.now(UTC) + timedelta(minutes=30),
+                },
             )
             # v1: no email provider configured. The reset link is surfaced through the
             # organizer console and dev logs only. Documented in DEPLOYMENT_RUNBOOK.md.
@@ -337,11 +463,15 @@ class ResetIn(BaseModel):
 def reset(body: ResetIn, request: Request):
     th = security.token_hash(body.token)
     with app_session() as s:
-        row = s.execute(
-            text("SELECT id, user_id, used_at, expires_at FROM app.password_resets WHERE token_hash = :th"),
-            {"th": th},
-        ).mappings().first()
-        if row is None or row["used_at"] is not None or row["expires_at"] < datetime.now(timezone.utc):
+        row = (
+            s.execute(
+                text("SELECT id, user_id, used_at, expires_at FROM app.password_resets WHERE token_hash = :th"),
+                {"th": th},
+            )
+            .mappings()
+            .first()
+        )
+        if row is None or row["used_at"] is not None or row["expires_at"] < datetime.now(UTC):
             raise ApiError("NOT_FOUND", message="This reset link is invalid or expired.")
         s.execute(
             text(
@@ -349,28 +479,49 @@ def reset(body: ResetIn, request: Request):
             ),
             {"pw": security.hash_password(body.password), "u": str(row["user_id"])},
         )
-        s.execute(text("UPDATE app.password_resets SET used_at = now() WHERE id = CAST(:id AS uuid)"), {"id": str(row["id"])})
+        s.execute(
+            text("UPDATE app.password_resets SET used_at = now() WHERE id = CAST(:id AS uuid)"), {"id": str(row["id"])}
+        )
         # revoke all sessions + refresh families (AUTH-3)
-        s.execute(text("UPDATE app.sessions SET revoked_at = now() WHERE user_id = CAST(:u AS uuid) AND revoked_at IS NULL"), {"u": str(row["user_id"])})
-        s.execute(text("UPDATE app.refresh_tokens SET status='revoked' WHERE user_id = CAST(:u AS uuid)"), {"u": str(row["user_id"])})
-        audit_write(s, actor_id=str(row["user_id"]), actor_role="user", action="auth.password_reset",
-                    entity_type="user", entity_id=str(row["user_id"]), request_id=request.state.request_id)
+        s.execute(
+            text("UPDATE app.sessions SET revoked_at = now() WHERE user_id = CAST(:u AS uuid) AND revoked_at IS NULL"),
+            {"u": str(row["user_id"])},
+        )
+        s.execute(
+            text("UPDATE app.refresh_tokens SET status='revoked' WHERE user_id = CAST(:u AS uuid)"),
+            {"u": str(row["user_id"])},
+        )
+        audit_write(
+            s,
+            actor_id=str(row["user_id"]),
+            actor_role="user",
+            action="auth.password_reset",
+            entity_type="user",
+            entity_id=str(row["user_id"]),
+            request_id=request.state.request_id,
+        )
     return {"ok": True}
 
 
 @router.get("/me")
 def me(p: Principal = Depends(get_principal)):
     with app_session() as s:
-        team = s.execute(
-            text(
-                "SELECT t.id, t.name, t.join_code, e.id AS event_id, e.slug, e.status AS event_status "
-                "FROM app.team_members tm JOIN app.teams t ON t.id = tm.team_id "
-                "JOIN app.events e ON e.id = t.event_id WHERE tm.user_id = CAST(:u AS uuid) LIMIT 1"
-            ),
-            {"u": p.id},
-        ).mappings().first()
+        team = (
+            s.execute(
+                text(
+                    "SELECT t.id, t.name, t.join_code, e.id AS event_id, e.slug, e.status AS event_status "
+                    "FROM app.team_members tm JOIN app.teams t ON t.id = tm.team_id "
+                    "JOIN app.events e ON e.id = t.event_id WHERE tm.user_id = CAST(:u AS uuid) LIMIT 1"
+                ),
+                {"u": p.id},
+            )
+            .mappings()
+            .first()
+        )
         current_rules = s.execute(
-            text("SELECT rules_version FROM app.events WHERE status IN ('ready','live','closed','finalized') ORDER BY created_at DESC LIMIT 1")
+            text(
+                "SELECT rules_version FROM app.events WHERE status IN ('ready','live','closed','finalized') ORDER BY created_at DESC LIMIT 1"
+            )
         ).first()
         accepted = None
         if current_rules is not None:
@@ -379,7 +530,11 @@ def me(p: Principal = Depends(get_principal)):
                 {"u": p.id, "v": int(current_rules[0])},
             ).first()
     out = {
-        "id": p.id, "email": p.email, "name": p.name, "role": p.role, "status": p.status,
+        "id": p.id,
+        "email": p.email,
+        "name": p.name,
+        "role": p.role,
+        "status": p.status,
         "team": dict(team) if team else None,
         "rules_accepted": bool(accepted),
         "rules_version": int(current_rules[0]) if current_rules else None,
@@ -390,25 +545,41 @@ def me(p: Principal = Depends(get_principal)):
 @router.get("/me/sessions")
 def my_sessions(p: Principal = Depends(get_principal)):
     with app_session() as s:
-        rows = s.execute(
-            text(
-                "SELECT id, created_at, last_seen_at, user_agent, revoked_at FROM app.sessions "
-                "WHERE user_id = CAST(:u AS uuid) AND revoked_at IS NULL ORDER BY last_seen_at DESC"
-            ),
-            {"u": p.id},
-        ).mappings().all()
-    return [{"id": str(r["id"]), "created_at": r["created_at"].isoformat(), "last_seen_at": r["last_seen_at"].isoformat(),
-             "device": (r["user_agent"] or "")[:80]} for r in rows]
+        rows = (
+            s.execute(
+                text(
+                    "SELECT id, created_at, last_seen_at, user_agent, revoked_at FROM app.sessions "
+                    "WHERE user_id = CAST(:u AS uuid) AND revoked_at IS NULL ORDER BY last_seen_at DESC"
+                ),
+                {"u": p.id},
+            )
+            .mappings()
+            .all()
+        )
+    return [
+        {
+            "id": str(r["id"]),
+            "created_at": r["created_at"].isoformat(),
+            "last_seen_at": r["last_seen_at"].isoformat(),
+            "device": (r["user_agent"] or "")[:80],
+        }
+        for r in rows
+    ]
 
 
 @router.delete("/me/sessions/{session_id}")
 def revoke_session(session_id: str, p: Principal = Depends(get_principal)):
     with app_session() as s:
         s.execute(
-            text("UPDATE app.sessions SET revoked_at = now() WHERE id = CAST(:sid AS uuid) AND user_id = CAST(:u AS uuid)"),
+            text(
+                "UPDATE app.sessions SET revoked_at = now() WHERE id = CAST(:sid AS uuid) AND user_id = CAST(:u AS uuid)"
+            ),
             {"sid": session_id, "u": p.id},
         )
-        s.execute(text("UPDATE app.refresh_tokens SET status='revoked' WHERE session_id = CAST(:sid AS uuid)"), {"sid": session_id})
+        s.execute(
+            text("UPDATE app.refresh_tokens SET status='revoked' WHERE session_id = CAST(:sid AS uuid)"),
+            {"sid": session_id},
+        )
     return {"ok": True}
 
 
@@ -419,7 +590,11 @@ class AcceptIn(BaseModel):
 @router.post("/me/acceptances")
 def accept_rules(body: AcceptIn, request: Request, p: Principal = Depends(get_principal)):
     with app_session() as s:
-        ev = s.execute(text("SELECT id, rules_version FROM app.events WHERE status IN ('ready','live','closed','finalized') ORDER BY created_at DESC LIMIT 1")).first()
+        ev = s.execute(
+            text(
+                "SELECT id, rules_version FROM app.events WHERE status IN ('ready','live','closed','finalized') ORDER BY created_at DESC LIMIT 1"
+            )
+        ).first()
         if ev is None:
             raise ApiError("NOT_FOUND", message="No published event found.")
         version = body.version or int(ev[1])
@@ -428,8 +603,21 @@ def accept_rules(body: AcceptIn, request: Request, p: Principal = Depends(get_pr
                 "INSERT INTO app.acceptances (id, user_id, rules_version, ip_hash) VALUES "
                 "(CAST(:id AS uuid), CAST(:u AS uuid), :v, :ip) ON CONFLICT (user_id, rules_version) DO NOTHING"
             ),
-            {"id": str(uuid7()), "u": p.id, "v": version, "ip": security.ip_hash(request.client.host if request.client else "")},
+            {
+                "id": str(uuid7()),
+                "u": p.id,
+                "v": version,
+                "ip": security.ip_hash(request.client.host if request.client else ""),
+            },
         )
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="rules.accepted", entity_type="event", entity_id=str(ev[0]),
-                    request_id=request.state.request_id, details={"version": version})
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="rules.accepted",
+            entity_type="event",
+            entity_id=str(ev[0]),
+            request_id=request.state.request_id,
+            details={"version": version},
+        )
     return {"ok": True, "rules_version": version}

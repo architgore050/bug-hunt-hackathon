@@ -14,6 +14,7 @@ Score components per award unit (event config, frozen at publication):
   evidence_report  - report quality/evidence completeness
   ai_assessment    - optional, disabled by default (DEC-13)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -162,13 +163,20 @@ def decide(
         elif bug.category in fam:
             feats.category_score = 0.6
         feats.alias_evidence = alias_evidence(desc, bug.aliases)
-        combined = feats.location_score * max(feats.category_score, feats.alias_evidence * 0.5 + feats.category_score * 0.5)
+        combined = feats.location_score * max(
+            feats.category_score, feats.alias_evidence * 0.5 + feats.category_score * 0.5
+        )
         scored.append((combined, feats.location_score, feats.category_score, bug, feats))
 
     if not scored:
         # plausible but unmatched -> human review, never auto-penalize (INT-02)
         if len(desc.strip()) >= min_desc:
-            return MatchDecision("needs_review", None, MatchFeatures(span=span), "no candidate in same file; plausible report routed to review")
+            return MatchDecision(
+                "needs_review",
+                None,
+                MatchFeatures(span=span),
+                "no candidate in same file; plausible report routed to review",
+            )
         return MatchDecision("reject_invalid", None, MatchFeatures(span=span), "unmatched and too thin to review")
 
     scored.sort(key=lambda t: (t[0], t[1], t[2]), reverse=True)
@@ -183,7 +191,9 @@ def decide(
     if auto_full:
         return MatchDecision("accept_full", bug, feats, "location, category and alias evidence aligned")
     if auto_partial:
-        return MatchDecision("accept_partial", bug, feats, "location aligned; category unconfirmed, routed for confirmation")
+        return MatchDecision(
+            "accept_partial", bug, feats, "location aligned; category unconfirmed, routed for confirmation"
+        )
     if L == 0 and feats.alias_evidence == 0 and len(desc.strip()) < min_desc:
         return MatchDecision("reject_invalid", None, feats, "no location or alias evidence and description too short")
     return MatchDecision("needs_review", bug, feats, "borderline match routed to human review")

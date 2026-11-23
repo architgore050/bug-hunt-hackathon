@@ -10,22 +10,24 @@ dispute resolution, result release.
 Every mutation writes an audit entry. Sensitive ground-truth operations require
 step-up (deps.step_up_verified) and use the gt_engine session.
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
+from datetime import UTC
 
-from fastapi import APIRouter, Depends, Request, UploadFile, File
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
-from ..audit import audit_write, audit_verify
+from ..audit import audit_verify, audit_write
+from ..config import settings
 from ..db import app_session, gt_session, health_probe, uuid7
-from ..deps import require_organizer, require_admin, Principal, step_up_verified
+from ..deps import Principal, require_admin, require_organizer, step_up_verified
 from ..errors import ApiError
 from ..jobs import enqueue
-from ..scoring import add_ledger_entry, build_leaderboard, save_snapshot
-from ..config import settings
+from ..scoring import add_ledger_entry
 
 router = APIRouter(tags=["admin"])
 
@@ -56,18 +58,38 @@ def create_event(body: EventIn, request: Request, p: Principal = Depends(require
                 "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), :slug, :name, :dur, :mp, :mt, CAST(:cfg AS jsonb))"
             ),
             {
-                "id": ev_id, "t": str(tenant[0]), "slug": body.slug, "name": body.name,
-                "dur": body.duration_minutes, "mp": body.max_participants, "mt": body.max_teams,
-                "cfg": json.dumps({
-                    "features": {"runner_enabled": settings.runner_enabled, "ai_assessment_enabled": settings.ai_assessment_enabled},
-                    "scoring": {"weights": {"functional_test": 0.5, "code_review": 0.3, "evidence_report": 0.2}, "ctf_bonus_cap_points": 100},
-                    "public_summary": {},
-                    "capacity_note": "Provisional caps: 50 participants / 12 teams. Must be load-tested before the event (ADR-011).",
-                }),
+                "id": ev_id,
+                "t": str(tenant[0]),
+                "slug": body.slug,
+                "name": body.name,
+                "dur": body.duration_minutes,
+                "mp": body.max_participants,
+                "mt": body.max_teams,
+                "cfg": json.dumps(
+                    {
+                        "features": {
+                            "runner_enabled": settings.runner_enabled,
+                            "ai_assessment_enabled": settings.ai_assessment_enabled,
+                        },
+                        "scoring": {
+                            "weights": {"functional_test": 0.5, "code_review": 0.3, "evidence_report": 0.2},
+                            "ctf_bonus_cap_points": 100,
+                        },
+                        "public_summary": {},
+                        "capacity_note": "Provisional caps: 50 participants / 12 teams. Must be load-tested before the event (ADR-011).",
+                    }
+                ),
             },
         )
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="event.created", entity_type="event",
-                    entity_id=ev_id, request_id=request.state.request_id)
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="event.created",
+            entity_type="event",
+            entity_id=ev_id,
+            request_id=request.state.request_id,
+        )
     return {"event_id": ev_id}
 
 
@@ -85,7 +107,9 @@ EVENT_TRANSITIONS = {
 def set_event_status(event_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
     target = body.get("status")
     with app_session() as s:
-        cur = s.execute(text("SELECT status FROM app.events WHERE id = CAST(:e AS uuid) FOR UPDATE"), {"e": event_id}).first()
+        cur = s.execute(
+            text("SELECT status FROM app.events WHERE id = CAST(:e AS uuid) FOR UPDATE"), {"e": event_id}
+        ).first()
         if cur is None:
             raise ApiError("NOT_FOUND")
         if target not in EVENT_TRANSITIONS.get(cur[0], set()):
@@ -93,15 +117,30 @@ def set_event_status(event_id: str, body: dict, request: Request, p: Principal =
         if target == "live":
             # readiness gate: required items must be checked (ADM-EV-05)
             pending = s.execute(
-                text("SELECT count(*) FROM app.readiness_items WHERE event_id = CAST(:e AS uuid) AND state = 'unchecked'"),
+                text(
+                    "SELECT count(*) FROM app.readiness_items WHERE event_id = CAST(:e AS uuid) AND state = 'unchecked'"
+                ),
                 {"e": event_id},
             ).scalar_one()
             if int(pending) > 0:
                 raise ApiError("VALIDATION_ERROR", details={"readiness": f"{pending} readiness items are unchecked."})
-            s.execute(text("UPDATE app.events SET starts_at = COALESCE(starts_at, now()), ends_at = now() + make_interval(mins => duration_minutes) WHERE id = CAST(:e AS uuid)"), {"e": event_id})
+            s.execute(
+                text(
+                    "UPDATE app.events SET starts_at = COALESCE(starts_at, now()), ends_at = now() + make_interval(mins => duration_minutes) WHERE id = CAST(:e AS uuid)"
+                ),
+                {"e": event_id},
+            )
         s.execute(text("UPDATE app.events SET status=:st WHERE id = CAST(:e AS uuid)"), {"st": target, "e": event_id})
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="event.status_changed", entity_type="event",
-                    entity_id=event_id, request_id=request.state.request_id, details={"from": cur[0], "to": target})
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="event.status_changed",
+            entity_type="event",
+            entity_id=event_id,
+            request_id=request.state.request_id,
+            details={"from": cur[0], "to": target},
+        )
     return {"ok": True, "status": target}
 
 
@@ -130,25 +169,48 @@ def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal 
                 "VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :v, CAST(:cfg AS jsonb), :h, :reason, CAST(:u AS uuid), :frozen)"
             ),
             {
-                "id": str(uuid7()), "e": event_id, "v": int(ver) + 1, "cfg": json.dumps(body.config, default=str),
-                "h": rule_set_hash, "reason": body.reason, "u": p.id,
+                "id": str(uuid7()),
+                "e": event_id,
+                "v": int(ver) + 1,
+                "cfg": json.dumps(body.config, default=str),
+                "h": rule_set_hash,
+                "reason": body.reason,
+                "u": p.id,
                 "frozen": "now()" if body.freeze else None,
             },
         )
         if body.freeze:
-            s.execute(text("UPDATE app.events SET config = CAST(:cfg AS jsonb), config_version = config_version + 1, rules_version = rules_version + 0 WHERE id = CAST(:e AS uuid)"),
-                      {"cfg": json.dumps(body.config, default=str), "e": event_id})
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="event.config_revised", entity_type="event",
-                    entity_id=event_id, request_id=request.state.request_id, details={"version": int(ver) + 1, "frozen": body.freeze, "reason": body.reason})
+            s.execute(
+                text(
+                    "UPDATE app.events SET config = CAST(:cfg AS jsonb), config_version = config_version + 1, rules_version = rules_version + 0 WHERE id = CAST(:e AS uuid)"
+                ),
+                {"cfg": json.dumps(body.config, default=str), "e": event_id},
+            )
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="event.config_revised",
+            entity_type="event",
+            entity_id=event_id,
+            request_id=request.state.request_id,
+            details={"version": int(ver) + 1, "frozen": body.freeze, "reason": body.reason},
+        )
     return {"ok": True, "rule_set_hash": rule_set_hash}
 
 
 @router.get("/admin/events")
 def list_events(p: Principal = Depends(require_organizer)):
     with app_session() as s:
-        rows = s.execute(
-            text("SELECT id, slug, name, status, starts_at, ends_at, timezone, max_participants, max_teams, rules_version, config_version FROM app.events ORDER BY created_at DESC")
-        ).mappings().all()
+        rows = (
+            s.execute(
+                text(
+                    "SELECT id, slug, name, status, starts_at, ends_at, timezone, max_participants, max_teams, rules_version, config_version FROM app.events ORDER BY created_at DESC"
+                )
+            )
+            .mappings()
+            .all()
+        )
     return {"events": [dict(r) for r in rows]}
 
 
@@ -182,17 +244,35 @@ def create_stage(event_id: str, body: StageIn, request: Request, p: Principal = 
     canonical = json.dumps(cfg, sort_keys=True, separators=(",", ":"))
     rsh = "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
     with app_session() as s:
-        ordinal = s.execute(text("SELECT COALESCE(MAX(ordinal), 0) FROM app.stages WHERE event_id = CAST(:e AS uuid)"), {"e": event_id}).scalar_one()
+        ordinal = s.execute(
+            text("SELECT COALESCE(MAX(ordinal), 0) FROM app.stages WHERE event_id = CAST(:e AS uuid)"), {"e": event_id}
+        ).scalar_one()
         st_id = str(uuid7())
         s.execute(
             text(
                 "INSERT INTO app.stages (id, event_id, name, kind, ordinal, config, rule_set_hash) "
                 "VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :name, :kind, :ord, CAST(:cfg AS jsonb), :rsh)"
             ),
-            {"id": st_id, "e": event_id, "name": body.name, "kind": body.kind, "ord": int(ordinal) + 1, "cfg": json.dumps(cfg), "rsh": rsh},
+            {
+                "id": st_id,
+                "e": event_id,
+                "name": body.name,
+                "kind": body.kind,
+                "ord": int(ordinal) + 1,
+                "cfg": json.dumps(cfg),
+                "rsh": rsh,
+            },
         )
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="stage.created", entity_type="stage",
-                    entity_id=st_id, request_id=request.state.request_id, details={"rule_set_hash": rsh})
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="stage.created",
+            entity_type="stage",
+            entity_id=st_id,
+            request_id=request.state.request_id,
+            details={"rule_set_hash": rsh},
+        )
     return {"stage_id": st_id, "rule_set_hash": rsh}
 
 
@@ -218,14 +298,20 @@ def control_stage(stage_id: str, body: dict, request: Request, p: Principal = De
     mapping = {
         "seal": ("draft", "sealed"),
         "arm": ("sealed", "armed"),
-        "start": ("armed", "active"), "resume": ("paused", "active"),
-        "pause": ("active", "paused"), "end": ("active", "ended"),
+        "start": ("armed", "active"),
+        "resume": ("paused", "active"),
+        "pause": ("active", "paused"),
+        "end": ("active", "ended"),
     }
     with app_session() as s:
-        st = s.execute(
-            text("SELECT id, status, ends_at, starts_at FROM app.stages WHERE id = CAST(:s AS uuid) FOR UPDATE"),
-            {"s": stage_id},
-        ).mappings().first()
+        st = (
+            s.execute(
+                text("SELECT id, status, ends_at, starts_at FROM app.stages WHERE id = CAST(:s AS uuid) FOR UPDATE"),
+                {"s": stage_id},
+            )
+            .mappings()
+            .first()
+        )
         if st is None:
             raise ApiError("NOT_FOUND")
         now = s.execute(text("SELECT clock_timestamp()")).scalar_one()
@@ -236,8 +322,15 @@ def control_stage(stage_id: str, body: dict, request: Request, p: Principal = De
             s.execute(text("UPDATE app.stages SET status=:to WHERE id = CAST(:s AS uuid)"), {"to": _to, "s": stage_id})
         elif action == "start":
             if st["status"] != "armed":
-                raise ApiError("VALIDATION_ERROR", details={"transition": f"Arm the stage first (status is {st['status']})."})
-            s.execute(text("UPDATE app.stages SET status='active', started_at=:now, ends_at=:now + make_interval(mins => e.duration_minutes) FROM app.events e WHERE app.stages.id = CAST(:s AS uuid) AND e.id = app.stages.event_id"), {"now": now, "s": stage_id})
+                raise ApiError(
+                    "VALIDATION_ERROR", details={"transition": f"Arm the stage first (status is {st['status']})."}
+                )
+            s.execute(
+                text(
+                    "UPDATE app.stages SET status='active', started_at=:now, ends_at=:now + make_interval(mins => e.duration_minutes) FROM app.events e WHERE app.stages.id = CAST(:s AS uuid) AND e.id = app.stages.event_id"
+                ),
+                {"now": now, "s": stage_id},
+            )
         elif action == "pause":
             if st["status"] != "active":
                 raise ApiError("VALIDATION_ERROR", details={"transition": "Only an active stage can pause."})
@@ -248,12 +341,16 @@ def control_stage(stage_id: str, body: dict, request: Request, p: Principal = De
             # TIM-05: shift ends_at by the pause duration measured from the pause
             # transition (not stage start), so the promised working time is kept.
             paused_at = s.execute(
-                text("SELECT created_at FROM app.stage_transitions WHERE stage_id = CAST(:s AS uuid) AND to_status = 'paused' ORDER BY created_at DESC LIMIT 1"),
+                text(
+                    "SELECT created_at FROM app.stage_transitions WHERE stage_id = CAST(:s AS uuid) AND to_status = 'paused' ORDER BY created_at DESC LIMIT 1"
+                ),
                 {"s": stage_id},
             ).scalar_one()
             if paused_at is not None:
                 s.execute(
-                    text("UPDATE app.stages SET status='active', ends_at = ends_at + make_interval(secs => LEAST(7200, GREATEST(0, EXTRACT(epoch FROM (clock_timestamp() - CAST(:p AS timestamptz)))::int))) WHERE id = CAST(:s AS uuid)"),
+                    text(
+                        "UPDATE app.stages SET status='active', ends_at = ends_at + make_interval(secs => LEAST(7200, GREATEST(0, EXTRACT(epoch FROM (clock_timestamp() - CAST(:p AS timestamptz)))::int))) WHERE id = CAST(:s AS uuid)"
+                    ),
                     {"s": stage_id, "p": paused_at},
                 )
             else:
@@ -262,20 +359,38 @@ def control_stage(stage_id: str, body: dict, request: Request, p: Principal = De
             seconds = int(body.get("seconds", 0))
             if seconds <= 0 or seconds > 3600:
                 raise ApiError("VALIDATION_ERROR", details={"seconds": "1..3600"})
-            s.execute(text("UPDATE app.stages SET ends_at = ends_at + make_interval(secs => :sec) WHERE id = CAST(:s AS uuid)"), {"sec": seconds, "s": stage_id})
+            s.execute(
+                text(
+                    "UPDATE app.stages SET ends_at = ends_at + make_interval(secs => :sec) WHERE id = CAST(:s AS uuid)"
+                ),
+                {"sec": seconds, "s": stage_id},
+            )
         elif action == "end":
             if st["status"] not in ("active", "paused"):
                 raise ApiError("VALIDATION_ERROR", details={"transition": "Only an active or paused stage can end."})
-            s.execute(text("UPDATE app.stages SET status='ended', ended_at=:now WHERE id = CAST(:s AS uuid)"), {"now": now, "s": stage_id})
+            s.execute(
+                text("UPDATE app.stages SET status='ended', ended_at=:now WHERE id = CAST(:s AS uuid)"),
+                {"now": now, "s": stage_id},
+            )
         else:
             raise ApiError("VALIDATION_ERROR", details={"action": "Unknown action."})
         s.execute(
-            text("INSERT INTO app.stage_transitions (id, stage_id, from_status, to_status, actor_id, reason_code) "
-                 "VALUES (CAST(:id AS uuid), CAST(:s AS uuid), :f, :t, CAST(:u AS uuid), :r)"),
+            text(
+                "INSERT INTO app.stage_transitions (id, stage_id, from_status, to_status, actor_id, reason_code) "
+                "VALUES (CAST(:id AS uuid), CAST(:s AS uuid), :f, :t, CAST(:u AS uuid), :r)"
+            ),
             {"id": str(uuid7()), "s": stage_id, "f": st["status"], "t": action, "u": p.id, "r": reason},
         )
-        audit_write(s, actor_id=p.id, actor_role=p.role, action=f"stage.{action}", entity_type="stage",
-                    entity_id=stage_id, request_id=request.state.request_id, details={"reason": reason})
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action=f"stage.{action}",
+            entity_type="stage",
+            entity_id=stage_id,
+            request_id=request.state.request_id,
+            details={"reason": reason},
+        )
     return {"ok": True, "action": action}
 
 
@@ -285,7 +400,9 @@ def release_results(stage_id: str, body: dict, request: Request, p: Principal = 
     action = body.get("action", "release")
     reason = body.get("reason", "results release")
     with app_session() as s:
-        st = s.execute(text("SELECT status FROM app.stages WHERE id = CAST(:s AS uuid) FOR UPDATE"), {"s": stage_id}).first()
+        st = s.execute(
+            text("SELECT status FROM app.stages WHERE id = CAST(:s AS uuid) FOR UPDATE"), {"s": stage_id}
+        ).first()
         if st is None:
             raise ApiError("NOT_FOUND")
         if action == "evaluate" and st[0] != "ended":
@@ -299,8 +416,16 @@ def release_results(stage_id: str, body: dict, request: Request, p: Principal = 
             s.execute(text("UPDATE app.stages SET status='released' WHERE id = CAST(:s AS uuid)"), {"s": stage_id})
             enqueue(s, "release_feedback", {"stage_id": stage_id})
             enqueue(s, "refresh_leaderboard", {"stage_id": stage_id, "visibility": "public"})
-        audit_write(s, actor_id=p.id, actor_role=p.role, action=f"stage.{action}", entity_type="stage",
-                    entity_id=stage_id, request_id=request.state.request_id, details={"reason": reason})
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action=f"stage.{action}",
+            entity_type="stage",
+            entity_id=stage_id,
+            request_id=request.state.request_id,
+            details={"reason": reason},
+        )
     return {"ok": True}
 
 
@@ -316,18 +441,29 @@ def create_team(event_id: str, body: TeamIn, request: Request, p: Principal = De
     import secrets
 
     with app_session() as s:
-        count = s.execute(text("SELECT count(*) FROM app.teams WHERE event_id = CAST(:e AS uuid)"), {"e": event_id}).scalar_one()
+        count = s.execute(
+            text("SELECT count(*) FROM app.teams WHERE event_id = CAST(:e AS uuid)"), {"e": event_id}
+        ).scalar_one()
         ev = s.execute(text("SELECT max_teams FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": event_id}).first()
         if ev and int(count) >= int(ev[0]):
             raise ApiError("VALIDATION_ERROR", details={"capacity": f"Team cap ({ev[0]}) reached."})
         team_id = str(uuid7())
         join_code = secrets.token_hex(4).upper()
         s.execute(
-            text("INSERT INTO app.teams (id, event_id, name, join_code) VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :name, :jc)"),
+            text(
+                "INSERT INTO app.teams (id, event_id, name, join_code) VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :name, :jc)"
+            ),
             {"id": team_id, "e": event_id, "name": body.name, "jc": join_code},
         )
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="team.created", entity_type="team",
-                    entity_id=team_id, request_id=request.state.request_id)
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="team.created",
+            entity_type="team",
+            entity_id=team_id,
+            request_id=request.state.request_id,
+        )
     return {"team_id": team_id, "join_code": join_code}
 
 
@@ -345,7 +481,7 @@ def create_invite(event_id: str, body: InviteIn, request: Request, p: Principal 
 
     raw = secrets.token_urlsafe(32)
     with app_session() as s:
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
         s.execute(
             text(
@@ -353,29 +489,44 @@ def create_invite(event_id: str, body: InviteIn, request: Request, p: Principal 
                 "VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :email, :th, CAST(:t AS uuid), :role, :exp)"
             ),
             {
-                "id": str(uuid7()), "e": event_id, "email": body.email.lower(),
+                "id": str(uuid7()),
+                "e": event_id,
+                "email": body.email.lower(),
                 "th": __import__("hashlib").sha256(raw.encode()).hexdigest(),
-                "t": body.team_id, "role": body.role,
-                "exp": datetime.now(timezone.utc) + timedelta(hours=48),
+                "t": body.team_id,
+                "role": body.role,
+                "exp": datetime.now(UTC) + timedelta(hours=48),
             },
         )
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="invite.created", entity_type="event",
-                    entity_id=event_id, request_id=request.state.request_id, details={"email": body.email})
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="invite.created",
+            entity_type="event",
+            entity_id=event_id,
+            request_id=request.state.request_id,
+            details={"email": body.email},
+        )
     return {"invite_token": raw, "activation_url": f"/activate?invite={raw}"}
 
 
 @router.get("/admin/events/{event_id}/participants")
 def list_participants(event_id: str, p: Principal = Depends(require_organizer)):
     with app_session() as s:
-        rows = s.execute(
-            text(
-                "SELECT u.id, u.email, u.name, u.role, u.status, t.name AS team_name, i.used_at IS NOT NULL AS activated "
-                "FROM app.invites i LEFT JOIN app.users u ON lower(u.email) = i.email "
-                "LEFT JOIN app.team_members tm ON tm.user_id = u.id LEFT JOIN app.teams t ON t.id = tm.team_id "
-                "WHERE i.event_id = CAST(:e AS uuid) ORDER BY i.created_at DESC LIMIT 500"
-            ),
-            {"e": event_id},
-        ).mappings().all()
+        rows = (
+            s.execute(
+                text(
+                    "SELECT u.id, u.email, u.name, u.role, u.status, t.name AS team_name, i.used_at IS NOT NULL AS activated "
+                    "FROM app.invites i LEFT JOIN app.users u ON lower(u.email) = i.email "
+                    "LEFT JOIN app.team_members tm ON tm.user_id = u.id LEFT JOIN app.teams t ON t.id = tm.team_id "
+                    "WHERE i.event_id = CAST(:e AS uuid) ORDER BY i.created_at DESC LIMIT 500"
+                ),
+                {"e": event_id},
+            )
+            .mappings()
+            .all()
+        )
     return {"participants": [dict(r) for r in rows]}
 
 
@@ -399,13 +550,23 @@ def create_challenge(event_id: str, body: ChallengeIn, request: Request, p: Prin
             ),
             {"id": cid, "e": event_id, "slug": body.slug, "title": body.title, "inst": body.instructions_markdown},
         )
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="challenge.created", entity_type="challenge",
-                    entity_id=cid, request_id=request.state.request_id, event_scope=f"event:{event_id}")
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="challenge.created",
+            entity_type="challenge",
+            entity_id=cid,
+            request_id=request.state.request_id,
+            event_scope=f"event:{event_id}",
+        )
     return {"challenge_id": cid}
 
 
 @router.post("/admin/challenges/{challenge_id}/files")
-async def upload_files(challenge_id: str, request: Request, file: UploadFile = File(...), p: Principal = Depends(step_up_verified)):
+async def upload_files(
+    challenge_id: str, request: Request, file: UploadFile = File(...), p: Principal = Depends(step_up_verified)
+):
     """Multipart upload of one source file (path passed as filename). Content is
     stored inertly as text; never executed (SEC-03). Size and count limits apply."""
     content = await file.read()
@@ -420,7 +581,9 @@ async def upload_files(challenge_id: str, request: Request, file: UploadFile = F
     text_content = content.decode("utf-8", errors="replace")
     line_count = text_content.count("\n") + 1
     with app_session() as s:
-        cv = s.execute(text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid)"), {"c": challenge_id}).first()
+        cv = s.execute(
+            text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid)"), {"c": challenge_id}
+        ).first()
         if cv is None:
             raise ApiError("NOT_FOUND")
         if cv[0] not in ("draft", "reviewed"):
@@ -433,9 +596,14 @@ async def upload_files(challenge_id: str, request: Request, file: UploadFile = F
                 "size_bytes = EXCLUDED.size_bytes, line_count = EXCLUDED.line_count"
             ),
             {
-                "id": str(uuid7()), "c": challenge_id, "p": norm,
-                "lang": _lang_for(norm), "content": text_content,
-                "sha": hashlib.sha256(content).hexdigest(), "size": len(content), "lines": line_count,
+                "id": str(uuid7()),
+                "c": challenge_id,
+                "p": norm,
+                "lang": _lang_for(norm),
+                "content": text_content,
+                "sha": hashlib.sha256(content).hexdigest(),
+                "size": len(content),
+                "lines": line_count,
             },
         )
         # rebuild the search line index for this file (sealed index, FE-04)
@@ -445,35 +613,75 @@ async def upload_files(challenge_id: str, request: Request, file: UploadFile = F
         )
         for i, line in enumerate(text_content.splitlines()[:5000], start=1):
             s.execute(
-                text("INSERT INTO app.challenge_file_lines (id, challenge_version_id, path, line_number, line_text) "
-                     "VALUES (CAST(:id AS uuid), CAST(:c AS uuid), :p, :ln, :lt)"),
+                text(
+                    "INSERT INTO app.challenge_file_lines (id, challenge_version_id, path, line_number, line_text) "
+                    "VALUES (CAST(:id AS uuid), CAST(:c AS uuid), :p, :ln, :lt)"
+                ),
                 {"id": str(uuid7()), "c": challenge_id, "p": norm, "ln": i, "lt": line[:500]},
             )
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="challenge.file_uploaded", entity_type="challenge",
-                    entity_id=challenge_id, request_id=request.state.request_id, details={"path": norm}, event_scope="challenge")
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="challenge.file_uploaded",
+            entity_type="challenge",
+            entity_id=challenge_id,
+            request_id=request.state.request_id,
+            details={"path": norm},
+            event_scope="challenge",
+        )
     return {"ok": True, "path": norm, "line_count": line_count}
 
 
 def _lang_for(path: str) -> str:
     ext = path.rsplit(".", 1)[-1].lower() if "." in path else "text"
-    return {"py": "python", "js": "javascript", "ts": "typescript", "html": "html", "css": "css", "json": "json", "md": "markdown", "sql": "sql"}.get(ext, "text")
+    return {
+        "py": "python",
+        "js": "javascript",
+        "ts": "typescript",
+        "html": "html",
+        "css": "css",
+        "json": "json",
+        "md": "markdown",
+        "sql": "sql",
+    }.get(ext, "text")
 
 
 @router.post("/admin/challenges/{challenge_id}/freeze")
 def freeze_challenge(challenge_id: str, request: Request, p: Principal = Depends(step_up_verified)):
     with app_session() as s:
-        cv = s.execute(text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid) FOR UPDATE"), {"c": challenge_id}).first()
+        cv = s.execute(
+            text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid) FOR UPDATE"),
+            {"c": challenge_id},
+        ).first()
         if cv is None:
             raise ApiError("NOT_FOUND")
         if cv[0] not in ("draft", "reviewed"):
             raise ApiError("GROUND_TRUTH_LOCKED")
-        files = s.execute(text("SELECT sha256 FROM app.challenge_files WHERE challenge_version_id = CAST(:c AS uuid) ORDER BY path"), {"c": challenge_id}).all()
+        files = s.execute(
+            text("SELECT sha256 FROM app.challenge_files WHERE challenge_version_id = CAST(:c AS uuid) ORDER BY path"),
+            {"c": challenge_id},
+        ).all()
         if not files:
             raise ApiError("VALIDATION_ERROR", details={"files": "Upload at least one file before freezing."})
         content_hash = "sha256:" + hashlib.sha256("".join(f[0] for f in files).encode()).hexdigest()
-        s.execute(text("UPDATE app.challenge_versions SET status='sealed', content_hash=:h, frozen_at=now() WHERE id = CAST(:c AS uuid)"), {"h": content_hash, "c": challenge_id})
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="challenge.frozen", entity_type="challenge",
-                    entity_id=challenge_id, request_id=request.state.request_id, details={"content_hash": content_hash}, event_scope="challenge")
+        s.execute(
+            text(
+                "UPDATE app.challenge_versions SET status='sealed', content_hash=:h, frozen_at=now() WHERE id = CAST(:c AS uuid)"
+            ),
+            {"h": content_hash, "c": challenge_id},
+        )
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="challenge.frozen",
+            entity_type="challenge",
+            entity_id=challenge_id,
+            request_id=request.state.request_id,
+            details={"content_hash": content_hash},
+            event_scope="challenge",
+        )
     return {"ok": True, "content_hash": content_hash}
 
 
@@ -483,18 +691,41 @@ def publish_challenge(challenge_id: str, body: dict, request: Request, p: Princi
     if not stage_id:
         raise ApiError("VALIDATION_ERROR", details={"stage_id": "Required."})
     with app_session() as s:
-        cv = s.execute(text("SELECT status, event_id FROM app.challenge_versions WHERE id = CAST(:c AS uuid) FOR UPDATE"), {"c": challenge_id}).mappings().first()
+        cv = (
+            s.execute(
+                text("SELECT status, event_id FROM app.challenge_versions WHERE id = CAST(:c AS uuid) FOR UPDATE"),
+                {"c": challenge_id},
+            )
+            .mappings()
+            .first()
+        )
         if cv is None:
             raise ApiError("NOT_FOUND")
         if cv["status"] not in ("sealed",):
             raise ApiError("GROUND_TRUTH_LOCKED")
-        s.execute(text("UPDATE app.challenge_versions SET status='published', published_at=now() WHERE id = CAST(:c AS uuid)"), {"c": challenge_id})
         s.execute(
-            text("INSERT INTO app.assignments (id, event_id, stage_id, challenge_version_id) VALUES (CAST(:id AS uuid), CAST(:e AS uuid), CAST(:s AS uuid), CAST(:c AS uuid))"),
+            text(
+                "UPDATE app.challenge_versions SET status='published', published_at=now() WHERE id = CAST(:c AS uuid)"
+            ),
+            {"c": challenge_id},
+        )
+        s.execute(
+            text(
+                "INSERT INTO app.assignments (id, event_id, stage_id, challenge_version_id) VALUES (CAST(:id AS uuid), CAST(:e AS uuid), CAST(:s AS uuid), CAST(:c AS uuid))"
+            ),
             {"id": str(uuid7()), "e": str(cv["event_id"]), "s": stage_id, "c": challenge_id},
         )
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="challenge.published", entity_type="challenge",
-                    entity_id=challenge_id, request_id=request.state.request_id, details={"stage_id": stage_id}, event_scope="challenge")
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="challenge.published",
+            entity_type="challenge",
+            entity_id=challenge_id,
+            request_id=request.state.request_id,
+            details={"stage_id": stage_id},
+            event_scope="challenge",
+        )
     return {"ok": True}
 
 
@@ -518,7 +749,9 @@ class BugIn(BaseModel):
 def add_bug(challenge_id: str, body: BugIn, request: Request, p: Principal = Depends(step_up_verified)):
     """Writes ground truth via the gt_admin role only (DAT-03)."""
     with app_session() as s:
-        cv = s.execute(text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid)"), {"c": challenge_id}).first()
+        cv = s.execute(
+            text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid)"), {"c": challenge_id}
+        ).first()
         if cv is None:
             raise ApiError("NOT_FOUND")
         if cv[0] not in ("draft", "reviewed"):
@@ -530,21 +763,51 @@ def add_bug(challenge_id: str, body: BugIn, request: Request, p: Principal = Dep
                 "INSERT INTO gt.gt_bugs (id, challenge_version_id, code, title, severity, category, points, root_cause_group, explanation, fix_guidance) "
                 "VALUES (CAST(:id AS uuid), CAST(:c AS uuid), :code, :title, :sev, :cat, :pts, :rcg, :expl, :fix)"
             ),
-            {"id": bug_id, "c": challenge_id, "code": body.code, "title": body.title, "sev": body.severity,
-             "cat": body.category, "pts": body.points, "rcg": body.root_cause_group, "expl": body.explanation, "fix": body.fix_guidance},
+            {
+                "id": bug_id,
+                "c": challenge_id,
+                "code": body.code,
+                "title": body.title,
+                "sev": body.severity,
+                "cat": body.category,
+                "pts": body.points,
+                "rcg": body.root_cause_group,
+                "expl": body.explanation,
+                "fix": body.fix_guidance,
+            },
         )
         for loc in body.locations:
             gts.execute(
-                text("INSERT INTO gt.gt_locations (id, bug_id, file_path, line_start, line_end, is_primary) VALUES (CAST(:id AS uuid), CAST(:b AS uuid), :fp, :ls, :le, :prim)"),
-                {"id": str(uuid7()), "b": bug_id, "fp": loc["file_path"], "ls": loc["line_start"], "le": loc["line_end"], "prim": loc.get("is_primary", True)},
+                text(
+                    "INSERT INTO gt.gt_locations (id, bug_id, file_path, line_start, line_end, is_primary) VALUES (CAST(:id AS uuid), CAST(:b AS uuid), :fp, :ls, :le, :prim)"
+                ),
+                {
+                    "id": str(uuid7()),
+                    "b": bug_id,
+                    "fp": loc["file_path"],
+                    "ls": loc["line_start"],
+                    "le": loc["line_end"],
+                    "prim": loc.get("is_primary", True),
+                },
             )
         for al in body.aliases:
             gts.execute(
-                text("INSERT INTO gt.gt_aliases (id, bug_id, keyword, weight) VALUES (CAST(:id AS uuid), CAST(:b AS uuid), :kw, :w)"),
+                text(
+                    "INSERT INTO gt.gt_aliases (id, bug_id, keyword, weight) VALUES (CAST(:id AS uuid), CAST(:b AS uuid), :kw, :w)"
+                ),
                 {"id": str(uuid7()), "b": bug_id, "kw": al["keyword"], "w": al.get("weight", 1.0)},
             )
-        audit_write(gts, actor_id=p.id, actor_role=p.role, action="gt.bug_added", entity_type="gt_bug",
-                    entity_id=bug_id, request_id=request.state.request_id, details={"code": body.code}, event_scope=f"challenge:{challenge_id}")
+        audit_write(
+            gts,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="gt.bug_added",
+            entity_type="gt_bug",
+            entity_id=bug_id,
+            request_id=request.state.request_id,
+            details={"code": body.code},
+            event_scope=f"challenge:{challenge_id}",
+        )
     return {"bug_id": bug_id}
 
 
@@ -566,10 +829,25 @@ def add_flag(challenge_id: str, body: FlagIn, request: Request, p: Principal = D
                 "VALUES (CAST(:id AS uuid), CAST(:c AS uuid), :k, :h, :pts, :ma) "
                 "ON CONFLICT (challenge_version_id, code_hash) DO NOTHING"
             ),
-            {"id": str(uuid7()), "c": challenge_id, "k": body.flag_key, "h": flag_code_hash(body.code), "pts": body.points, "ma": body.max_awards},
+            {
+                "id": str(uuid7()),
+                "c": challenge_id,
+                "k": body.flag_key,
+                "h": flag_code_hash(body.code),
+                "pts": body.points,
+                "ma": body.max_awards,
+            },
         )
-        audit_write(gts, actor_id=p.id, actor_role=p.role, action="gt.flag_added", entity_type="gt_flag",
-                    entity_id=body.flag_key, request_id=request.state.request_id, event_scope=f"challenge:{challenge_id}")
+        audit_write(
+            gts,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="gt.flag_added",
+            entity_type="gt_flag",
+            entity_id=body.flag_key,
+            request_id=request.state.request_id,
+            event_scope=f"challenge:{challenge_id}",
+        )
     return {"ok": True}
 
 
@@ -583,9 +861,22 @@ def record_test_results(challenge_id: str, body: dict, request: Request, p: Prin
     if not sub_id or total <= 0 or passed < 0 or passed > total:
         raise ApiError("VALIDATION_ERROR", details={"tests": "Provide submission_id, tests_passed, tests_total."})
     with app_session() as s:
-        enqueue(s, "apply_test_results", {"submission_id": sub_id, "tests_passed": passed, "tests_total": total, "actor_id": p.id})
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="scoring.test_results_recorded", entity_type="submission",
-                    entity_id=sub_id, request_id=request.state.request_id, details={"passed": passed, "total": total}, event_scope="scoring")
+        enqueue(
+            s,
+            "apply_test_results",
+            {"submission_id": sub_id, "tests_passed": passed, "tests_total": total, "actor_id": p.id},
+        )
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="scoring.test_results_recorded",
+            entity_type="submission",
+            entity_id=sub_id,
+            request_id=request.state.request_id,
+            details={"passed": passed, "total": total},
+            event_scope="scoring",
+        )
     return {"ok": True}
 
 
@@ -598,14 +889,26 @@ class AnnouncementIn(BaseModel):
 
 
 @router.post("/admin/events/{event_id}/announcements", status_code=201)
-def create_announcement(event_id: str, body: AnnouncementIn, request: Request, p: Principal = Depends(require_organizer)):
+def create_announcement(
+    event_id: str, body: AnnouncementIn, request: Request, p: Principal = Depends(require_organizer)
+):
     with app_session() as s:
         s.execute(
-            text("INSERT INTO app.announcements (id, event_id, severity, body, created_by) VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :sev, :b, CAST(:u AS uuid))"),
+            text(
+                "INSERT INTO app.announcements (id, event_id, severity, body, created_by) VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :sev, :b, CAST(:u AS uuid))"
+            ),
             {"id": str(uuid7()), "e": event_id, "sev": body.severity, "b": body.body, "u": p.id},
         )
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="announcement.created", entity_type="event",
-                    entity_id=event_id, request_id=request.state.request_id, details={"severity": body.severity})
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="announcement.created",
+            entity_type="event",
+            entity_id=event_id,
+            request_id=request.state.request_id,
+            details={"severity": body.severity},
+        )
     return {"ok": True}
 
 
@@ -621,11 +924,21 @@ def time_adjustment(event_id: str, body: dict, request: Request, p: Principal = 
         raise ApiError("VALIDATION_ERROR", details={"reason_code": "ACCOMMODATION|OUTAGE|DEVICE_FAILURE|OTHER"})
     with app_session() as s:
         s.execute(
-            text("INSERT INTO app.time_adjustments (id, stage_id, user_id, delta_seconds, reason_code, created_by) VALUES (CAST(:id AS uuid), CAST(:s AS uuid), CAST(:u AS uuid), :d, :r, CAST(:by AS uuid))"),
+            text(
+                "INSERT INTO app.time_adjustments (id, stage_id, user_id, delta_seconds, reason_code, created_by) VALUES (CAST(:id AS uuid), CAST(:s AS uuid), CAST(:u AS uuid), :d, :r, CAST(:by AS uuid))"
+            ),
             {"id": str(uuid7()), "s": stage_id, "u": user_id, "d": delta, "r": reason_code, "by": p.id},
         )
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="stage.time_adjustment", entity_type="stage",
-                    entity_id=stage_id, request_id=request.state.request_id, details={"delta_seconds": delta, "reason_code": reason_code})
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="stage.time_adjustment",
+            entity_type="stage",
+            entity_id=stage_id,
+            request_id=request.state.request_id,
+            details={"delta_seconds": delta, "reason_code": reason_code},
+        )
     return {"ok": True}
 
 
@@ -634,29 +947,41 @@ def live_ops(event_id: str, p: Principal = Depends(require_organizer)):
     """Control-room view with REAL state (ADM-LV-01); no fabricated indicators."""
     with app_session() as s:
         counts = s.execute(
-            text(
-                "SELECT status, count(*) FROM app.submissions WHERE event_id = CAST(:e AS uuid) GROUP BY status"
-            ),
+            text("SELECT status, count(*) FROM app.submissions WHERE event_id = CAST(:e AS uuid) GROUP BY status"),
             {"e": event_id},
         ).all()
-        teams = s.execute(text("SELECT count(*) FROM app.teams WHERE event_id = CAST(:e AS uuid)"), {"e": event_id}).scalar_one()
+        teams = s.execute(
+            text("SELECT count(*) FROM app.teams WHERE event_id = CAST(:e AS uuid)"), {"e": event_id}
+        ).scalar_one()
         participants = s.execute(
-            text("SELECT count(DISTINCT tm.user_id) FROM app.team_members tm JOIN app.teams t ON t.id = tm.team_id WHERE t.event_id = CAST(:e AS uuid)"),
+            text(
+                "SELECT count(DISTINCT tm.user_id) FROM app.team_members tm JOIN app.teams t ON t.id = tm.team_id WHERE t.event_id = CAST(:e AS uuid)"
+            ),
             {"e": event_id},
         ).scalar_one()
         queue_age = s.execute(
-            text("SELECT COALESCE(MIN(EXTRACT(epoch FROM (now() - created_at))), 0) FROM app.jobs WHERE status='queued'"),
+            text(
+                "SELECT COALESCE(MIN(EXTRACT(epoch FROM (now() - created_at))), 0) FROM app.jobs WHERE status='queued'"
+            ),
         ).scalar_one()
         dead = s.execute(text("SELECT count(*) FROM app.jobs WHERE status='dead'")).scalar_one()
-        stages = s.execute(
-            text("SELECT id, name, status, starts_at, ends_at, config FROM app.stages WHERE event_id = CAST(:e AS uuid) ORDER BY ordinal"),
-            {"e": event_id},
-        ).mappings().all()
+        stages = (
+            s.execute(
+                text(
+                    "SELECT id, name, status, starts_at, ends_at, config FROM app.stages WHERE event_id = CAST(:e AS uuid) ORDER BY ordinal"
+                ),
+                {"e": event_id},
+            )
+            .mappings()
+            .all()
+        )
         rev_backlog = s.execute(text("SELECT count(*) FROM app.review_items WHERE status='open'")).scalar_one()
         probes = health_probe()
     return {
         "teams": int(teams),
-        "participants_online_estimate": int(participants),  # participants with accounts; live presence needs polling stats
+        "participants_online_estimate": int(
+            participants
+        ),  # participants with accounts; live presence needs polling stats
         "submission_counts": {r[0]: int(r[1]) for r in counts},
         "job_queue": {"oldest_queued_age_s": int(queue_age), "dead_letters": int(dead)},
         "review_backlog": int(rev_backlog),
@@ -676,7 +1001,16 @@ def live_ops(event_id: str, p: Principal = Depends(require_organizer)):
 @router.get("/admin/events/{event_id}/readiness")
 def readiness(event_id: str, p: Principal = Depends(require_organizer)):
     with app_session() as s:
-        rows = s.execute(text("SELECT key, label, state, owner, checked_at FROM app.readiness_items WHERE event_id = CAST(:e AS uuid) ORDER BY key"), {"e": event_id}).mappings().all()
+        rows = (
+            s.execute(
+                text(
+                    "SELECT key, label, state, owner, checked_at FROM app.readiness_items WHERE event_id = CAST(:e AS uuid) ORDER BY key"
+                ),
+                {"e": event_id},
+            )
+            .mappings()
+            .all()
+        )
     return {"items": [dict(r) for r in rows]}
 
 
@@ -687,11 +1021,21 @@ def set_readiness(event_id: str, key: str, body: dict, request: Request, p: Prin
         raise ApiError("VALIDATION_ERROR")
     with app_session() as s:
         s.execute(
-            text("UPDATE app.readiness_items SET state=CAST(:st AS varchar), checked_at=CASE WHEN CAST(:st AS varchar)='checked' THEN now() ELSE NULL END WHERE event_id = CAST(:e AS uuid) AND key = :k"),
+            text(
+                "UPDATE app.readiness_items SET state=CAST(:st AS varchar), checked_at=CASE WHEN CAST(:st AS varchar)='checked' THEN now() ELSE NULL END WHERE event_id = CAST(:e AS uuid) AND key = :k"
+            ),
             {"st": state, "e": event_id, "k": key},
         )
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="readiness.updated", entity_type="event",
-                    entity_id=event_id, request_id=request.state.request_id, details={"key": key, "state": state})
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="readiness.updated",
+            entity_type="event",
+            entity_id=event_id,
+            request_id=request.state.request_id,
+            details={"key": key, "state": state},
+        )
     return {"ok": True}
 
 
@@ -706,15 +1050,27 @@ def audit_chain_verify(p: Principal = Depends(require_organizer)):
 def audit_log(p: Principal = Depends(require_organizer), limit: int = 100, action: str | None = None):
     with app_session() as s:
         if action:
-            rows = s.execute(
-                text("SELECT seq, ts, actor_role, action, entity_type, entity_id, request_id, details FROM audit.entries WHERE action = :a ORDER BY seq DESC LIMIT :n"),
-                {"a": action, "n": min(limit, 500)},
-            ).mappings().all()
+            rows = (
+                s.execute(
+                    text(
+                        "SELECT seq, ts, actor_role, action, entity_type, entity_id, request_id, details FROM audit.entries WHERE action = :a ORDER BY seq DESC LIMIT :n"
+                    ),
+                    {"a": action, "n": min(limit, 500)},
+                )
+                .mappings()
+                .all()
+            )
         else:
-            rows = s.execute(
-                text("SELECT seq, ts, actor_role, action, entity_type, entity_id, request_id, details FROM audit.entries ORDER BY seq DESC LIMIT :n"),
-                {"n": min(limit, 500)},
-            ).mappings().all()
+            rows = (
+                s.execute(
+                    text(
+                        "SELECT seq, ts, actor_role, action, entity_type, entity_id, request_id, details FROM audit.entries ORDER BY seq DESC LIMIT :n"
+                    ),
+                    {"n": min(limit, 500)},
+                )
+                .mappings()
+                .all()
+            )
     return {"entries": [dict(r) for r in rows]}
 
 
@@ -742,27 +1098,75 @@ def export_csv(event_id: str, kind: str, p: Principal = Depends(require_organize
             for r in rows:
                 writer.writerow([str(r[0]), r[1], float(r[2] or 0)])
         elif kind == "submissions":
-            writer.writerow(["submission_id", "kind", "title", "status", "receipt_code", "received_at", "file_path", "line_start", "line_end"])
+            writer.writerow(
+                [
+                    "submission_id",
+                    "kind",
+                    "title",
+                    "status",
+                    "receipt_code",
+                    "received_at",
+                    "file_path",
+                    "line_start",
+                    "line_end",
+                ]
+            )
             rows = s.execute(
-                text("SELECT id, kind, title, status, receipt_code, received_at, file_path, line_start, line_end FROM app.submissions WHERE event_id = CAST(:e AS uuid) ORDER BY received_at"),
+                text(
+                    "SELECT id, kind, title, status, receipt_code, received_at, file_path, line_start, line_end FROM app.submissions WHERE event_id = CAST(:e AS uuid) ORDER BY received_at"
+                ),
                 {"e": event_id},
             ).all()
             for r in rows:
                 writer.writerow([str(r[0]), r[1], r[2], r[3], r[4], r[5].isoformat(), r[6], r[7], r[8]])
         else:  # ledger
-            writer.writerow(["entry_id", "stage_id", "team_id", "component", "kind", "points", "reason_code", "submission_id", "created_at"])
+            writer.writerow(
+                [
+                    "entry_id",
+                    "stage_id",
+                    "team_id",
+                    "component",
+                    "kind",
+                    "points",
+                    "reason_code",
+                    "submission_id",
+                    "created_at",
+                ]
+            )
             rows = s.execute(
-                text("SELECT id, stage_id, team_id, component, kind, points, reason_code, submission_id, created_at FROM app.score_ledger_entries WHERE event_id = CAST(:e AS uuid) ORDER BY created_at"),
+                text(
+                    "SELECT id, stage_id, team_id, component, kind, points, reason_code, submission_id, created_at FROM app.score_ledger_entries WHERE event_id = CAST(:e AS uuid) ORDER BY created_at"
+                ),
                 {"e": event_id},
             ).all()
             for r in rows:
-                writer.writerow([str(r[0]), str(r[1]), str(r[2]), r[3], r[4], float(r[5]), r[6], str(r[7]) if r[7] else "", r[8].isoformat()])
+                writer.writerow(
+                    [
+                        str(r[0]),
+                        str(r[1]),
+                        str(r[2]),
+                        r[3],
+                        r[4],
+                        float(r[5]),
+                        r[6],
+                        str(r[7]) if r[7] else "",
+                        r[8].isoformat(),
+                    ]
+                )
     content = buf.getvalue()
     with app_session() as s:
         s.execute(
-            text("INSERT INTO app.exports (id, event_id, kind, content, content_hash, created_by) VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :k, :c, :h, CAST(:u AS uuid))"),
-            {"id": str(uuid7()), "e": event_id, "k": f"{kind}_csv", "c": content,
-             "h": __import__("hashlib").sha256(content.encode()).hexdigest(), "u": created_by},
+            text(
+                "INSERT INTO app.exports (id, event_id, kind, content, content_hash, created_by) VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :k, :c, :h, CAST(:u AS uuid))"
+            ),
+            {
+                "id": str(uuid7()),
+                "e": event_id,
+                "k": f"{kind}_csv",
+                "c": content,
+                "h": __import__("hashlib").sha256(content.encode()).hexdigest(),
+                "u": created_by,
+            },
         )
     return {"filename": f"{kind}_{event_id[:8]}.csv", "content": content}
 
@@ -773,12 +1177,16 @@ def export_csv(event_id: str, kind: str, p: Principal = Depends(require_organize
 @router.get("/admin/disputes")
 def list_disputes(p: Principal = Depends(require_organizer)):
     with app_session() as s:
-        rows = s.execute(
-            text(
-                "SELECT d.id, d.status, d.statement, d.created_at, s.title, s.receipt_code, d.submission_id "
-                "FROM app.disputes d JOIN app.submissions s ON s.id = d.submission_id ORDER BY d.created_at DESC"
+        rows = (
+            s.execute(
+                text(
+                    "SELECT d.id, d.status, d.statement, d.created_at, s.title, s.receipt_code, d.submission_id "
+                    "FROM app.disputes d JOIN app.submissions s ON s.id = d.submission_id ORDER BY d.created_at DESC"
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
     return {"disputes": [dict(r) for r in rows]}
 
 
@@ -790,36 +1198,62 @@ def resolve_dispute(dispute_id: str, body: dict, request: Request, p: Principal 
     if outcome not in ("upheld", "rejected"):
         raise ApiError("VALIDATION_ERROR", details={"outcome": "upheld|rejected"})
     with app_session() as s:
-        d = s.execute(
-            text(
-                "SELECT di.id, di.submission_id, di.team_id, di.status, s.stage_id "
-                "FROM app.disputes di JOIN app.submissions s ON s.id = di.submission_id "
-                "WHERE di.id = CAST(:id AS uuid) FOR UPDATE"
-            ),
-            {"id": dispute_id},
-        ).mappings().first()
+        d = (
+            s.execute(
+                text(
+                    "SELECT di.id, di.submission_id, di.team_id, di.status, s.stage_id "
+                    "FROM app.disputes di JOIN app.submissions s ON s.id = di.submission_id "
+                    "WHERE di.id = CAST(:id AS uuid) FOR UPDATE"
+                ),
+                {"id": dispute_id},
+            )
+            .mappings()
+            .first()
+        )
         if d is None:
             raise ApiError("NOT_FOUND")
         if d["status"] in ("upheld", "rejected"):
             raise ApiError("VALIDATION_ERROR", details={"dispute": "Already resolved."})
         s.execute(
-            text("UPDATE app.disputes SET status=:o, resolution=:r, resolved_by=CAST(:u AS uuid), resolved_at=now() WHERE id = CAST(:id AS uuid)"),
+            text(
+                "UPDATE app.disputes SET status=:o, resolution=:r, resolved_by=CAST(:u AS uuid), resolved_at=now() WHERE id = CAST(:id AS uuid)"
+            ),
             {"o": outcome, "r": resolution, "u": p.id, "id": dispute_id},
         )
         if outcome == "upheld" and adjust_points:
             # rescoring via ledger adjustment (DAT-05): reversal + new entry
             stage_id = str(d["stage_id"])
             team_id = str(d["team_id"])
-            event_id = s.execute(text("SELECT event_id FROM app.stages WHERE id = CAST(:s AS uuid)"), {"s": stage_id}).scalar_one()
-            tenant_id = s.execute(text("SELECT tenant_id FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": str(event_id)}).scalar_one()
+            event_id = s.execute(
+                text("SELECT event_id FROM app.stages WHERE id = CAST(:s AS uuid)"), {"s": stage_id}
+            ).scalar_one()
+            tenant_id = s.execute(
+                text("SELECT tenant_id FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": str(event_id)}
+            ).scalar_one()
             add_ledger_entry(
-                s, tenant_id=str(tenant_id), event_id=str(event_id), stage_id=stage_id, team_id=team_id,
-                component="adjustment", kind="adjustment", points=float(adjust_points),
-                reason_code="DISPUTE_UPHELD", submission_id=str(d["submission_id"]), actor_id=p.id,
+                s,
+                tenant_id=str(tenant_id),
+                event_id=str(event_id),
+                stage_id=stage_id,
+                team_id=team_id,
+                component="adjustment",
+                kind="adjustment",
+                points=float(adjust_points),
+                reason_code="DISPUTE_UPHELD",
+                submission_id=str(d["submission_id"]),
+                actor_id=p.id,
                 note=f"Dispute {dispute_id[:8]} upheld: {resolution[:200]}",
             )
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="dispute.resolved", entity_type="dispute",
-                    entity_id=dispute_id, request_id=request.state.request_id, details={"outcome": outcome})
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="dispute.resolved",
+            entity_type="dispute",
+            entity_id=dispute_id,
+            request_id=request.state.request_id,
+            details={"outcome": outcome},
+        )
     return {"ok": True}
 
 
@@ -833,13 +1267,36 @@ def manual_adjustment(body: dict, request: Request, p: Principal = Depends(requi
     if not stage_id or not team_id or not reason or points == 0:
         raise ApiError("VALIDATION_ERROR", details={"adjustment": "stage_id, team_id, points, reason required."})
     with app_session() as s:
-        event_id = s.execute(text("SELECT event_id FROM app.stages WHERE id = CAST(:s AS uuid)"), {"s": stage_id}).scalar_one()
-        tenant_id = s.execute(text("SELECT tenant_id FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": str(event_id)}).scalar_one()
-        add_ledger_entry(s, tenant_id=str(tenant_id), event_id=str(event_id), stage_id=stage_id, team_id=team_id,
-                         component="adjustment", kind="adjustment", points=points, reason_code="MANUAL",
-                         actor_id=p.id, note=reason)
-        audit_write(s, actor_id=p.id, actor_role=p.role, action="scoring.manual_adjustment", entity_type="team",
-                    entity_id=team_id, request_id=request.state.request_id, details={"points": points, "reason": reason}, event_scope="scoring")
+        event_id = s.execute(
+            text("SELECT event_id FROM app.stages WHERE id = CAST(:s AS uuid)"), {"s": stage_id}
+        ).scalar_one()
+        tenant_id = s.execute(
+            text("SELECT tenant_id FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": str(event_id)}
+        ).scalar_one()
+        add_ledger_entry(
+            s,
+            tenant_id=str(tenant_id),
+            event_id=str(event_id),
+            stage_id=stage_id,
+            team_id=team_id,
+            component="adjustment",
+            kind="adjustment",
+            points=points,
+            reason_code="MANUAL",
+            actor_id=p.id,
+            note=reason,
+        )
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="scoring.manual_adjustment",
+            entity_type="team",
+            entity_id=team_id,
+            request_id=request.state.request_id,
+            details={"points": points, "reason": reason},
+            event_scope="scoring",
+        )
     return {"ok": True}
 
 
@@ -848,7 +1305,11 @@ def system_health(p: Principal = Depends(require_organizer)):
     probes = health_probe()
     with app_session() as s:
         jobs = s.execute(text("SELECT status, count(*) FROM app.jobs GROUP BY status")).all()
-        oldest = s.execute(text("SELECT COALESCE(MIN(EXTRACT(epoch FROM (now() - created_at))), 0) FROM app.jobs WHERE status='queued'")).scalar_one()
+        oldest = s.execute(
+            text(
+                "SELECT COALESCE(MIN(EXTRACT(epoch FROM (now() - created_at))), 0) FROM app.jobs WHERE status='queued'"
+            )
+        ).scalar_one()
     return {
         "databases": {"app": probes["database_app"], "gt": probes["database_gt"]},
         "jobs": {r[0]: int(r[1]) for r in jobs},

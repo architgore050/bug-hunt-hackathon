@@ -5,6 +5,7 @@ Trust boundary (architecture 9.2, blind spot DAT-03):
 - The app_api runtime role has no permission on this schema and is tested for it.
 - No value in this schema is ever returned by a participant-facing endpoint.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -41,7 +42,9 @@ class GtBug(GtBase):
     )
 
     id: Mapped[uuid.UUID] = pk()
-    challenge_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=False, nullable=False, index=True)
+    challenge_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=False, nullable=False, index=True
+    )
     code: Mapped[str] = mapped_column(String(40), nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     severity: Mapped[str] = mapped_column(String(20), nullable=False)  # low|medium|high|critical
