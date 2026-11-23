@@ -45,7 +45,7 @@ As of 2026-11-22 the repository contains NO automated backup job, no WAL archivi
 Take a backup (as the database owner or any read-capable role, from the DB host):
 
 ```bash
-PGUSER=pgadmin pg_dump -h 127.0.0.1 -p 5433 -d bughunt -Fc -f bughunt_$(date -u +%Y%m%dT%H%M%SZ).dump
+PGUSER=pgadmin pg_dump -h 127.0.0.1 -p 5434 -d bughunt -Fc -f bughunt_$(date -u +%Y%m%dT%H%M%SZ).dump
 ```
 
 Notes:
@@ -59,8 +59,8 @@ Notes:
 Restore into a clean environment:
 
 ```bash
-createdb -h 127.0.0.1 -p 5433 bughunt_restored
-pg_restore -h 127.0.0.1 -p 5433 -d bughunt_restored --no-owner -Fc bughunt_<ts>.dump
+createdb -h 127.0.0.1 -p 5434 bughunt_restored
+pg_restore -h 127.0.0.1 -p 5434 -d bughunt_restored --no-owner -Fc bughunt_<ts>.dump
 # recreate roles/grants (dev_db.sh grant block with production passwords), then sanity-check:
 psql -d bughunt_restored -c "SELECT count(*) FROM app.submissions; SELECT count(*) FROM gt.gt_bugs;"
 ```

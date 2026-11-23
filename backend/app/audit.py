@@ -5,12 +5,11 @@ The chain links each entry to the previous one per event scope. D1 exports
 signed checkpoints externally at intervals; this implementation computes the
 chain and exposes a verification endpoint (ADM-AU).
 """
+
 from __future__ import annotations
 
-import hashlib
 import json
 import uuid
-from datetime import datetime
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -38,7 +37,9 @@ def audit_write(
         {"s": event_scope},
     ).first()
     prev_hash = row[0] if row else "GENESIS"
-    entry_material = f"{prev_hash}|{actor_id}|{actor_role}|{action}|{entity_type}|{entity_id}|{request_id}|{details_json}"
+    entry_material = (
+        f"{prev_hash}|{actor_id}|{actor_role}|{action}|{entity_type}|{entity_id}|{request_id}|{details_json}"
+    )
     entry_hash = sha256_hex(entry_material)
     new_id = str(uuid.uuid4())
     session.execute(
@@ -85,4 +86,10 @@ def audit_verify(session: Session, event_scope: str = "global", limit: int = 500
             break
         prev = r.hash
         checked += 1
-    return {"scope": event_scope, "entries": len(rows), "verified": checked, "broken_at": broken_at, "intact": broken_at is None}
+    return {
+        "scope": event_scope,
+        "entries": len(rows),
+        "verified": checked,
+        "broken_at": broken_at,
+        "intact": broken_at is None,
+    }

@@ -14,10 +14,11 @@ frozen at publication and required to be approved by the organizer):
 The ledger is append-only. Corrections append reversal/adjustment entries;
 existing rows are never modified (architecture 8.3, DAT-01/05).
 """
+
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -79,9 +80,7 @@ def claim_award_unit(
     concurrent evaluations cannot double-award (DAT-01).
     """
     existing = session.execute(
-        text(
-            "SELECT 1 FROM app.award_claims WHERE stage_id = :s AND team_id = :t AND award_unit_id = :u FOR UPDATE"
-        ),
+        text("SELECT 1 FROM app.award_claims WHERE stage_id = :s AND team_id = :t AND award_unit_id = :u FOR UPDATE"),
         {"s": stage_id, "t": team_id, "u": award_unit_id},
     ).first()
     if existing:
@@ -100,7 +99,9 @@ def claim_award_unit(
     return True
 
 
-def compute_award_points(bug_points: float, weights: dict, *, test_fraction: float, review_quality: float, evidence_quality: float) -> dict:
+def compute_award_points(
+    bug_points: float, weights: dict, *, test_fraction: float, review_quality: float, evidence_quality: float
+) -> dict:
     """Split one award unit into component points per the frozen weights."""
     w_func = float(weights.get("functional_test", 0.5))
     w_review = float(weights.get("code_review", 0.3))
@@ -114,10 +115,7 @@ def compute_award_points(bug_points: float, weights: dict, *, test_fraction: flo
 
 def team_totals(session: Session, stage_id: str) -> list[dict]:
     rows = session.execute(
-        text(
-            "SELECT team_id, SUM(points) AS total FROM app.score_ledger_entries "
-            "WHERE stage_id = :s GROUP BY team_id"
-        ),
+        text("SELECT team_id, SUM(points) AS total FROM app.score_ledger_entries WHERE stage_id = :s GROUP BY team_id"),
         {"s": stage_id},
     ).all()
     return [{"team_id": str(r.team_id), "total": float(r.total or 0)} for r in rows]
@@ -143,7 +141,7 @@ def build_leaderboard(
         return (
             -totals.get(team_id, 0.0),
             invalid_counts.get(team_id, 0),
-            last_accepted_at.get(team_id) or datetime.max.replace(tzinfo=None),
+            last_accepted_at.get(team_id) or datetime.max.replace(tzinfo=UTC),
         )
 
     ordered = sorted(team_names.keys(), key=sort_key)
@@ -156,10 +154,12 @@ def build_leaderboard(
                 "team_name": team_names.get(team_id, "?"),
                 "score": totals.get(team_id, 0.0),
                 "invalid_reports": invalid_counts.get(team_id, 0),
-                "last_accepted_at": last_accepted_at.get(team_id).isoformat() if last_accepted_at.get(team_id) else None,
+                "last_accepted_at": last_accepted_at.get(team_id).isoformat()
+                if last_accepted_at.get(team_id)
+                else None,
             }
         )
-    return {"stage_id": stage_id, "event_id": event_id, "rows": rows, "generated_at": datetime.utcnow().isoformat() + "Z"}
+    return {"stage_id": stage_id, "event_id": event_id, "rows": rows, "generated_at": datetime.now(UTC).isoformat()}
 
 
 def save_snapshot(session: Session, *, event_id: str, stage_id: str, payload: dict, visibility: str) -> int:

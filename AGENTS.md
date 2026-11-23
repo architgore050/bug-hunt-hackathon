@@ -1,4 +1,4 @@
-# AGENTS.md — working rules for AI agents and engineers on this repo
+# AGENTS.md - working rules for AI agents and engineers on this repo
 
 This file governs any AI agent or human contributor working in
 `bug-hunt-hackathon/`. Read it before writing code.

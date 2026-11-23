@@ -9,6 +9,7 @@ dispute. Prints PASS/FAIL per step and exits nonzero on any failure.
 Usage: python scripts/e2e_journey.py [--base http://127.0.0.1:8100]
 Run scripts/run_dev.sh first.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -128,8 +129,16 @@ def main() -> int:
     receipt1 = r1.json()
     check("receipt code present", bool(receipt1.get("receipt_code")), str(receipt1)[:200])
     r2 = pc.post(f"{BASE}/v1/submissions", json=report, headers={"Idempotency-Key": idem})
-    check("retry same key returns same receipt", r2.status_code == 202 and r2.json()["submission_id"] == receipt1["submission_id"], r2.text[:200])
-    r3 = pc.post(f"{BASE}/v1/submissions", json={**report, "title": "Different payload same key"}, headers={"Idempotency-Key": idem})
+    check(
+        "retry same key returns same receipt",
+        r2.status_code == 202 and r2.json()["submission_id"] == receipt1["submission_id"],
+        r2.text[:200],
+    )
+    r3 = pc.post(
+        f"{BASE}/v1/submissions",
+        json={**report, "title": "Different payload same key"},
+        headers={"Idempotency-Key": idem},
+    )
     check("same key different payload -> 409", r3.status_code == 409, f"{r3.status_code} {r3.text[:150]}")
 
     # cooldown: immediate second report on the same file must be 429
@@ -138,12 +147,23 @@ def main() -> int:
         json={**report, "title": "Cooldown probe second report", "line_start": 20, "line_end": 24},
         headers={"Idempotency-Key": str(uuid.uuid4())},
     )
-    check("file cooldown enforced", r4.status_code == 429 and r4.json()["error"]["code"] == "SUBMISSION_COOLDOWN", f"{r4.status_code} {r4.text[:150]}")
+    check(
+        "file cooldown enforced",
+        r4.status_code == 429 and r4.json()["error"]["code"] == "SUBMISSION_COOLDOWN",
+        f"{r4.status_code} {r4.text[:150]}",
+    )
 
     # second report on a different file
     time.sleep(1)
-    report2 = {**report, "file_path": "db.js", "line_start": 57, "line_end": 60, "title": "Delete query binds wrong column",
-               "description": "deleteNote prepares DELETE FROM notes WHERE id = ? and the route feeds it the author id; the wrong row disappears.", "category": "data_handling"}
+    report2 = {
+        **report,
+        "file_path": "db.js",
+        "line_start": 57,
+        "line_end": 60,
+        "title": "Delete query binds wrong column",
+        "description": "deleteNote prepares DELETE FROM notes WHERE id = ? and the route feeds it the author id; the wrong row disappears.",
+        "category": "data_handling",
+    }
     r5 = pc.post(f"{BASE}/v1/submissions", json=report2, headers={"Idempotency-Key": str(uuid.uuid4())})
     check("second report on another file accepted", r5.status_code == 202, r5.text[:200])
     receipt5 = r5.json()
@@ -160,7 +180,11 @@ def main() -> int:
     subs = pc.get(f"{BASE}/v1/submissions").json()["submissions"]
     mine = [s for s in subs if s["id"] == receipt1["submission_id"]]
     # INT-01: participants see only "received" until results are released
-    check("feedback hidden before release (participant sees received only)", bool(mine) and mine[0]["status"] == "received", str(mine)[:250])
+    check(
+        "feedback hidden before release (participant sees received only)",
+        bool(mine) and mine[0]["status"] == "received",
+        str(mine)[:250],
+    )
 
     # --- 6. reviewer flow ------------------------------------------------------
     rev_token = login(c, "reviewer1@example.com", STAFF_PW)
@@ -173,13 +197,27 @@ def main() -> int:
         if any(q["submission_id"] == receipt1["submission_id"] for q in queue):
             break
         time.sleep(1.5)
-    check("evaluation pipeline created review work", any(q["submission_id"] == receipt1["submission_id"] for q in queue), str(len(queue)))
+    check(
+        "evaluation pipeline created review work",
+        any(q["submission_id"] == receipt1["submission_id"] for q in queue),
+        str(len(queue)),
+    )
     item = next((q for q in queue if q["submission_id"] == receipt1["submission_id"]), None)
     if item:
         rc.post(f"{BASE}/v1/review/items/{item['review_item_id']}/claim").raise_for_status()
         r = rc.post(
             f"{BASE}/v1/review/items/{item['review_item_id']}/decision",
-            json={"decision": "accept_full", "rubric": {"functionality": 1.0, "root_cause": 1.0, "code_quality": 0.8, "testing": 0.5, "evidence": 1.0}, "notes": "verified against local repro"},
+            json={
+                "decision": "accept_full",
+                "rubric": {
+                    "functionality": 1.0,
+                    "root_cause": 1.0,
+                    "code_quality": 0.8,
+                    "testing": 0.5,
+                    "evidence": 1.0,
+                },
+                "notes": "verified against local repro",
+            },
         )
         check("reviewer records auditable decision", r.status_code == 200, r.text[:200])
     else:
@@ -208,7 +246,9 @@ def main() -> int:
     # asserted in the results breakdown after release (see ctf_bonus check)
     subs = pc.get(f"{BASE}/v1/submissions").json()["submissions"]
     flag_sub = next((s for s in subs if s["id"] == flag_receipt["submission_id"]), {})
-    check("flag status hidden from participant before release", flag_sub.get("status") == "received", str(flag_sub)[:150])
+    check(
+        "flag status hidden from participant before release", flag_sub.get("status") == "received", str(flag_sub)[:150]
+    )
 
     # --- 9. release results ------------------------------------------------------
     r = oc.post(f"{BASE}/v1/admin/stages/{stage_id}/control", json={"action": "end", "reason": "e2e rehearsal end"})
@@ -222,8 +262,16 @@ def main() -> int:
 
     res = pc.get(f"{BASE}/v1/results/{stage_id}").json()
     check("participant results released", res.get("released") is True, str(res)[:200])
-    check("score breakdown has components", any(k in (res.get("by_component") or {}) for k in ("evidence_report", "code_review", "ctf_bonus")), str(res.get("by_component")))
-    check("CTF flag verified as bonus", float((res.get("by_component") or {}).get("ctf_bonus", 0)) > 0, str(res.get("by_component")))
+    check(
+        "score breakdown has components",
+        any(k in (res.get("by_component") or {}) for k in ("evidence_report", "code_review", "ctf_bonus")),
+        str(res.get("by_component")),
+    )
+    check(
+        "CTF flag verified as bonus",
+        float((res.get("by_component") or {}).get("ctf_bonus", 0)) > 0,
+        str(res.get("by_component")),
+    )
     total = res.get("total", 0)
     check("total score positive", total > 0, str(total))
 
@@ -239,12 +287,21 @@ def main() -> int:
     check("results CSV export", ex.status_code == 200 and "team" in ex.text.lower()[:200], ex.text[:120])
 
     # dispute
-    r = pc.post(f"{BASE}/v1/submissions/{receipt5['submission_id']}/dispute", json={"statement": "This duplicate of the delete-bug report was scored as needs_review; please confirm."})
+    r = pc.post(
+        f"{BASE}/v1/submissions/{receipt5['submission_id']}/dispute",
+        json={"statement": "This duplicate of the delete-bug report was scored as needs_review; please confirm."},
+    )
     check("dispute filed", r.status_code == 201, r.text[:200])
     disputes = oc.get(f"{BASE}/v1/admin/disputes").json()["disputes"]
     check("organizer sees dispute", len(disputes) >= 1)
     d = disputes[0]
-    r = oc.post(f"{BASE}/v1/admin/disputes/{d['id']}/resolve", json={"outcome": "rejected", "resolution": "Report overlaps the already-awarded unit; original decision stands."})
+    r = oc.post(
+        f"{BASE}/v1/admin/disputes/{d['id']}/resolve",
+        json={
+            "outcome": "rejected",
+            "resolution": "Report overlaps the already-awarded unit; original decision stands.",
+        },
+    )
     check("dispute resolved", r.status_code == 200, r.text[:200])
 
     print("== journey summary ==")

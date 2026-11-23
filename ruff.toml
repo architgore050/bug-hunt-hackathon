@@ -1,0 +1,50 @@
+# Ruff configuration for the Bug Hunt CTF backend and scripts.
+# Status: enforced by CI (ruff check + ruff format --check).
+# Security scanning is a separate gate (bandit), not folded into the lint ruleset.
+
+target-version = "py312"
+line-length = 120
+extend-exclude = [".venv", "frontend/node_modules"]
+
+[lint]
+select = [
+  "E4", "E7", "E9", "E",   # pycodestyle (E501 handled by the formatter)
+  "F",                     # pyflakes
+  "B",                     # bugbear
+  "UP",                    # pyupgrade
+  "I",                     # isort
+  "SIM",                   # simplify
+  "C4",                    # comprehensions
+  "PIE",                   # misc best practices
+  "RUF",                   # ruff-specific
+  "DTZ",                   # timezone correctness (TIM-01: server clock discipline)
+  "BLE",                   # no blind excepts
+]
+ignore = [
+  "E501",  # line length: enforced by `ruff format` instead
+]
+
+[lint.flake8-bugbear]
+# FastAPI dependency-injection idiom: Depends(...) in default arguments is the framework pattern.
+extend-immutable-calls = [
+  "fastapi.Depends",
+  "fastapi.Query",
+  "fastapi.Body",
+  "fastapi.Header",
+  "fastapi.Cookie",
+  "fastapi.Path",
+  "fastapi.Form",
+  "fastapi.File",
+  "app.deps.require_staff",
+  "app.deps.require_organizer",
+  "app.deps.require_admin",
+]
+
+[lint.per-file-ignores]
+# SQLAlchemy declarative idiom: __table_args__ dicts are per-class schema config, not shared mutable state.
+"**/models_*.py" = ["RUF012"]
+# Tests: the pytest.raises assertion context reads best nested inside the DB connection context.
+"**/tests/*" = ["SIM117"]
+
+[format]
+quote-style = "double"

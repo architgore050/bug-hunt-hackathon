@@ -1,4 +1,4 @@
-# Bug Hunt CTF — Fall Back platform
+# Bug Hunt CTF: Fall Back platform
 
 The event platform for **Fall Back**, a full-stack software debugging challenge
 run by the Software Development Club at VIT Bhopal University (proposed date
@@ -25,8 +25,11 @@ own limits honestly.
 
 ## Quick start (D0 local profile)
 
-Requirements: Python 3.12+, Node 22+, a local PostgreSQL 17 (the scripts use
-portable binaries at `../tools/pg17/bin` by default; override `PG_BIN`).
+Requirements: Python 3.12+, Node 22+, a local PostgreSQL 16 or 17. The scripts
+auto-detect binaries: `../tools/pg17/bin` if present, else `initdb`/`psql` on
+PATH, else the newest `/usr/lib/postgresql/*/bin`; override with `PG_BIN`. The
+dev cluster listens on 127.0.0.1:5434 (override `PGPORT`, and keep
+`backend/.env` and `backend/tests` in sync).
 
 **No password is needed anywhere in setup.** The dev cluster is initialized
 with trust auth, so `pgadmin` has no password and localhost connections are
@@ -34,7 +37,7 @@ never password-checked (see `.env` for the role passwords used by the app
 itself: `app_api_dev`, `gt_admin_dev`, `scheduler_dev`). If `psql` ever
 prompts for a password, a different PostgreSQL cluster is listening on that
 port; `scripts/dev_db.sh` detects this and tells you to pick another one
-(`PGPORT=5434`).
+(`PGPORT=5435`).
 
 ```bash
 # 1. database, roles, schemas (creates roles app_api / gt_admin / scheduler)
@@ -43,12 +46,15 @@ DB=bughunt scripts/dev_db.sh
 # 2. migrations (plain versioned SQL, tracked in app.schema_migrations)
 DB=bughunt PGUSER=pgadmin scripts/migrate.sh
 
-# 3. seed demo data (dev-only credentials, printed at the end)
-cd backend && python seed.py --reset
+# 3. Python dependencies (a venv is recommended; system Python may be managed)
+cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-# 4. API + worker + frontend
-cd backend && python -m uvicorn app.main:app --port 8100 &
-cd backend && python worker.py &
+# 4. seed demo data (dev-only credentials, printed at the end)
+cd backend && .venv/bin/python seed.py --reset
+
+# 5. API + worker + frontend
+cd backend && .venv/bin/python -m uvicorn app.main:app --port 8100 &
+cd backend && .venv/bin/python worker.py &
 cd frontend && npm install && npm run dev   # proxies /v1 to :8100
 ```
 
