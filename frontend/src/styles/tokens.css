@@ -1,0 +1,22 @@
+@import "@fontsource/fraunces/latin.css";
+@import "@fontsource/ibm-plex-mono/latin.css";
+@import "@fontsource/archivo/latin.css";
+
+:root {
+  --font-serif: 'Fraunces', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+  --font-sans: 'Archivo', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Concept 03: The Failure Atlas */
+  --atlas-abyss: #090E16;
+  --atlas-strata: #111A27;
+  --atlas-ridge: #1A273A;
+  --atlas-grid: rgba(74, 118, 148, 0.22);
+  --atlas-shear: #C44D3F;
+  --atlas-copper: #CF824B;
+  --atlas-moss: #3F7A68;
+  --atlas-cyan: #4A8FA8;
+  --atlas-text: #E2E8EE;
+  --atlas-muted: #718294;
+  --atlas-hairline: #22303F;
+}

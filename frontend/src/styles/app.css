@@ -1,0 +1,119 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+body {
+  margin: 0;
+  background-color: var(--atlas-abyss);
+  color: var(--atlas-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.font-serif {
+  font-family: var(--font-serif);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+.font-sans {
+  font-family: var(--font-sans);
+}
+
+/* Cartographic survey grid: hairline rules every 48px, heavier rule every 240px */
+.atlas-grid-bg {
+  background-image:
+    linear-gradient(to right, var(--atlas-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--atlas-grid) 1px, transparent 1px),
+    linear-gradient(to right, rgba(74, 118, 148, 0.10) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(74, 118, 148, 0.10) 1px, transparent 1px);
+  background-size: 240px 240px, 240px 240px, 48px 48px, 48px 48px;
+}
+
+/* TopoPanel: bounded coordinate panel with corner survey ticks */
+.topo-panel {
+  position: relative;
+  background-color: var(--atlas-strata);
+  border: 1px solid var(--atlas-hairline);
+}
+
+.topo-panel::before,
+.topo-panel::after {
+  content: '+';
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--atlas-cyan);
+  pointer-events: none;
+}
+
+.topo-panel::before {
+  top: -6px;
+  left: -5px;
+}
+
+.topo-panel::after {
+  bottom: -6px;
+  right: -5px;
+}
+
+/* Crosshair intersection marker used on section seams */
+.crosshair-tick {
+  position: relative;
+}
+
+.crosshair-tick::before {
+  content: '+';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -58%);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--atlas-cyan);
+  pointer-events: none;
+}
+
+/* Elevation callout: Fraunces italic cartographic inscription */
+.elevation-callout {
+  font-family: var(--font-serif);
+  font-style: italic;
+  letter-spacing: 0.01em;
+}
+
+/* Coordinate inscription */
+.coordinate {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--atlas-muted);
+  text-transform: uppercase;
+}
+
+/* Seismic beacon pulse (respects reduced motion below) */
+@keyframes beacon-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(1.35); }
+}
+
+.beacon-pulse {
+  animation: beacon-pulse 2.4s ease-in-out infinite;
+}
+
+/* Slight chart-paper tint for elevated chart panels */
+.atlas-chart {
+  background-color: #131C2B;
+  border-color: #2A3B50;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
