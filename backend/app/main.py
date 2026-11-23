@@ -4,6 +4,7 @@ Request pipeline (architecture 7.3): request ID -> size/type limits ->
 authenticate -> authorize -> validate -> bounded transaction -> audit ->
 stable error envelope with request ID. No scoring logic lives in handlers.
 """
+
 from __future__ import annotations
 
 import logging
@@ -57,7 +58,14 @@ def create_app() -> FastAPI:
         if cl and int(cl) > settings.max_body_bytes:
             return JSONResponse(
                 status_code=413,
-                content={"error": {"code": "SUBMISSION_INVALID", "message": "Request body too large.", "request_id": request_id, "details": {}}},
+                content={
+                    "error": {
+                        "code": "SUBMISSION_INVALID",
+                        "message": "Request body too large.",
+                        "request_id": request_id,
+                        "details": {},
+                    }
+                },
                 headers={"X-Request-Id": request_id},
             )
         response = await call_next(request)
@@ -72,7 +80,17 @@ def create_app() -> FastAPI:
     app.add_exception_handler(ApiError, api_error_handler)
     app.add_exception_handler(Exception, unhandled_error_handler)
 
-    for router in (public.router, auth.router, state.router, challenges.router, submissions.router, leaderboard.router, announcements.router, review.router, admin.router):
+    for router in (
+        public.router,
+        auth.router,
+        state.router,
+        challenges.router,
+        submissions.router,
+        leaderboard.router,
+        announcements.router,
+        review.router,
+        admin.router,
+    ):
         app.include_router(router, prefix="/v1")
 
     @app.get("/health")
