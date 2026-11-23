@@ -163,8 +163,10 @@ All in `frontend/src/ui/components.tsx`, `frontend/src/components/`, and
 - Behavior: redirects already-signed-in users to their role home (participant
   to /app, reviewer to /review, organizer and admin to /admin) or to the path
   they were originally heading for. Session limit of 2 concurrent sessions per
-  user (AUTH-10) surfaces as an `AUTH_FORBIDDEN` banner telling the user to
-  sign out another device.
+  user (AUTH-10) is enforced by reclaim and eviction, not lockout: a new
+  sign-in reclaims zombie sessions (no live refresh token) and, if still at
+  the cap, revokes the oldest live session (audited). Sign-in never fails
+  because of stale sessions.
 - States: idle form; busy state on submit; error banner with the server
   message and code; loading state handled globally by the session restore.
 
