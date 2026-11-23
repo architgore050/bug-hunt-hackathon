@@ -1,4 +1,5 @@
 """Authorization and IDOR tests (AT-09, SEC-01/SEC-02)."""
+
 from __future__ import annotations
 
 import uuid
@@ -11,9 +12,16 @@ def test_participant_cannot_read_other_teams_submission(client):
     asg = pc1.get("/v1/assignments").json()["assignments"][0]
     r = pc1.post(
         "/v1/submissions",
-        json={"kind": "bug_report", "challenge_id": asg["challenge_id"], "file_path": "db.js", "line_start": 57, "line_end": 60,
-              "category": "data_handling", "title": "Cross team probe report",
-              "description": "deleteNote prepares DELETE FROM notes WHERE id = ? and the route feeds it the author id."},
+        json={
+            "kind": "bug_report",
+            "challenge_id": asg["challenge_id"],
+            "file_path": "db.js",
+            "line_start": 57,
+            "line_end": 60,
+            "category": "data_handling",
+            "title": "Cross team probe report",
+            "description": "deleteNote prepares DELETE FROM notes WHERE id = ? and the route feeds it the author id.",
+        },
         headers={"Idempotency-Key": str(uuid.uuid4())},
     )
     assert r.status_code == 202
@@ -37,7 +45,9 @@ def test_participant_cannot_use_admin_endpoints(client):
 def test_reviewer_cannot_use_admin_event_creation(client):
     from fastapi.testclient import TestClient
 
-    token = client.post("/v1/auth/login", json={"email": "reviewer1@example.com", "password": STAFF_PW}).json()["access_token"]
+    token = client.post("/v1/auth/login", json={"email": "reviewer1@example.com", "password": STAFF_PW}).json()[
+        "access_token"
+    ]
     rc = TestClient(client.app)
     rc.headers.update({"Authorization": f"Bearer {token}"})
     r = rc.post("/v1/admin/events", json={"name": "Sneaky Event", "slug": "sneaky-event"})
@@ -54,15 +64,24 @@ def test_forged_challenge_id_is_ignored_by_server(client):
     fake_challenge = str(uuid.uuid4())
     r = pc.post(
         "/v1/submissions",
-        json={"kind": "bug_report", "challenge_id": fake_challenge, "file_path": "db.js", "line_start": 1, "line_end": 3,
-              "category": "logic", "title": "Forged challenge report",
-              "description": "This submission references a challenge id that is not assigned to this team."},
+        json={
+            "kind": "bug_report",
+            "challenge_id": fake_challenge,
+            "file_path": "db.js",
+            "line_start": 1,
+            "line_end": 3,
+            "category": "logic",
+            "title": "Forged challenge report",
+            "description": "This submission references a challenge id that is not assigned to this team.",
+        },
         headers={"Idempotency-Key": str(uuid.uuid4())},
     )
     assert r.status_code == 202
     detail = pc.get(f"/v1/submissions/{r.json()['submission_id']}").json()
     asg = pc.get("/v1/assignments").json()["assignments"][0]
-    assert detail["payload"]["challenge_id"] != fake_challenge or detail["file_path"] in [f["path"] for f in asg["files"]]
+    assert detail["payload"]["challenge_id"] != fake_challenge or detail["file_path"] in [
+        f["path"] for f in asg["files"]
+    ]
 
 
 def test_unauthenticated_requests_rejected(client):
@@ -90,9 +109,16 @@ def test_report_payload_with_script_text_is_stored_as_text(client):
     nasty = "<script>alert('xss')</script> '; DELETE FROM users; --"
     r = pc.post(
         "/v1/submissions",
-        json={"kind": "bug_report", "challenge_id": asg["challenge_id"], "file_path": "public/app.js", "line_start": 80, "line_end": 84,
-              "category": "injection", "title": "Comments execute injected markup",
-              "description": f"The comment renderer interpolates raw HTML like {nasty} into innerHTML for every reader."},
+        json={
+            "kind": "bug_report",
+            "challenge_id": asg["challenge_id"],
+            "file_path": "public/app.js",
+            "line_start": 80,
+            "line_end": 84,
+            "category": "injection",
+            "title": "Comments execute injected markup",
+            "description": f"The comment renderer interpolates raw HTML like {nasty} into innerHTML for every reader.",
+        },
         headers={"Idempotency-Key": str(uuid.uuid4())},
     )
     assert r.status_code == 202

@@ -4,9 +4,9 @@ Runtime configuration is read from the environment (or a .env file) and validate
 at startup. Nothing here may embed secrets; development defaults are clearly
 marked as dev-only and never used by a live deployment without override.
 """
+
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict

@@ -1,4 +1,5 @@
 """Submission idempotency and durability tests (AT-03/AT-04, architecture 8.1)."""
+
 from __future__ import annotations
 
 import uuid
@@ -41,7 +42,11 @@ def test_same_key_different_payload_conflicts(client):
     key = str(uuid.uuid4())
     r1 = pc.post("/v1/submissions", json=_report(asg["challenge_id"]), headers={"Idempotency-Key": key})
     assert r1.status_code == 202
-    r2 = pc.post("/v1/submissions", json=_report(asg["challenge_id"], title="A different report entirely"), headers={"Idempotency-Key": key})
+    r2 = pc.post(
+        "/v1/submissions",
+        json=_report(asg["challenge_id"], title="A different report entirely"),
+        headers={"Idempotency-Key": key},
+    )
     assert r2.status_code == 409
     assert r2.json()["error"]["code"] == "IDEMPOTENCY_CONFLICT"
 
@@ -63,11 +68,16 @@ def test_committed_key_replays_original_receipt_after_deadline(client):
 
     oc = TestClient(client.app)
     oc.headers.update({"Authorization": f"Bearer {org['access_token']}"})
-    oc.post(f"/v1/admin/stages/{stage_id}/control", json={"action": "end", "reason": "deadline test"}).raise_for_status()
+    oc.post(
+        f"/v1/admin/stages/{stage_id}/control", json={"action": "end", "reason": "deadline test"}
+    ).raise_for_status()
 
     # a NEW submission must now be rejected
-    r_new = pc.post("/v1/submissions", json=_report(asg["challenge_id"], file_path="db.js", line_start=55, line_end=58, title="Late new report"),
-                    headers={"Idempotency-Key": str(uuid.uuid4())})
+    r_new = pc.post(
+        "/v1/submissions",
+        json=_report(asg["challenge_id"], file_path="db.js", line_start=55, line_end=58, title="Late new report"),
+        headers={"Idempotency-Key": str(uuid.uuid4())},
+    )
     assert r_new.status_code == 409
     assert r_new.json()["error"]["code"] == "ROUND_ENDED"
 
@@ -83,7 +93,10 @@ def test_per_file_cooldown_races_are_rejected(client):
     asg = pc.get("/v1/assignments").json()["assignments"][0]
     r1 = pc.post("/v1/submissions", json=_report(asg["challenge_id"]), headers={"Idempotency-Key": str(uuid.uuid4())})
     assert r1.status_code == 202
-    r2 = pc.post("/v1/submissions", json=_report(asg["challenge_id"], line_start=30, line_end=34, title="Second immediate report"),
-                 headers={"Idempotency-Key": str(uuid.uuid4())})
+    r2 = pc.post(
+        "/v1/submissions",
+        json=_report(asg["challenge_id"], line_start=30, line_end=34, title="Second immediate report"),
+        headers={"Idempotency-Key": str(uuid.uuid4())},
+    )
     assert r2.status_code == 429
     assert r2.json()["error"]["code"] == "SUBMISSION_COOLDOWN"

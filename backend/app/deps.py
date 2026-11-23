@@ -4,19 +4,21 @@ Identity ALWAYS comes from the signed access token, never from the request
 body (architecture 8.1 step 1). Every object access is ownership-scoped here
 and again in the service queries (SEC-02 / IDOR defense in depth).
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from collections import defaultdict
+from datetime import UTC
 
 import jwt
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
 
 from . import security
-from .config import settings, cors_origins
+from .config import cors_origins
 from .db import app_session
 from .errors import ApiError
 
@@ -56,19 +58,23 @@ def get_principal(request: Request, creds: HTTPAuthorizationCredentials | None =
     try:
         claims = security.decode_access_token(creds.credentials)
     except jwt.ExpiredSignatureError:
-        raise ApiError("AUTH_TOKEN_EXPIRED")
+        raise ApiError("AUTH_TOKEN_EXPIRED") from None
     except jwt.InvalidTokenError:
-        raise ApiError("AUTH_SESSION_REVOKED")
+        raise ApiError("AUTH_SESSION_REVOKED") from None
 
     with app_session() as s:
-        row = s.execute(
-            text(
-                "SELECT u.id, u.email, u.name, u.role, u.status, u.token_version, s.id AS session_id, "
-                "s.revoked_at FROM app.users u JOIN app.sessions s ON s.id = CAST(:sid AS uuid) "
-                "WHERE u.id = CAST(:uid AS uuid)"
-            ),
-            {"sid": claims["sid"], "uid": claims["sub"]},
-        ).mappings().first()
+        row = (
+            s.execute(
+                text(
+                    "SELECT u.id, u.email, u.name, u.role, u.status, u.token_version, s.id AS session_id, "
+                    "s.revoked_at FROM app.users u JOIN app.sessions s ON s.id = CAST(:sid AS uuid) "
+                    "WHERE u.id = CAST(:uid AS uuid)"
+                ),
+                {"sid": claims["sid"], "uid": claims["sub"]},
+            )
+            .mappings()
+            .first()
+        )
     if row is None:
         raise ApiError("AUTH_SESSION_REVOKED")
     if row["revoked_at"] is not None:
@@ -91,7 +97,7 @@ def require_role(*roles: str):
     return checker
 
 
-def require_staff() -> "callable":
+def require_staff() -> callable:
     def checker(p: Principal = Depends(get_principal)) -> Principal:
         if p.role not in ("reviewer", "organizer", "admin"):
             raise ApiError("AUTH_FORBIDDEN")
@@ -118,7 +124,9 @@ def require_rules_accepted(p: Principal) -> None:
         return
     with app_session() as s:
         ev = s.execute(
-            text("SELECT rules_version FROM app.events WHERE status IN ('ready','live','closed','finalized') ORDER BY created_at DESC LIMIT 1")
+            text(
+                "SELECT rules_version FROM app.events WHERE status IN ('ready','live','closed','finalized') ORDER BY created_at DESC LIMIT 1"
+            )
         ).first()
         if ev is None:
             return
@@ -140,7 +148,7 @@ def step_up_verified(request: Request, p: Principal = Depends(get_principal)) ->
     """
     if p.role not in ("organizer", "admin"):
         raise ApiError("AUTH_FORBIDDEN")
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     with app_session() as s:
         row = s.execute(
@@ -148,7 +156,7 @@ def step_up_verified(request: Request, p: Principal = Depends(get_principal)) ->
             {"sid": p.session_id},
         ).first()
         step_up_at = row[0] if row else None
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if step_up_at is None or step_up_at < now - timedelta(minutes=5):
         raise ApiError("ADMIN_STEP_UP_REQUIRED")
     return p

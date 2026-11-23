@@ -3,13 +3,13 @@
 Ground truth lives in models_gt.py under the ``gt`` schema and is reachable only
 through the gt_admin role (see db.py). The app_api runtime role cannot read it.
 """
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -65,7 +65,9 @@ class User(AppBase):
     # participant | reviewer | organizer | admin  (integrity_officer folded into reviewer for v1, documented)
     role: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     password_hash: Mapped[str | None] = mapped_column(String(256))
-    status: Mapped[str] = mapped_column(String(20), default="pending", server_default=text("'pending'"), nullable=False)  # pending|active|disqualified
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending", server_default=text("'pending'"), nullable=False
+    )  # pending|active|disqualified
     token_version: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"), nullable=False)
     registration_id: Mapped[str | None] = mapped_column(String(64))
     accommodation_note: Mapped[str | None] = mapped_column(Text)
@@ -192,7 +194,9 @@ class ReadinessItem(AppBase):
     event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.events.id"), nullable=False, index=True)
     key: Mapped[str] = mapped_column(String(80), nullable=False)
     label: Mapped[str] = mapped_column(String(200), nullable=False)
-    state: Mapped[str] = mapped_column(String(20), default="unchecked", server_default=text("'unchecked'"), nullable=False)  # unchecked|checked|na
+    state: Mapped[str] = mapped_column(
+        String(20), default="unchecked", server_default=text("'unchecked'"), nullable=False
+    )  # unchecked|checked|na
     owner: Mapped[str | None] = mapped_column(String(120))
     note: Mapped[str | None] = mapped_column(Text)
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -209,7 +213,9 @@ class Team(AppBase):
     event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.events.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     join_code: Mapped[str] = mapped_column(String(12), unique=True, nullable=False)
-    status: Mapped[str] = mapped_column(String(20), default="active", server_default=text("'active'"), nullable=False)  # active|disqualified
+    status: Mapped[str] = mapped_column(
+        String(20), default="active", server_default=text("'active'"), nullable=False
+    )  # active|disqualified
     seat_label: Mapped[str | None] = mapped_column(String(40))
     created_at: Mapped[datetime] = ts()
 
@@ -234,7 +240,9 @@ class Invite(AppBase):
     email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     team_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("app.teams.id"))
-    role: Mapped[str] = mapped_column(String(20), default="participant", server_default=text("'participant'"), nullable=False)
+    role: Mapped[str] = mapped_column(
+        String(20), default="participant", server_default=text("'participant'"), nullable=False
+    )
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = ts()
@@ -296,7 +304,6 @@ class TimeAdjustment(AppBase):
 
 class ChallengeVersion(AppBase):
     __tablename__ = "challenge_versions"
-    __table_args__ = {"schema": "app"}
 
     id: Mapped[uuid.UUID] = pk()
     event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.events.id"), nullable=False, index=True)
@@ -307,7 +314,9 @@ class ChallengeVersion(AppBase):
     status: Mapped[str] = mapped_column(String(20), default="draft", server_default=text("'draft'"), nullable=False)
     content_hash: Mapped[str | None] = mapped_column(String(80))
     instructions_md: Mapped[str | None] = mapped_column(Text)
-    participant_manifest: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"), nullable=False)
+    participant_manifest: Mapped[dict] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb"), nullable=False
+    )
     frozen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = ts()
@@ -316,6 +325,7 @@ class ChallengeVersion(AppBase):
         {"schema": "app"},
     )
 
+
 class ChallengeFile(AppBase):
     """Participant-visible source files. Answer material never goes here."""
 
@@ -323,7 +333,9 @@ class ChallengeFile(AppBase):
     __table_args__ = (UniqueConstraint("challenge_version_id", "path"), {"schema": "app"})
 
     id: Mapped[uuid.UUID] = pk()
-    challenge_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.challenge_versions.id"), nullable=False, index=True)
+    challenge_version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("app.challenge_versions.id"), nullable=False, index=True
+    )
     path: Mapped[str] = mapped_column(String(500), nullable=False)
     lang: Mapped[str] = mapped_column(String(20), default="text", nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
@@ -342,7 +354,9 @@ class ChallengeFileLine(AppBase):
     )
 
     id: Mapped[uuid.UUID] = pk()
-    challenge_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.challenge_versions.id"), nullable=False, index=True)
+    challenge_version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("app.challenge_versions.id"), nullable=False, index=True
+    )
     path: Mapped[str] = mapped_column(String(500), nullable=False)
     line_number: Mapped[int] = mapped_column(Integer, nullable=False)
     line_text: Mapped[str] = mapped_column(Text, nullable=False)
@@ -357,7 +371,9 @@ class Assignment(AppBase):
     id: Mapped[uuid.UUID] = pk()
     event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.events.id"), nullable=False, index=True)
     stage_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.stages.id"), nullable=False, index=True)
-    challenge_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.challenge_versions.id"), nullable=False, index=True)
+    challenge_version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("app.challenge_versions.id"), nullable=False, index=True
+    )
     team_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("app.teams.id"), index=True)  # NULL = every team
     repo_url: Mapped[str | None] = mapped_column(String(300))
     codespace_url: Mapped[str | None] = mapped_column(String(300))
@@ -403,7 +419,9 @@ class Submission(AppBase):
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     # received|matched_auto|needs_review|in_review|decided|rejected_auto|duplicate|disputed|ledgered
-    status: Mapped[str] = mapped_column(String(24), default="received", server_default=text("'received'"), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(24), default="received", server_default=text("'received'"), nullable=False
+    )
     receipt_code: Mapped[str] = mapped_column(String(16), unique=True, nullable=False)
     title: Mapped[str] = mapped_column(String(160), nullable=False)
     file_path: Mapped[str | None] = mapped_column(String(500))
@@ -426,7 +444,9 @@ class ReviewItem(AppBase):
 
     id: Mapped[uuid.UUID] = pk()
     submission_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.submissions.id"), nullable=False, index=True)
-    status: Mapped[str] = mapped_column(String(20), default="open", server_default=text("'open'"), nullable=False)  # open|claimed|decided
+    status: Mapped[str] = mapped_column(
+        String(20), default="open", server_default=text("'open'"), nullable=False
+    )  # open|claimed|decided
     claimed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("app.users.id"))
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     priority: Mapped[int] = mapped_column(Integer, default=5, server_default=text("5"), nullable=False)
@@ -459,7 +479,9 @@ class Dispute(AppBase):
     submission_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.submissions.id"), nullable=False, index=True)
     team_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.teams.id"), nullable=False)
     statement: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(String(20), default="open", server_default=text("'open'"), nullable=False)  # open|in_review|upheld|rejected
+    status: Mapped[str] = mapped_column(
+        String(20), default="open", server_default=text("'open'"), nullable=False
+    )  # open|in_review|upheld|rejected
     resolution: Mapped[str | None] = mapped_column(Text)
     resolved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("app.users.id"))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -518,7 +540,9 @@ class LeaderboardSnapshot(AppBase):
     stage_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.stages.id"), nullable=False, index=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    visibility: Mapped[str] = mapped_column(String(20), default="hidden", server_default=text("'hidden'"), nullable=False)  # hidden|restricted|public
+    visibility: Mapped[str] = mapped_column(
+        String(20), default="hidden", server_default=text("'hidden'"), nullable=False
+    )  # hidden|restricted|public
     created_at: Mapped[datetime] = ts()
 
 
@@ -531,7 +555,9 @@ class Announcement(AppBase):
 
     id: Mapped[uuid.UUID] = pk()
     event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.events.id"), nullable=False, index=True)
-    severity: Mapped[str] = mapped_column(String(20), default="info", server_default=text("'info'"), nullable=False)  # info|warning|critical
+    severity: Mapped[str] = mapped_column(
+        String(20), default="info", server_default=text("'info'"), nullable=False
+    )  # info|warning|critical
     audience: Mapped[str] = mapped_column(String(20), default="all", server_default=text("'all'"), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.users.id"), nullable=False)
@@ -546,7 +572,9 @@ class Job(AppBase):
     kind: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     payload: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"), nullable=False)
     # queued|running|done|failed|dead
-    status: Mapped[str] = mapped_column(String(12), default="queued", server_default=text("'queued'"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(
+        String(12), default="queued", server_default=text("'queued'"), nullable=False, index=True
+    )
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"), nullable=False)
     max_attempts: Mapped[int] = mapped_column(Integer, default=5, server_default=text("5"), nullable=False)
     run_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
