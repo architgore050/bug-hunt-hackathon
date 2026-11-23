@@ -1,4 +1,5 @@
 """Authentication flow tests (ATH-01..05)."""
+
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
@@ -15,22 +16,18 @@ def test_login_rejects_wrong_password_generically(client):
 
 
 def test_password_reset_revokes_sessions_and_bumps_token_version(client):
-    login1 = client.post("/v1/auth/login", json={"email": "p2.team1@example.com", "password": "Dev-only!Passw0rd!"}).json()
+    login1 = client.post(
+        "/v1/auth/login", json={"email": "p2.team1@example.com", "password": "Dev-only!Passw0rd!"}
+    ).json()
     headers = {"Authorization": f"Bearer {login1['access_token']}"}
     # request reset
     r = client.post("/v1/auth/password/reset-request", json={"email": "p2.team1@example.com"})
     assert r.status_code == 200
     # fetch the reset token from the dev mail sink (documented dev-only behavior)
-    import sqlalchemy
+    from app.db import app_engine
     from sqlalchemy import text
 
-    from app.db import app_engine
-
     with app_engine.connect() as conn:
-        row = conn.execute(
-            text("SELECT pr.token_hash FROM app.password_resets pr JOIN app.users u ON u.id = pr.user_id WHERE u.email = :e AND pr.used_at IS NULL ORDER BY pr.created_at DESC LIMIT 1"),
-            {"e": "p2.team1@example.com"},
-        ).first()
         token_version_before = conn.execute(
             text("SELECT token_version FROM app.users WHERE email = :e"), {"e": "p2.team1@example.com"}
         ).scalar_one()
@@ -43,8 +40,10 @@ def test_password_reset_revokes_sessions_and_bumps_token_version(client):
     th = hashlib.sha256(raw.encode()).hexdigest()
     with app_engine.begin() as conn:
         conn.execute(
-            text("INSERT INTO app.password_resets (id, user_id, token_hash, expires_at) "
-                 "SELECT gen_random_uuid(), id, :th, now() + interval '30 minutes' FROM app.users WHERE email = :e"),
+            text(
+                "INSERT INTO app.password_resets (id, user_id, token_hash, expires_at) "
+                "SELECT gen_random_uuid(), id, :th, now() + interval '30 minutes' FROM app.users WHERE email = :e"
+            ),
             {"th": th, "e": "p2.team1@example.com"},
         )
     r = client.post("/v1/auth/password/reset", json={"token": raw, "password": "New-Password-For-Tests-1"})
@@ -60,10 +59,11 @@ def test_password_reset_revokes_sessions_and_bumps_token_version(client):
 
 
 def test_step_up_required_for_sensitive_admin_routes(client):
-    org = client.post("/v1/auth/login", json={"email": "organizer@example.com", "password": "Dev-only!Passw0rd!"}).json()
+    org = client.post(
+        "/v1/auth/login", json={"email": "organizer@example.com", "password": "Dev-only!Passw0rd!"}
+    ).json()
     oc = TestClient(client.app)
     oc.headers.update({"Authorization": f"Bearer {org['access_token']}"})
-    cv = oc.get("/v1/admin/events").json()["events"][0]
     # ground truth authoring requires step-up: fresh session has none
     r = oc.post(
         f"/v1/admin/challenges/{_any_challenge_id(oc)}/ground-truth/flags",
@@ -81,10 +81,8 @@ def test_step_up_required_for_sensitive_admin_routes(client):
 
 
 def _any_challenge_id(oc):
-    import sqlalchemy
-    from sqlalchemy import text
-
     from app.db import app_engine
+    from sqlalchemy import text
 
     with app_engine.connect() as conn:
         return str(conn.execute(text("SELECT id FROM app.challenge_versions LIMIT 1")).scalar_one())
@@ -138,9 +136,8 @@ def test_login_evicts_oldest_session_instead_of_lockout(client):
     assert client.get("/v1/me", headers=_auth(t3)).status_code == 200
 
     # eviction is audited
-    from sqlalchemy import text
-
     from app.db import app_session
+    from sqlalchemy import text
 
     with app_session() as s:
         n = s.execute(text("SELECT count(*) FROM audit.entries WHERE action = 'auth.session_evicted'")).scalar_one()
@@ -154,13 +151,14 @@ def test_zombie_sessions_do_not_hold_slots(client):
     t1 = _login(client, email)
     sid1 = client.get("/v1/me/sessions", headers=_auth(t1)).json()[0]["id"]
 
-    from sqlalchemy import text
-
     from app.db import app_session
+    from sqlalchemy import text
 
     with app_session() as s:
         s.execute(
-            text("UPDATE app.refresh_tokens SET expires_at = now() - interval '1 hour' WHERE session_id = CAST(:sid AS uuid)"),
+            text(
+                "UPDATE app.refresh_tokens SET expires_at = now() - interval '1 hour' WHERE session_id = CAST(:sid AS uuid)"
+            ),
             {"sid": sid1},
         )
 

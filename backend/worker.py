@@ -4,13 +4,16 @@ Claims jobs with FOR UPDATE SKIP LOCKED + leases, runs handlers outside the
 claim transaction, retries with backoff, dead-letters after max attempts.
 Run with:  python worker.py  (see scripts/run_dev.sh)
 """
+
 from __future__ import annotations
 
 import logging
 import time
 
-from app import evaluator  # noqa: F401  (registers all handlers)
-from app import jobs
+from app import (
+    evaluator,  # noqa: F401  (registers all handlers)
+    jobs,
+)
 from app.db import app_session
 from app.jobs import requeue_expired_leases
 

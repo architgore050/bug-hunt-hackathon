@@ -1,12 +1,11 @@
 """Scoring ledger integrity tests (AT-07, DAT-01, DAT-05, INT-01)."""
+
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
 
+from conftest import participant_client, worker_drain
 from sqlalchemy import text
-
-from conftest import STAFF_PW, participant_client, worker_drain
 
 
 def test_compute_award_points_weights():
@@ -27,20 +26,38 @@ def test_ledger_is_append_only_by_convention(seeded_db):
 
     with app_session() as s:
         team = s.execute(
-            text("SELECT t.id, t.event_id, st.id, e.tenant_id FROM app.teams t "
-                 "JOIN app.stages st ON st.event_id = t.event_id JOIN app.events e ON e.id = t.event_id LIMIT 1")
+            text(
+                "SELECT t.id, t.event_id, st.id, e.tenant_id FROM app.teams t "
+                "JOIN app.stages st ON st.event_id = t.event_id JOIN app.events e ON e.id = t.event_id LIMIT 1"
+            )
         ).first()
         entry_id = add_ledger_entry(
-            s, tenant_id=str(team[3]), event_id=str(team[1]), stage_id=str(team[2]), team_id=str(team[0]),
-            component="adjustment", kind="adjustment", points=-5.0, reason_code="TEST_REVERSAL",
+            s,
+            tenant_id=str(team[3]),
+            event_id=str(team[1]),
+            stage_id=str(team[2]),
+            team_id=str(team[0]),
+            component="adjustment",
+            kind="adjustment",
+            points=-5.0,
+            reason_code="TEST_REVERSAL",
         )
         rev_id = add_ledger_entry(
-            s, tenant_id=str(team[3]), event_id=str(team[1]), stage_id=str(team[2]), team_id=str(team[0]),
-            component="adjustment", kind="reversal", points=5.0, reason_code="TEST_REVERSAL",
+            s,
+            tenant_id=str(team[3]),
+            event_id=str(team[1]),
+            stage_id=str(team[2]),
+            team_id=str(team[0]),
+            component="adjustment",
+            kind="reversal",
+            points=5.0,
+            reason_code="TEST_REVERSAL",
             reverses_entry_id=entry_id,
         )
         s.flush()
-        row = s.execute(text("SELECT reverses_entry_id FROM app.score_ledger_entries WHERE id = CAST(:i AS uuid)"), {"i": rev_id}).first()
+        row = s.execute(
+            text("SELECT reverses_entry_id FROM app.score_ledger_entries WHERE id = CAST(:i AS uuid)"), {"i": rev_id}
+        ).first()
         assert str(row[0]) == entry_id
 
 
@@ -51,8 +68,10 @@ def test_award_claim_uniqueness_blocks_double_award(seeded_db):
 
     with app_session() as s:
         team = s.execute(
-            text("SELECT t.id, t.event_id, st.id, e.tenant_id FROM app.teams t "
-                 "JOIN app.stages st ON st.event_id = t.event_id JOIN app.events e ON e.id = t.event_id LIMIT 1")
+            text(
+                "SELECT t.id, t.event_id, st.id, e.tenant_id FROM app.teams t "
+                "JOIN app.stages st ON st.event_id = t.event_id JOIN app.events e ON e.id = t.event_id LIMIT 1"
+            )
         ).first()
         team_id, event_id, stage_id, tenant_id = str(team[0]), str(team[1]), str(team[2]), str(team[3])
         cv = s.execute(text("SELECT id FROM app.challenge_versions LIMIT 1")).first()[0]
@@ -66,25 +85,40 @@ def test_award_claim_uniqueness_blocks_double_award(seeded_db):
                     "(CAST(:id AS uuid), CAST(:t AS uuid), CAST(:ev AS uuid), CAST(:st AS uuid), CAST(:cv AS uuid), CAST(:team AS uuid), "
                     "CAST(:au AS uuid), 'bug_report', :k, CAST(:p AS jsonb), 'x', 'received', :r, 'claim test', now())"
                 ),
-                {"id": sid, "t": tenant_id, "ev": event_id, "st": stage_id, "cv": str(cv), "team": team_id,
-                 "au": str(user), "k": f"claim-{sid[:8]}", "p": "{}", "r": sid[:8].upper()},
+                {
+                    "id": sid,
+                    "t": tenant_id,
+                    "ev": event_id,
+                    "st": stage_id,
+                    "cv": str(cv),
+                    "team": team_id,
+                    "au": str(user),
+                    "k": f"claim-{sid[:8]}",
+                    "p": "{}",
+                    "r": sid[:8].upper(),
+                },
             )
-        first = claim_award_unit(s, event_id=event_id, stage_id=stage_id, team_id=team_id, award_unit_id="TEST-UNIT-1", submission_id=sub1)
-        second = claim_award_unit(s, event_id=event_id, stage_id=stage_id, team_id=team_id, award_unit_id="TEST-UNIT-1", submission_id=sub2)
+        first = claim_award_unit(
+            s, event_id=event_id, stage_id=stage_id, team_id=team_id, award_unit_id="TEST-UNIT-1", submission_id=sub1
+        )
+        second = claim_award_unit(
+            s, event_id=event_id, stage_id=stage_id, team_id=team_id, award_unit_id="TEST-UNIT-1", submission_id=sub2
+        )
         assert first is True
         assert second is False  # database uniqueness enforced
 
 
 def test_ctf_bonus_is_capped(seeded_db):
     from app.db import app_session
-    from app import evaluator
     from app.jobs import enqueue
 
     # stage cap default 100; flags worth 30 each -> 4 flags = 120 -> capped at 100
     with app_session() as s:
         team = s.execute(
-            text("SELECT t.id, t.event_id, st.id, e.tenant_id FROM app.teams t "
-                 "JOIN app.stages st ON st.event_id = t.event_id JOIN app.events e ON e.id = t.event_id LIMIT 1")
+            text(
+                "SELECT t.id, t.event_id, st.id, e.tenant_id FROM app.teams t "
+                "JOIN app.stages st ON st.event_id = t.event_id JOIN app.events e ON e.id = t.event_id LIMIT 1"
+            )
         ).first()
         team_id, event_id, stage_id, tenant_id = str(team[0]), str(team[1]), str(team[2]), str(team[3])
         cv = s.execute(text("SELECT id FROM app.challenge_versions LIMIT 1")).first()[0]
@@ -100,8 +134,19 @@ def test_ctf_bonus_is_capped(seeded_db):
                     "(CAST(:id AS uuid), CAST(:t AS uuid), CAST(:ev AS uuid), CAST(:st AS uuid), CAST(:cv AS uuid), CAST(:team AS uuid), "
                     "CAST(:au AS uuid), 'ctf_flag', :k, CAST(:p AS jsonb), :ph, 'received', :r, 'flag', 'FLAG{client_gates_1e_0nly_9f2a}', now())"
                 ),
-                {"id": sid, "t": tenant_id, "ev": event_id, "st": stage_id, "cv": str(cv), "team": team_id, "au": str(user),
-                 "k": f"flag-test-{i}-{uuid.uuid4()}", "p": "{}", "ph": "x", "r": f"TEST-{i}"},
+                {
+                    "id": sid,
+                    "t": tenant_id,
+                    "ev": event_id,
+                    "st": stage_id,
+                    "cv": str(cv),
+                    "team": team_id,
+                    "au": str(user),
+                    "k": f"flag-test-{i}-{uuid.uuid4()}",
+                    "p": "{}",
+                    "ph": "x",
+                    "r": f"TEST-{i}",
+                },
             )
             enqueue(s, "verify_flag", {"submission_id": sid})
     worker_drain()
@@ -109,7 +154,9 @@ def test_ctf_bonus_is_capped(seeded_db):
 
     with sess() as s:
         total = s.execute(
-            text("SELECT COALESCE(SUM(points), 0) FROM app.score_ledger_entries WHERE team_id = CAST(:t AS uuid) AND component = 'ctf_bonus'"),
+            text(
+                "SELECT COALESCE(SUM(points), 0) FROM app.score_ledger_entries WHERE team_id = CAST(:t AS uuid) AND component = 'ctf_bonus'"
+            ),
             {"t": team_id},
         ).scalar_one()
         awards = s.execute(
@@ -132,7 +179,10 @@ def test_leaderboard_tie_break_order(seeded_db):
         event = s.execute(text("SELECT id FROM app.events LIMIT 1")).first()[0]
     # equal scores: fewer invalid reports wins; then earlier last-accepted
     board = build_leaderboard(
-        s, event_id=str(event), stage_id=str(stage), team_names=team_names,
+        s,
+        event_id=str(event),
+        stage_id=str(stage),
+        team_names=team_names,
         invalid_counts={str(teams[0][0]): 0, str(teams[1][0]): 2},
         last_accepted_at={},
     )
@@ -142,7 +192,6 @@ def test_leaderboard_tie_break_order(seeded_db):
 
 def test_hidden_feedback_mode_reveals_nothing_before_release(client):
     pc = participant_client(client, "p4.team1@example.com")
-    asg = pc.get("/v1/assignments").json()["assignments"][0]
     r = pc.post(
         "/v1/submissions",
         json={"kind": "ctf_flag", "flag_code": "FLAG{base64_1s_n0t_encrypt10n_44e2}", "title": "encoded flag"},

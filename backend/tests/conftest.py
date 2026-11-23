@@ -4,6 +4,7 @@ The API app is imported AFTER the test database URLs are set, so all engines
 and sessions point at the isolated test DB. Tests talk to the app through
 Starlette's TestClient (no network sockets needed).
 """
+
 from __future__ import annotations
 
 import os
@@ -38,7 +39,9 @@ def _test_db():
     subprocess.run(["bash", str(REPO_ROOT / "scripts" / "dev_db.sh")], check=True, env=env, capture_output=True)
     subprocess.run(
         ["bash", str(REPO_ROOT / "scripts" / "migrate.sh")],
-        check=True, env={**env, "DB": TEST_DB}, capture_output=True,
+        check=True,
+        env={**env, "DB": TEST_DB},
+        capture_output=True,
     )
     return TEST_DB
 
@@ -64,9 +67,8 @@ def _clear_rate_limits():
 
 @pytest.fixture()
 def client(seeded_db, _clear_rate_limits):
-    from fastapi.testclient import TestClient
-
     from app.main import app
+    from fastapi.testclient import TestClient
 
     with TestClient(app) as c:
         yield c
@@ -81,7 +83,7 @@ def login(client, email: str, password: str = STAFF_PW) -> dict:
     return r.json()
 
 
-def participant_client(client, email: str) -> "TestClient":
+def participant_client(client, email: str) -> TestClient:
     """A participant client with rules accepted, on a live event and active stage.
 
     Idempotent: calling it twice within one test continues from current state

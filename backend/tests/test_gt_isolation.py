@@ -3,11 +3,11 @@
 Connects with the REAL app_api credentials (no test shortcuts) and asserts the
 permission boundary enforced by PostgreSQL itself.
 """
+
 from __future__ import annotations
 
 import psycopg
 import pytest
-
 from conftest import APP_URL, GT_URL, participant_client
 
 # Same DSNs as conftest (PGPORT-aware), in plain libpq form for psycopg.
@@ -32,7 +32,9 @@ def test_app_role_cannot_read_gt_flags():
 def test_app_role_cannot_write_gt():
     with psycopg.connect(APP_DSN) as conn, conn.cursor() as cur:
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
-            cur.execute("INSERT INTO gt.gt_aliases (id, bug_id, keyword, weight) VALUES (gen_random_uuid(), gen_random_uuid(), 'x', 1)")
+            cur.execute(
+                "INSERT INTO gt.gt_aliases (id, bug_id, keyword, weight) VALUES (gen_random_uuid(), gen_random_uuid(), 'x', 1)"
+            )
 
 
 def test_gt_admin_role_can_read_gt(seeded_db):

@@ -5,7 +5,10 @@ Every API error uses the same shape:
 and carries an X-Request-Id response header. User-facing messages are stable,
 generic where they must not leak account state (AUTH-1).
 """
+
 from __future__ import annotations
+
+import contextlib
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -56,10 +59,8 @@ class ApiError(Exception):
 async def api_error_handler(_: Request, exc: ApiError) -> JSONResponse:
     request_id = getattr(_.state, "request_id", "-")
     message = exc.message
-    try:
+    with contextlib.suppress(KeyError, IndexError):
         message = message.format(request_id=request_id, **exc.details)
-    except (KeyError, IndexError):
-        pass
     body = {"error": {"code": exc.code, "message": message, "request_id": request_id, "details": exc.details}}
     return JSONResponse(status_code=exc.status, content=body, headers={"X-Request-Id": request_id})
 

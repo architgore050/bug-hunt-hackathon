@@ -1,4 +1,4 @@
-# Bug Hunt CTF — Fall Back platform
+# Bug Hunt CTF: Fall Back platform
 
 The event platform for **Fall Back**, a full-stack software debugging challenge
 run by the Software Development Club at VIT Bhopal University (proposed date

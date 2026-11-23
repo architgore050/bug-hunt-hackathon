@@ -16,6 +16,7 @@ Options:
   --new-team "Team Nova"    create a new team on the first event and join it
   --password "..."          default: the seed's dev password
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,11 +28,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 BACKEND = REPO_ROOT / "backend"
 sys.path.insert(0, str(BACKEND))
 
-from sqlalchemy import text  # noqa: E402
-
 from app import security  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.db import app_session, uuid7  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
 DEV_PASSWORD = "Dev-only!Passw0rd!"
 
@@ -63,10 +63,18 @@ def main() -> None:
 
         uid = str(uuid7())
         s.execute(
-            text("INSERT INTO app.users (id, tenant_id, email, name, role, password_hash, status) "
-                 "VALUES (CAST(:i AS uuid), CAST(:t AS uuid), :e, :n, :r, :p, 'active')"),
-            {"i": uid, "t": str(tenant_id), "e": args.email, "n": args.name, "r": args.role,
-             "p": security.hash_password(args.password)},
+            text(
+                "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash, status) "
+                "VALUES (CAST(:i AS uuid), CAST(:t AS uuid), :e, :n, :r, :p, 'active')"
+            ),
+            {
+                "i": uid,
+                "t": str(tenant_id),
+                "e": args.email,
+                "n": args.name,
+                "r": args.role,
+                "p": security.hash_password(args.password),
+            },
         )
 
         team_note = ""
@@ -86,8 +94,10 @@ def main() -> None:
                 team_id = str(uuid7())
                 join_code = secrets.token_hex(4).upper()
                 s.execute(
-                    text("INSERT INTO app.teams (id, event_id, name, join_code) "
-                         "VALUES (CAST(:i AS uuid), CAST(:e AS uuid), :n, :jc)"),
+                    text(
+                        "INSERT INTO app.teams (id, event_id, name, join_code) "
+                        "VALUES (CAST(:i AS uuid), CAST(:e AS uuid), :n, :jc)"
+                    ),
                     {"i": team_id, "e": str(event_id), "n": args.new_team, "jc": join_code},
                 )
                 team_note = f" (new team join code: {join_code})"
@@ -95,11 +105,15 @@ def main() -> None:
                 team_note = " (no team: the account has no assignments until it joins one)"
             if team_id is not None:
                 s.execute(
-                    text("INSERT INTO app.team_members (id, team_id, user_id) "
-                         "VALUES (CAST(:i AS uuid), CAST(:t AS uuid), CAST(:u AS uuid))"),
+                    text(
+                        "INSERT INTO app.team_members (id, team_id, user_id) "
+                        "VALUES (CAST(:i AS uuid), CAST(:t AS uuid), CAST(:u AS uuid))"
+                    ),
                     {"i": str(uuid7()), "t": str(team_id), "u": uid},
                 )
-                name = s.execute(text("SELECT name FROM app.teams WHERE id = CAST(:i AS uuid)"), {"i": str(team_id)}).scalar_one()
+                name = s.execute(
+                    text("SELECT name FROM app.teams WHERE id = CAST(:i AS uuid)"), {"i": str(team_id)}
+                ).scalar_one()
                 team_note = f" (joined team: {name})"
 
     print(f"account ready: {args.email} / {args.password}  role={args.role}{team_note}")

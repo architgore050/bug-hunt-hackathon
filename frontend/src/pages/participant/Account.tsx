@@ -68,7 +68,7 @@ export default function Account() {
       <Panel exhibit="EX-02" title="Your devices">
         <p className="muted small" style={{ maxWidth: '74ch' }}>
           Every signed-in browser is a separate session with its own refresh cookie. Revoke a device here to end
-          that session immediately. Signing out of all devices is done by logging out on each device in turn —
+          that session immediately. Signing out of all devices is done by logging out on each device in turn;
           there is no single global sign-out button.
         </p>
 

@@ -8,19 +8,19 @@ Implements AUTH-01..AUTH-07 from the blind-spot register:
 - Refresh reuse outside the grace window revokes the whole family (session).
 - Password hashing uses Argon2id with OWASP-minimum parameters.
 """
+
 from __future__ import annotations
 
 import base64
 import hashlib
 import hmac
-import os
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
-from cryptography.fernet import Fernet
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+from cryptography.fernet import Fernet, InvalidToken
 
 from .config import settings
 
@@ -38,7 +38,8 @@ def verify_password(password: str, password_hash: str) -> bool:
         return _ph.verify(password_hash, password)
     except VerifyMismatchError:
         return False
-    except Exception:
+    except (VerificationError, InvalidHashError):
+        # malformed or foreign-format hash stored on the row: treat as unverifiable, never crash
         return False
 
 
@@ -63,15 +64,17 @@ def encrypt_successor(raw_token: str) -> str:
 def decrypt_successor(blob: str) -> str | None:
     try:
         return _fernet.decrypt(blob.encode()).decode()
-    except Exception:
+    except InvalidToken:
         return None
 
 
 # --- access tokens -----------------------------------------------------------
 
 
-def create_access_token(*, user_id: str, session_id: str, role: str, token_version: int, event_id: str | None = None) -> tuple[str, datetime]:
-    now = datetime.now(timezone.utc)
+def create_access_token(
+    *, user_id: str, session_id: str, role: str, token_version: int, event_id: str | None = None
+) -> tuple[str, datetime]:
+    now = datetime.now(UTC)
     exp = now + timedelta(seconds=settings.access_token_ttl_s)
     claims = {
         "iss": "bughunt-api",
@@ -93,7 +96,6 @@ def create_access_token(*, user_id: str, session_id: str, role: str, token_versi
 
 def decode_access_token(token: str) -> dict:
     """Pinned-algorithm decode with iss/aud verification (AUTH-03)."""
-    expected_aud = "bughunt-participant"
     # Admin/reviewer tokens use the admin audience; try both but never allow alg confusion.
     for aud in ("bughunt-participant", "bughunt-admin"):
         try:
