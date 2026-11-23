@@ -1,0 +1,68 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+body {
+  margin: 0;
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Editorial Typography */
+.font-serif {
+  font-family: var(--font-serif);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+.font-sans {
+  font-family: var(--font-sans);
+}
+
+/* Archival Stamp */
+.stamp-border {
+  border: 1.5px solid currentColor;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+/* Docket Paper Panel */
+.docket-card {
+  background-color: var(--bg-docket);
+  color: var(--text-docket);
+  border: 1px solid var(--border-docket);
+  position: relative;
+}
+
+.docket-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background-color: var(--stamp-red);
+}
+
+/* Perforated edge effect */
+.perforated-edge {
+  background-image: radial-gradient(circle at 10px 0, transparent 6px, var(--bg-docket) 6.5px);
+  background-size: 20px 10px;
+  background-repeat: repeat-x;
+}
+
+/* Restrained motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

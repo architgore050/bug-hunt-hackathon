@@ -1,0 +1,27 @@
+@import "@fontsource/fraunces/latin.css";
+@import "@fontsource/ibm-plex-mono/latin.css";
+@import "@fontsource/archivo/latin.css";
+
+:root {
+  --font-serif: 'Fraunces', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+  --font-sans: 'Archivo', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Concept 01: The Incident Archive */
+  --bg-canvas: #111215;
+  --bg-surface: #181A1F;
+  --bg-surface-elevated: #20232A;
+  --bg-docket: #F3EFE6;
+  --text-docket: #181A1F;
+  --text-primary: #ECEEF2;
+  --text-secondary: #C4C8D2;
+  --text-muted: #868A94;
+  --border-color: #2B2E35;
+  --border-subtle: #1F2228;
+  --border-docket: #DDD7CA;
+
+  --stamp-red: #C04A36;
+  --stamp-green: #3E7259;
+  --stamp-amber: #CF8B38;
+  --stamp-cyan: #4B7B9A;
+}
