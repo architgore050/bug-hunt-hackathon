@@ -47,7 +47,7 @@ export default function Lobby() {
   })
 
   const round = stateQ.data?.round ?? null
-  const offset = stateQ.data ? clockOffset(stateQ.data.server_time) : 0
+  const offset = stateQ.data ? clockOffset(stateQ.data.server_time, stateQ.dataUpdatedAt) : 0
   const adjustedNow = nowMs + offset
 
   const stage = round?.status

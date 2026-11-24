@@ -25,16 +25,6 @@ const SCORE_SEGMENTS = [
   { label: 'Evidence and tests', pct: 20, bg: 'var(--ok)', fg: 'var(--ink)' },
 ]
 
-function useServerOffset(): number | null {
-  const q = useQuery({
-    queryKey: ['public-time'],
-    queryFn: () => api<TimeResponse>('/v1/time'),
-    refetchInterval: 60_000,
-  })
-  if (q.data) return clockOffset(q.data.server_time)
-  return null
-}
-
 function EventStatusStrip() {
   const timeQ = useQuery({
     queryKey: ['public-time'],
@@ -47,7 +37,7 @@ function EventStatusStrip() {
     refetchInterval: 60_000,
   })
   const nowMs = useNowTick()
-  const offset = timeQ.data ? clockOffset(timeQ.data.server_time) : null
+  const offset = timeQ.data ? clockOffset(timeQ.data.server_time, timeQ.dataUpdatedAt) : null
 
   return (
     <Panel exhibit="LIVE" title="Event clock" className="panel" ariaLabel="Live event status">
@@ -91,7 +81,7 @@ function EventStatusStrip() {
             <div style={{ display: 'grid', gap: 2 }}>
               <span className="overline">Server clock</span>
               <span className="countdown" style={{ fontSize: 16 }}>
-                {timeQ.data ? fmtDateTime(new Date(timeQ.data.server_time).toISOString()) : '--'}
+                {timeQ.data ? fmtDateTime(new Date(nowMs + (offset ?? 0)).toISOString()) : '--'}
               </span>
             </div>
           )}
@@ -102,8 +92,6 @@ function EventStatusStrip() {
 }
 
 export default function Landing() {
-  useServerOffset()
-
   return (
     <div className="wrap page stack-lg" style={{ gap: 36 }}>
       {/* Hero */}

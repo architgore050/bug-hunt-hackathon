@@ -460,7 +460,7 @@ export default function Workspace() {
     () => buildTree(assignment ? assignment.files.map((f) => f.path) : []),
     [assignment],
   )
-  const offset = stateQ.data ? clockOffset(stateQ.data.server_time) : 0
+  const offset = stateQ.data ? clockOffset(stateQ.data.server_time, stateQ.dataUpdatedAt) : 0
 
   return (
     <div className="stack">

@@ -226,8 +226,9 @@ export function ReceiptIcon(props: IconProps) {
 }
 
 /**
- * Bespoke static CTF flag emblem with "</>" code mark in the Case File palette
+ * Bespoke CTF flag emblem with "</>" code mark in the Case File palette
  * (signal amber, ink, and structural panel tones; zero gradients or drop shadows).
+ * Mast, finial, and base rings remain static while the cloth layers wave.
  */
 export function CaptureFlagMark({ className = '' }: { className?: string }) {
   return (
@@ -252,6 +253,35 @@ export function CaptureFlagMark({ className = '' }: { className?: string }) {
         />
 
         <g>
+          <g className="flag-cloth-back">
+            <path
+              d="M106 74c60-42 102 25 172-5l-29 44 30 33c-64 36-112-33-173 7z"
+              fill="var(--panel-2)"
+              stroke="var(--line-strong)"
+              strokeWidth="2.5"
+              strokeLinejoin="miter"
+            />
+          </g>
+
+          <g className="flag-cloth-front">
+            <g transform="translate(-5 -6)">
+              <path
+                d="M110 74c58-42 98 25 168-5l-29 44 30 33c-64 36-110-33-169 7z"
+                fill="var(--signal)"
+                stroke="var(--signal)"
+                strokeWidth="2"
+                strokeLinejoin="miter"
+              />
+              <path
+                d="M161 88l-15 12 15 13m43-15 15 14-15 10m-18-33-9 33"
+                stroke="var(--ink)"
+                strokeWidth="4.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </g>
+          </g>
+
           <line
             x1="104"
             y1="254"
@@ -262,31 +292,6 @@ export function CaptureFlagMark({ className = '' }: { className?: string }) {
             strokeLinecap="round"
           />
           <circle cx="104" cy="46" r="7" fill="var(--signal)" />
-
-          <path
-            d="M110 74c58-42 98 25 168-5l-29 44 30 33c-64 36-110-33-169 7z"
-            fill="var(--panel-2)"
-            stroke="var(--line-strong)"
-            strokeWidth="2.5"
-            strokeLinejoin="miter"
-          />
-
-          <g transform="translate(-5 -6)">
-            <path
-              d="M110 74c58-42 98 25 168-5l-29 44 30 33c-64 36-110-33-169 7z"
-              fill="var(--signal)"
-              stroke="var(--signal)"
-              strokeWidth="2"
-              strokeLinejoin="miter"
-            />
-            <path
-              d="M161 88l-15 12 15 13m43-15 15 14-15 10m-18-33-9 33"
-              stroke="var(--ink)"
-              strokeWidth="4.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </g>
 
           <path
             d="M64 118v14m-7-7h14m216 50v16m-8-8h16m-58 34v10m-5-5h10"

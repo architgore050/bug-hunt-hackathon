@@ -1262,6 +1262,56 @@ table.table {
   display: block;
 }
 
+.flag-cloth-front,
+.flag-cloth-back {
+  transform-box: view-box;
+  transform-origin: 105px 108px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .flag-cloth-front {
+    animation: flag-wave 3.4s ease-in-out infinite;
+    will-change: transform;
+  }
+
+  .flag-cloth-back {
+    animation: flag-wave-back 3.4s ease-in-out -0.55s infinite;
+    will-change: transform;
+  }
+}
+
+@keyframes flag-wave {
+  0%,
+  100% {
+    transform: rotate(0deg) skewY(0deg) scaleX(1);
+  }
+  25% {
+    transform: rotate(-1.6deg) skewY(2.8deg) scaleX(0.972);
+  }
+  50% {
+    transform: rotate(0.8deg) skewY(-1.6deg) scaleX(1.015);
+  }
+  75% {
+    transform: rotate(1.5deg) skewY(-2.6deg) scaleX(0.978);
+  }
+}
+
+@keyframes flag-wave-back {
+  0%,
+  100% {
+    transform: rotate(0deg) skewY(0deg) scaleX(1);
+  }
+  25% {
+    transform: rotate(-1.2deg) skewY(2.2deg) scaleX(0.978);
+  }
+  50% {
+    transform: rotate(0.6deg) skewY(-1.2deg) scaleX(1.012);
+  }
+  75% {
+    transform: rotate(1.2deg) skewY(-2.1deg) scaleX(0.982);
+  }
+}
+
 /* Bidirectional scroll fade-in and fade-out (420ms ease matching Framer reference) */
 .reveal {
   opacity: 0;
