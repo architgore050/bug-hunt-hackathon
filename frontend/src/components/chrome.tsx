@@ -29,6 +29,7 @@ export function PublicLayout() {
         <div className="wrap topbar-inner">
           <Wordmark />
           <nav className="topnav" aria-label="Site">
+            <a href="/#how-it-works">How it works</a>
             <NavLink to="/rules">Rules</NavLink>
             {user ? (
               <NavLink to={homePathFor(user.role)}>Open console</NavLink>
@@ -54,10 +55,9 @@ export function SiteFooter() {
           <div className="wordmark" style={{ marginBottom: 8 }}>
             BUG HUNT CTF <span className="wm-sub">Fall Back</span>
           </div>
-          <p className="small">
-            A competition by the Software Development Club, VIT Bhopal University. Proposed date: 6 December 2026,
-            on campus, offline. Platform questions go to the organizers; good-faith reports of platform
-            vulnerabilities are welcome under the safe-harbor notice in the rules.
+          <p className="small" style={{ maxWidth: '48ch' }}>
+            Organized by the Software Development Club, VIT Bhopal University. Full-stack debugging competition with
+            optional CTF side quests.
           </p>
         </div>
         <div>
@@ -67,7 +67,7 @@ export function SiteFooter() {
             <br />
             Aashish Prasad
             <br />
-            <span className="muted">Faculty coordinator: Dr. Praveen Lalwani</span>
+            <span className="muted">Faculty: Dr. Praveen Lalwani</span>
           </p>
         </div>
         <div>

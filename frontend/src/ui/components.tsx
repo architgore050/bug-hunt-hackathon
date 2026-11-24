@@ -436,11 +436,11 @@ export function KVRow({ k, v, mono = true }: { k: string; v: ReactNode; mono?: b
 }
 
 /** Numbered case-file section heading: "01 / THE BRIEF". */
-export function SectionHeading({ num, title, note }: { num: string; title: string; note?: ReactNode }) {
+export function SectionHeading({ num, title, note, id }: { num: string; title: string; note?: ReactNode; id?: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap', borderTop: '1px solid var(--line)', paddingTop: 18 }}>
       <span className="exhibit-num" style={{ fontSize: 13 }}>{num}</span>
-      <h2 className="display" style={{ margin: 0 }}>{title}</h2>
+      <h2 className="display" id={id} style={{ margin: 0 }}>{title}</h2>
       {note && <span className="overline">{note}</span>}
     </div>
   )

@@ -224,3 +224,80 @@ export function ReceiptIcon(props: IconProps) {
     props,
   )
 }
+
+/**
+ * Bespoke static CTF flag emblem with "</>" code mark in the Case File palette
+ * (signal amber, ink, and structural panel tones; zero gradients or drop shadows).
+ */
+export function CaptureFlagMark({ className = '' }: { className?: string }) {
+  return (
+    <div className={`flag-stage ${className}`.trim()} aria-hidden="true">
+      <svg
+        viewBox="0 0 360 320"
+        className="flag-svg"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        focusable="false"
+      >
+        <ellipse cx="182" cy="272" rx="100" ry="18" stroke="var(--line-strong)" strokeWidth="1.25" />
+        <ellipse
+          cx="182"
+          cy="272"
+          rx="66"
+          ry="10"
+          stroke="var(--signal-dim)"
+          strokeWidth="1.25"
+          strokeDasharray="3 6"
+          opacity="0.7"
+        />
+
+        <g>
+          <line
+            x1="104"
+            y1="254"
+            x2="104"
+            y2="54"
+            stroke="var(--signal)"
+            strokeWidth="5"
+            strokeLinecap="round"
+          />
+          <circle cx="104" cy="46" r="7" fill="var(--signal)" />
+
+          <path
+            d="M110 74c58-42 98 25 168-5l-29 44 30 33c-64 36-110-33-169 7z"
+            fill="var(--panel-2)"
+            stroke="var(--line-strong)"
+            strokeWidth="2.5"
+            strokeLinejoin="miter"
+          />
+
+          <g transform="translate(-5 -6)">
+            <path
+              d="M110 74c58-42 98 25 168-5l-29 44 30 33c-64 36-110-33-169 7z"
+              fill="var(--signal)"
+              stroke="var(--signal)"
+              strokeWidth="2"
+              strokeLinejoin="miter"
+            />
+            <path
+              d="M161 88l-15 12 15 13m43-15 15 14-15 10m-18-33-9 33"
+              stroke="var(--ink)"
+              strokeWidth="4.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </g>
+
+          <path
+            d="M64 118v14m-7-7h14m216 50v16m-8-8h16m-58 34v10m-5-5h10"
+            stroke="var(--muted)"
+            strokeWidth="1.5"
+            opacity="0.7"
+          />
+          <circle cx="74" cy="202" r="2.5" fill="var(--signal)" />
+          <circle cx="298" cy="54" r="2.5" fill="var(--signal)" />
+        </g>
+      </svg>
+    </div>
+  )
+}
