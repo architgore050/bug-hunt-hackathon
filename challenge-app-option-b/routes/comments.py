@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+import database
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-
-import database
 
 router = APIRouter(prefix="/api/comments")
 

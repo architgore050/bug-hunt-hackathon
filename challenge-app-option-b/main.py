@@ -9,10 +9,9 @@ from __future__ import annotations
 
 import os
 
+from database import init_db
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.staticfiles import StaticFiles
-
-from database import init_db
 from routes import auth, comments, notes
 
 SESSION_TTL_DAYS = 7
@@ -54,7 +53,7 @@ def set_session_cookie(response: Response) -> dict:
 
 
 @app.exception_handler(HTTPException)
-def http_exception_handler(request, exc: HTTPException):  # noqa: ANN001, ANN201
+def http_exception_handler(request, exc: HTTPException):
     return Response(content=str(exc.detail), status_code=exc.status_code)
 
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent / "marina.sqlite3"
@@ -54,7 +54,7 @@ def init_db() -> None:
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def list_notes() -> list[dict]:

@@ -5,10 +5,9 @@ from __future__ import annotations
 import hashlib
 import secrets
 
+import database
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-
-import database
 
 router = APIRouter(prefix="/api/auth")
 
