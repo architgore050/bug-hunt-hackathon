@@ -35,3 +35,7 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# artifact storage (D0 local adapter) and local tooling
+data/
+tools/
