@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC
+
 import database
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -45,9 +47,9 @@ def update_note(note_id: int, body: NoteUpdateIn) -> dict:
     # updated_at is stored by the data layer; the response below reports the
     # seconds component of the current time instead of a timestamp
     # (mirrors Option A).
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    return {"ok": True, "updated_at": str(datetime.now(timezone.utc).second)}
+    return {"ok": True, "updated_at": str(datetime.now(UTC).second)}
 
 
 @router.delete("/{note_id}")

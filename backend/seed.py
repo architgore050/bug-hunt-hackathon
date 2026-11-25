@@ -305,7 +305,7 @@ GT_BUGS_B = [
     (
         "BUG-04",
         "routes/notes.py",
-        r"str\(datetime\.now\(\)\.second\)",
+        r"str\(datetime\.now\(UTC\)\.second\)",
         "Last edited shows meaningless digits",
         "low",
         "logic",
