@@ -122,7 +122,7 @@ def participant_client(client, email: str) -> TestClient:
 
 def worker_drain(n: int = 30) -> int:
     """Run pending jobs synchronously (no worker process needed in tests)."""
-    from app import evaluator  # noqa: F401  (register handlers)
+    from app import auto_submit, evaluator, evaluator_level  # noqa: F401  (register all handlers)
     from app.jobs import drain
 
     return drain(max_jobs=n)
