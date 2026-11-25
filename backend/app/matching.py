@@ -197,3 +197,74 @@ def decide(
     if L == 0 and feats.alias_evidence == 0 and len(desc.strip()) < min_desc:
         return MatchDecision("reject_invalid", None, feats, "no location or alias evidence and description too short")
     return MatchDecision("needs_review", bug, feats, "borderline match routed to human review")
+
+
+def decide_multi(
+    locations: list[dict],
+    report_text: str,
+    category: str,
+    candidates: list[GtBugView],
+    rule_set: dict,
+    already_awarded_units: set[str],
+) -> MatchDecision:
+    """Match one multi-location report (Level 2) against candidate bugs.
+
+    The report carries an ordered list of (file_path, line_start, line_end)
+    locations for a single bug. Deterministic and explainable like decide():
+    the location score is the mean, over the report's locations, of the best
+    same-file location score against the candidate's location set. Category
+    and alias evidence gate exactly like the single-location path.
+    """
+    tol = int(rule_set.get("location_tolerance_lines", 2))
+    max_span = int(rule_set.get("max_span", 25))
+    min_desc = int(rule_set.get("min_description_chars", 40))
+
+    if not locations:
+        return MatchDecision("reject_invalid", None, MatchFeatures(), "no locations supplied")
+
+    span_violation = any(
+        int(loc.get("line_end", 0)) - int(loc.get("line_start", 0)) + 1 > max_span for loc in locations
+    )
+    if span_violation:
+        return MatchDecision("reject_invalid", None, MatchFeatures(), "a location span exceeds max_span")
+
+    scored: list[tuple[float, float, float, GtBugView, MatchFeatures]] = []
+    for bug in candidates:
+        feats = MatchFeatures()
+        per_location: list[float] = []
+        for loc in locations:
+            ls, le = int(loc.get("line_start", 0)), int(loc.get("line_end", 0))
+            file_path = str(loc.get("file_path", ""))
+            best = 0.0
+            for gt_loc in bug.locations:
+                if gt_loc.file_path != file_path:
+                    continue
+                best = max(best, location_score((ls, le), gt_loc, tol))
+            per_location.append(best)
+        feats.location_score = sum(per_location) / len(per_location) if per_location else 0.0
+        fam = CATEGORIES_FAMILIES.get(category, [])
+        if category and bug.category == category:
+            feats.category_score = 1.0
+        elif bug.category in fam:
+            feats.category_score = 0.6
+        feats.alias_evidence = alias_evidence(report_text, bug.aliases)
+        combined = feats.location_score * max(
+            feats.category_score, feats.alias_evidence * 0.5 + feats.category_score * 0.5
+        )
+        scored.append((combined, feats.location_score, feats.category_score, bug, feats))
+
+    scored.sort(key=lambda t: (t[0], t[1], t[2]), reverse=True)
+    combined, L, C, bug, feats = scored[0]
+
+    if bug.code in already_awarded_units:
+        return MatchDecision("duplicate", bug, feats, f"award unit {bug.code} already claimed")
+
+    auto_full = L >= 0.9 and C >= 0.6 and feats.alias_evidence >= 0.2
+    auto_partial = L >= 0.9 and C == 0
+    if auto_full:
+        return MatchDecision("accept_full", bug, feats, "multi-location evidence aligned")
+    if auto_partial:
+        return MatchDecision("accept_partial", bug, feats, "locations aligned; category unconfirmed")
+    if L == 0 and feats.alias_evidence == 0 and len(report_text.strip()) < min_desc:
+        return MatchDecision("reject_invalid", None, feats, "no location or alias evidence and description too short")
+    return MatchDecision("needs_review", bug, feats, "borderline multi-location match routed to human review")
