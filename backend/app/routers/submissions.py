@@ -145,7 +145,7 @@ def create_submission(
                     "SELECT st.id, st.status, st.starts_at, st.ends_at, st.grace_seconds, st.config, st.rule_set_hash, "
                     "e.id AS event_id, e.status AS event_status "
                     "FROM app.stages st JOIN app.events e ON e.id = st.event_id "
-                    "WHERE e.id = CAST(:ev AS uuid) ORDER BY st.ordinal DESC LIMIT 1 FOR UPDATE"
+                    "WHERE e.id = CAST(:ev AS uuid) AND st.kind <> 'level' ORDER BY st.ordinal DESC LIMIT 1 FOR UPDATE"
                 ),
                 {"ev": str(member["event_id"])},
             )

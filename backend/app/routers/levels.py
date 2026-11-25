@@ -489,9 +489,12 @@ def repo_lock(
         if existing is not None:
             choice = _team_choice(s, team_id)
             assert choice is not None
-            if str(choice.get("idempotency_key") or "") != idempotency_key:
-                raise ApiError("REPO_ALREADY_LOCKED", details={"option": choice["option_key"]})
-            return _choice_response(s, team_id, replay=True)
+            if str(choice.get("idempotency_key") or "") == idempotency_key:
+                if str(choice["option_key"]) != body.option:
+                    # same key, different payload: idempotency conflict (spec 7.1)
+                    raise ApiError("IDEMPOTENCY_CONFLICT")
+                return _choice_response(s, team_id, replay=True)
+            raise ApiError("REPO_ALREADY_LOCKED", details={"option": choice["option_key"]})
         option = (
             s.execute(
                 text(
@@ -536,12 +539,12 @@ def repo_lock(
         s.execute(
             text(
                 "INSERT INTO app.assignments (id, event_id, stage_id, challenge_version_id, team_id) "
-                "SELECT CAST(:id AS uuid), e.id, st.id, CAST(:cv AS uuid), CAST(:t AS uuid) "
+                "SELECT gen_random_uuid(), e.id, st.id, CAST(:cv AS uuid), CAST(:t AS uuid) "
                 "FROM app.stages st JOIN app.events e ON e.id = st.event_id "
                 "WHERE st.event_id = CAST(:e AS uuid) AND st.kind = 'level' "
                 "AND NOT EXISTS (SELECT 1 FROM app.assignments a WHERE a.stage_id = st.id AND a.team_id = CAST(:t AS uuid))"
             ),
-            {"id": str(uuid7()), "e": event_id, "cv": str(option["challenge_version_id"]), "t": team_id},
+            {"e": event_id, "cv": str(option["challenge_version_id"]), "t": team_id},
         )
         # open Level 1 for every member
         s.execute(

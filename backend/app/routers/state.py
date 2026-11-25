@@ -52,7 +52,7 @@ def round_state(p: Principal = Depends(get_principal)):
                     "SELECT st.id, st.name, st.kind, st.status, st.starts_at, st.ends_at, st.grace_seconds, "
                     "st.config, e.id AS event_id, e.status AS event_status, e.rules_version "
                     "FROM app.stages st JOIN app.events e ON e.id = st.event_id "
-                    "WHERE e.status IN ('ready','live','closed','finalized') "
+                    "WHERE e.status IN ('ready','live','closed','finalized') AND st.kind <> 'level' "
                     "ORDER BY st.ordinal DESC, st.created_at DESC LIMIT 1"
                 )
             )
@@ -104,7 +104,7 @@ def participant_config(p: Principal = Depends(get_principal)):
                 text(
                     "SELECT st.id, st.config, st.grace_seconds, e.config AS event_config FROM app.stages st "
                     "JOIN app.events e ON e.id = st.event_id "
-                    "WHERE e.status IN ('ready','live','closed','finalized') ORDER BY st.ordinal DESC LIMIT 1"
+                    "WHERE e.status IN ('ready','live','closed','finalized') AND st.kind <> 'level' ORDER BY st.ordinal DESC LIMIT 1"
                 )
             )
             .mappings()

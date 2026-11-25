@@ -109,12 +109,12 @@ def admin_repo_lock(
         s.execute(
             text(
                 "INSERT INTO app.assignments (id, event_id, stage_id, challenge_version_id, team_id) "
-                "SELECT CAST(:id AS uuid), e.id, st.id, CAST(:cv AS uuid), CAST(:t AS uuid) "
+                "SELECT gen_random_uuid(), e.id, st.id, CAST(:cv AS uuid), CAST(:t AS uuid) "
                 "FROM app.stages st JOIN app.events e ON e.id = st.event_id "
                 "WHERE st.event_id = CAST(:e AS uuid) AND st.kind = 'level' "
                 "AND NOT EXISTS (SELECT 1 FROM app.assignments a WHERE a.stage_id = st.id AND a.team_id = CAST(:t AS uuid))"
             ),
-            {"id": str(uuid7()), "e": str(team["event_id"]), "cv": str(option["challenge_version_id"]), "t": team_id},
+            {"e": str(team["event_id"]), "cv": str(option["challenge_version_id"]), "t": team_id},
         )
         s.execute(
             text(
