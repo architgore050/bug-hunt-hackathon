@@ -18,8 +18,10 @@ export type LevelRouteNode = 'explain' | 'run'
  * - pointer on a later level than the requested one -> current node.
  * - pointer on an earlier level (requested level submitted or not yet open)
  *   -> current node.
- * - the run route requires the pointer to be exactly this level's exec node.
- * - explain stays readable while the pointer is on this level's exec node.
+ * - within the current level both nodes are reachable: entering the run page
+ *   performs the server-side explain -> exec transition (GET
+ *   /v1/levels/{n}/workspace), and the gate is re-checked there by the
+ *   backend. Explain stays readable while working in the exec node.
  */
 export function guardRedirect(
   pointer: NodePointer | null | undefined,
@@ -31,7 +33,6 @@ export function guardRedirect(
   if (pointer.level_no > targetLevel || pointer.level_no < targetLevel) {
     return nodePath(pointer.level_no, pointer.node)
   }
-  if (targetNode === 'run' && pointer.node !== 'exec') return nodePath(pointer.level_no, 'explain')
   return null
 }
 

@@ -44,10 +44,11 @@ test('guard redirects future or locked levels back to the current node', async (
   assert.equal(guardRedirect({ level_no: 1, node: 'explain' }, 4, 'run'), '/level/1/explain')
 })
 
-test('run route requires the exec node of the same level', async () => {
+test('run route is reachable within the current level; the server gates entry', async () => {
   const { guardRedirect } = await loadGuards()
-  // pointer L2 explain, direct /level/2/run -> explanation first
-  assert.equal(guardRedirect({ level_no: 2, node: 'explain' }, 2, 'run'), '/level/2/explain')
+  // pointer L2 explain, /level/2/run is allowed: workspace entry performs the
+  // explain -> exec pointer advance server-side and re-checks the gate.
+  assert.equal(guardRedirect({ level_no: 2, node: 'explain' }, 2, 'run'), null)
   // pointer L2 exec, /level/2/run is allowed
   assert.equal(guardRedirect({ level_no: 2, node: 'exec' }, 2, 'run'), null)
   // pointer L2 exec, /level/2/explain stays readable (no redirect)
