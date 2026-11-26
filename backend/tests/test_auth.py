@@ -39,10 +39,14 @@ def test_admin_registration_and_passwordless_first_sign_in(client):
     assert registration.json()["password_setup_required"] is True
 
     with app_engine.connect() as conn:
-        before = conn.execute(
-            text("SELECT password_hash, status FROM app.users WHERE lower(email) = :e"),
-            {"e": email},
-        ).mappings().one()
+        before = (
+            conn.execute(
+                text("SELECT password_hash, status FROM app.users WHERE lower(email) = :e"),
+                {"e": email},
+            )
+            .mappings()
+            .one()
+        )
     assert before["password_hash"] is None
     assert before["status"] == "active"
 
@@ -51,10 +55,14 @@ def test_admin_registration_and_passwordless_first_sign_in(client):
     assert first_login.status_code == 200, first_login.text
 
     with app_engine.connect() as conn:
-        after = conn.execute(
-            text("SELECT password_hash, status FROM app.users WHERE lower(email) = :e"),
-            {"e": email},
-        ).mappings().one()
+        after = (
+            conn.execute(
+                text("SELECT password_hash, status FROM app.users WHERE lower(email) = :e"),
+                {"e": email},
+            )
+            .mappings()
+            .one()
+        )
     assert after["password_hash"] is not None
     assert after["status"] == "active"
 
