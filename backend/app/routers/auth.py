@@ -21,7 +21,7 @@ from .. import security
 from ..audit import audit_write
 from ..config import settings
 from ..db import app_session, uuid7
-from ..deps import Principal, check_csrf, get_principal, rate_limit
+from ..deps import Principal, check_csrf, get_principal, rate_limit, require_admin
 from ..errors import ApiError
 
 router = APIRouter(tags=["auth"])
@@ -67,15 +67,26 @@ def login(body: LoginIn, request: Request, response: Response):
             .mappings()
             .first()
         )
-        if (
-            user is None
-            or not user["password_hash"]
-            or not security.verify_password(body.password, user["password_hash"])
-        ):
+        # First sign-in flow: no activation invite needed. Signing in with your
+        # email id activates the account. Only registered accounts can sign in;
+        # unregistered emails are rejected with a generic error (no enumeration).
+        # If you are registered but have no password yet, the password you type
+        # becomes your password. If you have a password, it is checked.
+        # NOTE: this is a risk we are willing to take for this event.
+        if user is None:
+            # Unregistered email: reject generically (no account enumeration).
+            raise ApiError("AUTH_INVALID_CREDENTIALS")
+        elif not user["password_hash"]:
+            # Registered but no password set yet: the password typed now becomes the password.
+            pw_hash = security.hash_password(body.password)
+            s.execute(
+                text("UPDATE app.users SET password_hash = :pw, status = 'active' WHERE id = CAST(:uid AS uuid)"),
+                {"pw": pw_hash, "uid": str(user["id"])},
+            )
+            user = {**user, "password_hash": pw_hash, "status": "active"}
+        elif not security.verify_password(body.password, user["password_hash"]):
             # generic failure: no enumeration (AUTH-1)
             raise ApiError("AUTH_INVALID_CREDENTIALS")
-        if user["status"] == "pending":
-            raise ApiError("AUTH_NOT_ACTIVATED")
         if user["status"] == "disqualified":
             raise ApiError("AUTH_FORBIDDEN", message="This account was disqualified. Contact the organizers.")
 
@@ -181,6 +192,61 @@ def login(body: LoginIn, request: Request, response: Response):
     }
 
 
+class RegisterIn(BaseModel):
+    email: EmailStr
+    name: str = Field(min_length=2, max_length=160)
+    password: str = Field(min_length=12, max_length=200)
+    role: str = Field(default="participant", pattern="^(participant|reviewer|organizer|admin)$")
+
+
+@router.post("/auth/register", status_code=201)
+def register(body: RegisterIn, request: Request, p: Principal = Depends(require_admin)):
+    """Admin-only registration. Creates an active account with a password.
+    No JWT is issued here; the new user signs in via POST /auth/login to get tokens.
+    """
+    if body.role not in ("participant", "reviewer", "organizer", "admin"):
+        raise ApiError("VALIDATION_ERROR", details={"role": "participant|reviewer|organizer|admin"})
+    # Only an admin may create admin/organizer accounts.
+    if body.role in ("admin", "organizer") and p.role != "admin":
+        raise ApiError("AUTH_FORBIDDEN", message="Only an admin can create organizer or admin accounts.")
+    rate_limit(f"register:{request.client.host if request.client else ''}", limit=10, window_s=60)
+    pw_hash = security.hash_password(body.password)
+    with app_session() as s:
+        tenant = s.execute(text("SELECT id FROM app.tenants ORDER BY created_at LIMIT 1")).first()
+        if tenant is None:
+            raise ApiError("VALIDATION_ERROR", details={"tenant": "No tenant exists. Run the seed script."})
+        try:
+            s.execute(
+                text(
+                    "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash, status, registration_id) "
+                    "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), :email, :name, :role, :pw, 'active', :reg)"
+                ),
+                {
+                    "id": str(uuid7()),
+                    "t": str(tenant[0]),
+                    "email": body.email.lower(),
+                    "name": body.name,
+                    "role": body.role,
+                    "pw": pw_hash,
+                    "reg": str(uuid7())[:8],
+                },
+            )
+        except Exception:  # noqa: BLE001 - intentionally broad: never reveal whether email exists (AUTH-1)
+            # Generic outcome: never reveal whether the email already exists (AUTH-1).
+            raise ApiError("VALIDATION_ERROR", details={"email": "Registration failed. Try again."}) from None
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="auth.registered",
+            entity_type="user",
+            entity_id=str(body.email.lower()),
+            request_id=request.state.request_id,
+            details={"email": body.email.lower(), "role": body.role},
+        )
+    return {"ok": True, "email": body.email.lower(), "message": "Account created. The user can now sign in."}
+
+
 @router.post("/auth/refresh")
 def refresh(request: Request, response: Response):
     check_csrf(request)
@@ -192,8 +258,8 @@ def refresh(request: Request, response: Response):
         row = (
             s.execute(
                 text(
-                    "SELECT rt.id, rt.session_id, rt.user_id, rt.status, rt.expires_at, rt.successor_encrypted, "
-                    "rt.rotated_at, u.role, u.status, u.token_version "
+                    "SELECT rt.id, rt.session_id, rt.user_id, rt.status AS rt_status, rt.expires_at, rt.successor_encrypted, "
+                    "rt.rotated_at, u.role, u.status AS user_status, u.token_version "
                     "FROM app.refresh_tokens rt JOIN app.users u ON u.id = rt.user_id WHERE rt.token_hash = :th"
                 ),
                 {"th": th},
@@ -204,9 +270,9 @@ def refresh(request: Request, response: Response):
         if row is None:
             raise ApiError("AUTH_SESSION_REVOKED")
         now = datetime.now(UTC)
-        if row["status"] == "revoked" or row["expires_at"] < now:
+        if row["rt_status"] == "revoked" or row["expires_at"] < now:
             raise ApiError("AUTH_SESSION_REVOKED")
-        if row["status"] == "rotated":
+        if row["rt_status"] == "rotated":
             # AUTH-4 reuse handling: within grace return the same successor; outside revoke family
             rotated_at = row["rotated_at"]
             in_grace = rotated_at is not None and (now - rotated_at).total_seconds() <= settings.refresh_reuse_grace_s
@@ -239,6 +305,9 @@ def refresh(request: Request, response: Response):
                 text("UPDATE app.sessions SET revoked_at = :now WHERE id = CAST(:sid AS uuid)"),
                 {"now": now, "sid": str(row["session_id"])},
             )
+            # app_session() rolls back when an exception escapes its context.
+            # Commit the security response before raising so replay revocation persists.
+            s.commit()
             raise ApiError("AUTH_SESSION_REVOKED")
 
         # normal rotation

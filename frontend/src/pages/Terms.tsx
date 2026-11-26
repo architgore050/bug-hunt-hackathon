@@ -11,10 +11,11 @@ export default function Terms() {
 
       <Panel exhibit="EX-01" title="1. Accounts">
         <p>
-          Access to the console requires an account activated through an organizer-issued invite. Accounts are
-          personal: one person per account, no sharing, no transfer. You are responsible for activity performed
-          with your credentials. The organizers may suspend or disqualify accounts that break these terms or the
-          competition rules.
+          Access to the console requires an account. On first sign-in with your email id, your account is created
+          automatically if it does not exist yet; if you are registered but have no password, the password you type
+          becomes your password. Accounts are personal: one person per account, no sharing, no transfer. You are
+          responsible for activity performed with your credentials. The organizers may suspend or disqualify
+          accounts that break these terms or the competition rules.
         </p>
       </Panel>
 

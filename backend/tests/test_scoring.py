@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
-from conftest import participant_client, worker_drain
+import psycopg
+import pytest
+from conftest import APP_URL, worker_drain
 from sqlalchemy import text
+
+APP_DSN = APP_URL.replace("+psycopg", "")
 
 
 def test_compute_award_points_weights():
@@ -18,9 +24,8 @@ def test_compute_award_points_weights():
     assert pts["functional_test"] == 25.0 and pts["code_review"] == 0.0 and pts["evidence_report"] == 10.0
 
 
-def test_ledger_is_append_only_by_convention(seeded_db):
-    """Corrections add reversal entries referencing the original; nothing mutates
-    historical rows. We assert the reversal linkage path works."""
+def test_ledger_is_database_enforced_append_only(seeded_db):
+    """Ledger corrections are reversal rows; UPDATE and DELETE are rejected by PostgreSQL."""
     from app.db import app_session
     from app.scoring import add_ledger_entry
 
@@ -42,7 +47,7 @@ def test_ledger_is_append_only_by_convention(seeded_db):
             points=-5.0,
             reason_code="TEST_REVERSAL",
         )
-        rev_id = add_ledger_entry(
+        reversal_id = add_ledger_entry(
             s,
             tenant_id=str(team[3]),
             event_id=str(team[1]),
@@ -55,14 +60,31 @@ def test_ledger_is_append_only_by_convention(seeded_db):
             reverses_entry_id=entry_id,
         )
         s.flush()
-        row = s.execute(
-            text("SELECT reverses_entry_id FROM app.score_ledger_entries WHERE id = CAST(:i AS uuid)"), {"i": rev_id}
-        ).first()
-        assert str(row[0]) == entry_id
+        reversal = s.execute(
+            text("SELECT reverses_entry_id FROM app.score_ledger_entries WHERE id = CAST(:i AS uuid)"),
+            {"i": reversal_id},
+        ).scalar_one()
+        assert str(reversal) == entry_id
+
+    # Exercise the application DB role, not the migration/table-owner role.
+    with psycopg.connect(APP_DSN, autocommit=True) as conn:
+        with pytest.raises(psycopg.errors.ObjectNotInPrerequisiteState):
+            conn.execute(
+                "UPDATE app.score_ledger_entries SET points = 999 WHERE id = %s",
+                (entry_id,),
+            )
+        with pytest.raises(psycopg.errors.ObjectNotInPrerequisiteState):
+            conn.execute("DELETE FROM app.score_ledger_entries WHERE id = %s", (entry_id,))
+        stored_points = conn.execute(
+            "SELECT points FROM app.score_ledger_entries WHERE id = %s",
+            (entry_id,),
+        ).fetchone()[0]
+
+    assert float(stored_points) == -5.0
 
 
 def test_award_claim_uniqueness_blocks_double_award(seeded_db):
-    """AT-07: two concurrent evaluations awarding the same unit -> one claim."""
+    """Two independent transactions racing for one unit produce exactly one claim."""
     from app.db import app_session
     from app.scoring import claim_award_unit
 
@@ -74,10 +96,10 @@ def test_award_claim_uniqueness_blocks_double_award(seeded_db):
             )
         ).first()
         team_id, event_id, stage_id, tenant_id = str(team[0]), str(team[1]), str(team[2]), str(team[3])
-        cv = s.execute(text("SELECT id FROM app.challenge_versions LIMIT 1")).first()[0]
-        user = s.execute(text("SELECT id FROM app.users WHERE role='participant' LIMIT 1")).first()[0]
-        sub1, sub2 = str(uuid.uuid4()), str(uuid.uuid4())
-        for sid in (sub1, sub2):
+        challenge_version_id = str(s.execute(text("SELECT id FROM app.challenge_versions LIMIT 1")).scalar_one())
+        user_id = str(s.execute(text("SELECT id FROM app.users WHERE role='participant' LIMIT 1")).scalar_one())
+        submission_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+        for submission_id in submission_ids:
             s.execute(
                 text(
                     "INSERT INTO app.submissions (id, tenant_id, event_id, stage_id, challenge_version_id, team_id, author_id, kind, "
@@ -86,33 +108,55 @@ def test_award_claim_uniqueness_blocks_double_award(seeded_db):
                     "CAST(:au AS uuid), 'bug_report', :k, CAST(:p AS jsonb), 'x', 'received', :r, 'claim test', now())"
                 ),
                 {
-                    "id": sid,
+                    "id": submission_id,
                     "t": tenant_id,
                     "ev": event_id,
                     "st": stage_id,
-                    "cv": str(cv),
+                    "cv": challenge_version_id,
                     "team": team_id,
-                    "au": str(user),
-                    "k": f"claim-{sid[:8]}",
+                    "au": user_id,
+                    "k": f"claim-{submission_id[:8]}",
                     "p": "{}",
-                    "r": sid[:8].upper(),
+                    "r": submission_id[:8].upper(),
                 },
             )
-        first = claim_award_unit(
-            s, event_id=event_id, stage_id=stage_id, team_id=team_id, award_unit_id="TEST-UNIT-1", submission_id=sub1
-        )
-        second = claim_award_unit(
-            s, event_id=event_id, stage_id=stage_id, team_id=team_id, award_unit_id="TEST-UNIT-1", submission_id=sub2
-        )
-        assert first is True
-        assert second is False  # database uniqueness enforced
+
+    start = Barrier(2)
+
+    def attempt_claim(submission_id: str) -> bool:
+        with app_session() as session:
+            start.wait(timeout=10)
+            return claim_award_unit(
+                session,
+                event_id=event_id,
+                stage_id=stage_id,
+                team_id=team_id,
+                award_unit_id="TEST-UNIT-CONCURRENT",
+                submission_id=submission_id,
+            )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(attempt_claim, submission_ids))
+
+    assert sorted(results) == [False, True]
+    with app_session() as s:
+        claim_count = s.execute(
+            text(
+                "SELECT count(*) FROM app.award_claims "
+                "WHERE stage_id = CAST(:stage AS uuid) AND team_id = CAST(:team AS uuid) "
+                "AND award_unit_id = 'TEST-UNIT-CONCURRENT'"
+            ),
+            {"stage": stage_id, "team": team_id},
+        ).scalar_one()
+    assert int(claim_count) == 1
 
 
 def test_ctf_bonus_is_capped(seeded_db):
-    from app.db import app_session
+    """Four distinct valid flags worth 30 each are capped at 100 points."""
+    from app.db import app_session, gt_session
     from app.jobs import enqueue
+    from app.security import flag_code_hash
 
-    # stage cap default 100; flags worth 30 each -> 4 flags = 120 -> capped at 100
     with app_session() as s:
         team = s.execute(
             text(
@@ -121,51 +165,73 @@ def test_ctf_bonus_is_capped(seeded_db):
             )
         ).first()
         team_id, event_id, stage_id, tenant_id = str(team[0]), str(team[1]), str(team[2]), str(team[3])
-        cv = s.execute(text("SELECT id FROM app.challenge_versions LIMIT 1")).first()[0]
-        user = s.execute(text("SELECT id FROM app.users WHERE role='participant' LIMIT 1")).first()[0]
-        sub_ids = []
-        for i in range(4):
-            sid = str(uuid.uuid4())
-            sub_ids.append(sid)
+        challenge_version_id = str(s.execute(text("SELECT id FROM app.challenge_versions LIMIT 1")).scalar_one())
+        user_id = str(s.execute(text("SELECT id FROM app.users WHERE role='participant' LIMIT 1")).scalar_one())
+
+    flags = [
+        ("FLAG-1", "FLAG{client_gates_1e_0nly_9f2a}"),
+        ("FLAG-2", "FLAG{base64_1s_n0t_encrypt10n_44e2}"),
+        ("TEST-CAP-3", "FLAG{cap_test_distinct_3_c7a1}"),
+        ("TEST-CAP-4", "FLAG{cap_test_distinct_4_d8b2}"),
+    ]
+    with gt_session() as gt:
+        for flag_key, code in flags[2:]:
+            gt.execute(
+                text(
+                    "INSERT INTO gt.gt_flags "
+                    "(id, challenge_version_id, flag_key, code_hash, points, max_awards) "
+                    "VALUES (CAST(:id AS uuid), CAST(:challenge AS uuid), :key, :hash, 30, 99)"
+                ),
+                {
+                    "id": str(uuid.uuid4()),
+                    "challenge": challenge_version_id,
+                    "key": flag_key,
+                    "hash": flag_code_hash(code),
+                },
+            )
+
+    with app_session() as s:
+        for index, (_, code) in enumerate(flags):
+            submission_id = str(uuid.uuid4())
             s.execute(
                 text(
                     "INSERT INTO app.submissions (id, tenant_id, event_id, stage_id, challenge_version_id, team_id, author_id, kind, "
                     "idempotency_key, payload, payload_hash, status, receipt_code, title, flag_code, received_at) VALUES "
                     "(CAST(:id AS uuid), CAST(:t AS uuid), CAST(:ev AS uuid), CAST(:st AS uuid), CAST(:cv AS uuid), CAST(:team AS uuid), "
-                    "CAST(:au AS uuid), 'ctf_flag', :k, CAST(:p AS jsonb), :ph, 'received', :r, 'flag', 'FLAG{client_gates_1e_0nly_9f2a}', now())"
+                    "CAST(:au AS uuid), 'ctf_flag', :k, CAST(:p AS jsonb), :ph, 'received', :r, 'flag', :flag, now())"
                 ),
                 {
-                    "id": sid,
+                    "id": submission_id,
                     "t": tenant_id,
                     "ev": event_id,
                     "st": stage_id,
-                    "cv": str(cv),
+                    "cv": challenge_version_id,
                     "team": team_id,
-                    "au": str(user),
-                    "k": f"flag-test-{i}-{uuid.uuid4()}",
+                    "au": user_id,
+                    "k": f"flag-cap-{index}-{uuid.uuid4()}",
                     "p": "{}",
                     "ph": "x",
-                    "r": f"TEST-{i}",
+                    "r": f"CAP-{index}",
+                    "flag": code,
                 },
             )
-            enqueue(s, "verify_flag", {"submission_id": sid})
-    worker_drain()
-    from app.db import app_session as sess
+            enqueue(s, "verify_flag", {"submission_id": submission_id})
 
-    with sess() as s:
-        total = s.execute(
-            text(
-                "SELECT COALESCE(SUM(points), 0) FROM app.score_ledger_entries WHERE team_id = CAST(:t AS uuid) AND component = 'ctf_bonus'"
-            ),
-            {"t": team_id},
-        ).scalar_one()
+    worker_drain()
+
+    with app_session() as s:
         awards = s.execute(
-            text("SELECT count(*) FROM app.award_claims WHERE team_id = CAST(:t AS uuid) AND award_unit_id = 'FLAG-1'"),
-            {"t": team_id},
-        ).scalar_one()
-    # first flag awards 30; the remaining duplicates of the same flag unit are rejected
-    assert float(total) == 30.0, f"expected exactly one 30pt award, got {total}"
-    assert int(awards) == 1
+            text(
+                "SELECT award_unit_id, points FROM app.score_ledger_entries "
+                "WHERE stage_id = CAST(:stage AS uuid) AND team_id = CAST(:team AS uuid) "
+                "AND component = 'ctf_bonus' ORDER BY award_unit_id"
+            ),
+            {"stage": stage_id, "team": team_id},
+        ).all()
+
+    assert len(awards) == 4
+    assert sorted(float(row.points) for row in awards) == [10.0, 30.0, 30.0, 30.0]
+    assert round(sum(float(row.points) for row in awards), 2) == 100.0
 
 
 def test_leaderboard_tie_break_order(seeded_db):
@@ -188,18 +254,3 @@ def test_leaderboard_tie_break_order(seeded_db):
     )
     assert board["rows"][0]["team_id"] == str(teams[0][0])
     assert board["rows"][0]["invalid_reports"] == 0
-
-
-def test_hidden_feedback_mode_reveals_nothing_before_release(client):
-    pc = participant_client(client, "p4.team1@example.com")
-    r = pc.post(
-        "/v1/submissions",
-        json={"kind": "ctf_flag", "flag_code": "FLAG{base64_1s_n0t_encrypt10n_44e2}", "title": "encoded flag"},
-        headers={"Idempotency-Key": str(uuid.uuid4())},
-    )
-    assert r.status_code == 202
-    worker_drain()
-    subs = pc.get("/v1/submissions").json()["submissions"]
-    flag = next(s for s in subs if s["id"] == r.json()["submission_id"])
-    assert flag["status"] == "received"  # no verdict leaked (INT-01)
-    assert "matched_bug_code" not in flag

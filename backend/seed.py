@@ -497,7 +497,7 @@ def main(reset: bool) -> None:
                 "DELETE FROM app.participant_pointers",
                 "DELETE FROM app.team_repo_choices",
                 "DELETE FROM app.repo_options",
-                "DELETE FROM app.score_ledger_entries",
+                "TRUNCATE app.score_ledger_entries RESTART IDENTITY CASCADE",
                 "DELETE FROM app.award_claims",
                 "DELETE FROM app.reviews",
                 "DELETE FROM app.review_items",

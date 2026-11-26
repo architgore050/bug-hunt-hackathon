@@ -5,7 +5,6 @@ import Rules from './pages/Rules'
 import Privacy from './pages/Privacy'
 import Terms from './pages/Terms'
 import Login from './pages/Login'
-import Activate from './pages/Activate'
 import NotFound from './pages/NotFound'
 import Lobby from './pages/participant/Lobby'
 import Workspace from './pages/participant/Workspace'
@@ -31,7 +30,6 @@ export default function App() {
       </Route>
 
       <Route path="/login" element={<Login />} />
-      <Route path="/activate" element={<Activate />} />
 
       {/* Participant console */}
       <Route

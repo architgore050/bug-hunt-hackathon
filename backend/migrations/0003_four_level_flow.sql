@@ -1,4 +1,7 @@
--- 0002_four_level_flow.sql: tables for the four-level participant event flow.
+-- 0003_four_level_flow.sql: tables for the four-level participant event flow.
+-- Renumbered after 0002_score_ledger_immutable.sql. Object creation is
+-- idempotent so databases that applied the former 0002_four_level_flow.sql
+-- can safely record this filename without recreating existing objects.
 -- Additive expand migration: no existing table or column is modified or removed.
 -- Applied by scripts/migrate.sh as pgadmin; runtime grants follow dev_db.sh
 -- default privileges, plus explicit grants below for existing clusters.
@@ -10,7 +13,7 @@ ALTER TABLE app.team_members ADD COLUMN IF NOT EXISTS is_lead BOOLEAN NOT NULL D
 CREATE INDEX IF NOT EXISTS ix_app_team_members_team_lead ON app.team_members (team_id, is_lead);
 
 -- Data-driven repo options (more options can be added later without a model rewrite).
-CREATE TABLE app.repo_options (
+CREATE TABLE IF NOT EXISTS app.repo_options (
     id UUID PRIMARY KEY,
     event_id UUID NOT NULL REFERENCES app.events (id),
     option_key VARCHAR(10) NOT NULL,
@@ -22,7 +25,7 @@ CREATE TABLE app.repo_options (
 );
 
 -- One immutable choice per team. lock_source: lead | admin_override | auto.
-CREATE TABLE app.team_repo_choices (
+CREATE TABLE IF NOT EXISTS app.team_repo_choices (
     id UUID PRIMARY KEY,
     event_id UUID NOT NULL REFERENCES app.events (id),
     team_id UUID NOT NULL REFERENCES app.teams (id) UNIQUE,
@@ -37,7 +40,7 @@ CREATE TABLE app.team_repo_choices (
 );
 
 -- The server-owned monotonic node pointer. node: explain | exec | done.
-CREATE TABLE app.participant_pointers (
+CREATE TABLE IF NOT EXISTS app.participant_pointers (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL UNIQUE REFERENCES app.users (id),
     event_id UUID NOT NULL REFERENCES app.events (id),
@@ -48,7 +51,7 @@ CREATE TABLE app.participant_pointers (
 
 -- Per-level participant status. status: locked | available | in_progress |
 -- submitted | auto_submitted | missed.
-CREATE TABLE app.participant_progress (
+CREATE TABLE IF NOT EXISTS app.participant_progress (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES app.users (id),
     event_id UUID NOT NULL REFERENCES app.events (id),
@@ -63,7 +66,7 @@ CREATE TABLE app.participant_progress (
 
 -- Server drafts per participant per level (flags for L1/L2, edited workspace
 -- files and notes for L3/L4). Versioned for optimistic concurrency.
-CREATE TABLE app.level_drafts (
+CREATE TABLE IF NOT EXISTS app.level_drafts (
     id UUID PRIMARY KEY,
     author_id UUID NOT NULL REFERENCES app.users (id),
     event_id UUID NOT NULL REFERENCES app.events (id),
@@ -78,7 +81,7 @@ CREATE TABLE app.level_drafts (
 -- staged while the participant works and bound to a submission at submit time.
 -- Bytes live behind the storage adapter (private local dir in D0); the API
 -- never stores artifact content in the database.
-CREATE TABLE app.submission_artifacts (
+CREATE TABLE IF NOT EXISTS app.submission_artifacts (
     id UUID PRIMARY KEY,
     submission_id UUID REFERENCES app.submissions (id),
     owner_id UUID NOT NULL REFERENCES app.users (id),
@@ -95,14 +98,14 @@ CREATE TABLE app.submission_artifacts (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX ix_app_repo_options_event_id ON app.repo_options (event_id);
-CREATE INDEX ix_app_team_repo_choices_event_id ON app.team_repo_choices (event_id);
-CREATE INDEX ix_app_participant_pointers_event_id ON app.participant_pointers (event_id);
-CREATE INDEX ix_app_participant_progress_event_id ON app.participant_progress (event_id);
-CREATE INDEX ix_app_participant_progress_user_id ON app.participant_progress (user_id);
-CREATE INDEX ix_app_level_drafts_author_id ON app.level_drafts (author_id);
-CREATE INDEX ix_app_submission_artifacts_owner ON app.submission_artifacts (owner_id, level_no, status);
-CREATE INDEX ix_app_submission_artifacts_submission ON app.submission_artifacts (submission_id);
+CREATE INDEX IF NOT EXISTS ix_app_repo_options_event_id ON app.repo_options (event_id);
+CREATE INDEX IF NOT EXISTS ix_app_team_repo_choices_event_id ON app.team_repo_choices (event_id);
+CREATE INDEX IF NOT EXISTS ix_app_participant_pointers_event_id ON app.participant_pointers (event_id);
+CREATE INDEX IF NOT EXISTS ix_app_participant_progress_event_id ON app.participant_progress (event_id);
+CREATE INDEX IF NOT EXISTS ix_app_participant_progress_user_id ON app.participant_progress (user_id);
+CREATE INDEX IF NOT EXISTS ix_app_level_drafts_author_id ON app.level_drafts (author_id);
+CREATE INDEX IF NOT EXISTS ix_app_submission_artifacts_owner ON app.submission_artifacts (owner_id, level_no, status);
+CREATE INDEX IF NOT EXISTS ix_app_submission_artifacts_submission ON app.submission_artifacts (submission_id);
 
 GRANT ALL ON app.repo_options, app.team_repo_choices, app.participant_pointers,
     app.participant_progress, app.level_drafts, app.submission_artifacts TO app_api;
