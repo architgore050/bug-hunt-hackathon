@@ -1,0 +1,110 @@
+/* ============================================================
+   EVENT DETAILS (public /event page)
+   Page-scoped styles imported by src/pages/EventDetails.tsx.
+   Sits on top of the case-file system in app.css: borders and
+   tone steps only. No shadows, no gradients, no new colors.
+   ============================================================ */
+
+/* ---------- flow diagram (02) ---------- */
+
+.ed-flow {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  line-height: 1.9;
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.ed-flow-label {
+  margin-top: 16px;
+}
+
+/* ---------- format highlights grid (01) ---------- */
+
+.ed-format {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0 28px;
+  margin-top: 14px;
+}
+
+.ed-format-item {
+  min-width: 0;
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ed-format-value {
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow-wrap: break-word;
+}
+
+/* ---------- participation steps (03) ---------- */
+
+.ed-steps {
+  display: grid;
+}
+
+.ed-step {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 14px;
+  align-items: baseline;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.ed-step:last-child {
+  border-bottom: 0;
+}
+
+.ed-step-num {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  color: var(--signal);
+}
+
+.ed-step-body {
+  min-width: 0;
+  font-size: 14px;
+}
+
+/* ---------- narrow screens ---------- */
+
+@media (max-width: 640px) {
+  .ed-flow {
+    font-size: 11.5px;
+    line-height: 1.8;
+    letter-spacing: 0.02em;
+    padding: 10px 12px;
+  }
+
+  .ed-format {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .ed-step {
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px 0;
+  }
+
+  .ed-step-num {
+    font-size: 14px;
+  }
+
+  .ed-step-body {
+    font-size: 13.5px;
+  }
+}

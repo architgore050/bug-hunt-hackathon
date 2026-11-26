@@ -1203,3 +1203,165 @@ table.table {
   padding: 10px 12px;
   background: transparent;
 }
+
+/* ---------------- event progress bar (four-level flow) ---------------- */
+
+.eprogress {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+}
+
+.eprogress-line {
+  position: relative;
+  height: 4px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.eprogress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--signal);
+  transition: width 150ms ease;
+}
+
+.eprogress-tick {
+  position: absolute;
+  top: -2px;
+  width: 1px;
+  height: 8px;
+  background: var(--line-strong);
+}
+
+.eprogress-tick.done {
+  background: var(--signal);
+}
+
+.eprogress-chipbar {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.eprogress-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  padding: 16px 0 18px;
+}
+
+.eprogress-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.eprogress-pin {
+  margin-left: auto;
+}
+
+.eprogress-levels {
+  display: grid;
+  gap: 0;
+}
+
+.eprogress-level {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.eprogress-level.current {
+  background: var(--panel-2);
+  margin: 0 -12px;
+  padding-left: 12px;
+  padding-right: 12px;
+  border-radius: var(--radius);
+  border-top-color: transparent;
+}
+
+.eprogress-nodes {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.eprogress-note {
+  grid-column: 2 / 4;
+  color: var(--muted);
+}
+
+/* ---------------- confirmation modal ---------------- */
+
+.cmodal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(16 20 24 / 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 100;
+}
+
+.cmodal {
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  max-width: 520px;
+  width: 100%;
+  padding: 20px;
+  display: grid;
+  gap: 12px;
+}
+
+.cmodal-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--paper);
+}
+
+.cmodal-body {
+  color: var(--muted);
+  font-size: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.cmodal-body strong {
+  color: var(--paper);
+}
+
+.cmodal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+/* ---------------- warning banners ---------------- */
+
+.wstack {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.highlight-row {
+  background: var(--panel-2);
+}

@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom'
+import { Route, Routes, Navigate } from 'react-router-dom'
 import { PublicLayout, RequireRole, ConsoleShell } from './components/chrome'
 import Landing from './pages/Landing'
 import Rules from './pages/Rules'
@@ -6,8 +6,13 @@ import Privacy from './pages/Privacy'
 import Terms from './pages/Terms'
 import Login from './pages/Login'
 import NotFound from './pages/NotFound'
-import Lobby from './pages/participant/Lobby'
-import Workspace from './pages/participant/Workspace'
+import EventDetails from './pages/EventDetails'
+import Dashboard from './pages/participant/Dashboard'
+import LevelExplain from './pages/participant/LevelExplain'
+import LevelRules from './pages/participant/LevelRules'
+import LevelGuide from './pages/participant/LevelGuide'
+import LevelKnowMore from './pages/participant/LevelKnowMore'
+import LevelWorkspace from './pages/participant/LevelWorkspace'
 import Submissions from './pages/participant/Submissions'
 import SubmissionDetail from './pages/participant/SubmissionDetail'
 import Results from './pages/participant/Results'
@@ -24,6 +29,7 @@ export default function App() {
       {/* Public case file */}
       <Route element={<PublicLayout />}>
         <Route path="/" element={<Landing />} />
+        <Route path="/event" element={<EventDetails />} />
         <Route path="/rules" element={<Rules />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
@@ -31,15 +37,58 @@ export default function App() {
 
       <Route path="/login" element={<Login />} />
 
-      {/* Participant console */}
+      {/* Participant four-level experience */}
+      <Route
+        path="/dashboard"
+        element={
+          <RequireRole roles={['participant']}>
+            <ConsoleShell area="/app">
+              <Dashboard />
+            </ConsoleShell>
+          </RequireRole>
+        }
+      />
+
+      {/* Level workspace: own chrome, guarded by RequireRole + the page-level
+          server-derived guard. */}
+      <Route
+        path="/level/:levelNo/run"
+        element={
+          <RequireRole roles={['participant']}>
+            <LevelWorkspace />
+          </RequireRole>
+        }
+      />
+
+      {/* Level routes: guards inside each page redirect to the server's
+          current node; guards are UX only, the backend re-checks everything. */}
+      <Route
+        path="/level/:levelNo"
+        element={
+          <RequireRole roles={['participant']}>
+            <ConsoleShell area="/app">
+              <Routes>
+                <Route path="explain" element={<LevelExplain />} />
+                <Route path="rules" element={<LevelRules />} />
+                <Route path="guide" element={<LevelGuide />} />
+                <Route path="repo/:optionKey" element={<LevelKnowMore />} />
+              </Routes>
+            </ConsoleShell>
+          </RequireRole>
+        }
+      />
+
+      {/* Participant console: v1 compatibility routes. The Lobby and the v1
+          single-round workspace are superseded by the four-level flow; their
+          URLs redirect to the dashboard. */}
       <Route
         path="/app"
         element={
           <RequireRole roles={['participant']}>
             <ConsoleShell area="/app">
               <Routes>
-                <Route index element={<Lobby />} />
-                <Route path="workspace" element={<Workspace />} />
+                <Route index element={<Navigate to="/dashboard" replace />} />
+                <Route path="workspace" element={<Navigate to="/dashboard" replace />} />
                 <Route path="submissions" element={<Submissions />} />
                 <Route path="submissions/:submissionId" element={<SubmissionDetail />} />
                 <Route path="results" element={<Results />} />

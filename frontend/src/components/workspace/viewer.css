@@ -1,0 +1,55 @@
+/* Co-located layout glue for the workspace code viewer and repository tree.
+   Colors, fonts, radius and the core viewer classes (.codeview, .codeline,
+   .filetree) come from app.css and tokens.css; these rules only add
+   arrangement for the toolbar, meta row, tree rows and footer.
+   No shadows, no gradients, no emoji. */
+
+.viewer-root {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.viewer-find {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 160px;
+}
+
+.viewer-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.viewer-live {
+  min-width: 40px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Keyboard cursor line: a muted left rail under the active selection rail. */
+.codeline.cursor {
+  border-left-color: var(--muted);
+}
+
+.viewer-footer {
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.filetree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filetree-size {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
