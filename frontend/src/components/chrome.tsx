@@ -96,6 +96,8 @@ const NAV: Record<string, { to: string; label: string; roles: string[] }[]> = {
   '/admin': [
     { to: '/admin', label: 'Operations', roles: ['organizer', 'admin'] },
     { to: '/admin/challenges', label: 'Challenges', roles: ['organizer', 'admin'] },
+    { to: '/admin/participants', label: 'Participants', roles: ['organizer', 'admin'] },
+    { to: '/admin/ground-truth-flags', label: 'Ground-truth flags', roles: ['organizer', 'admin'] },
   ],
 }
 
