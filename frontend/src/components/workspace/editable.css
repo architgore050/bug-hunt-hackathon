@@ -1,10 +1,12 @@
-// Controlled editable code editor for levels 3 and 4.
-//
-// A plain textarea bound to a synchronized line-number gutter: both use the
-// same font metrics, the gutter scrolls with the textarea and never scrolls
-// on its own. Visual continuity with the read-only case-file viewer comes
-// from app.css (.codeview, .line-no metrics); this co-located stylesheet only
-// adds arrangement. No shadows, no gradients, radius 3px max.
+/*
+ * Controlled editable code editor for levels 3 and 4.
+ *
+ * A plain textarea bound to a synchronized line-number gutter: both use the
+ * same font metrics, the gutter scrolls with the textarea and never scrolls
+ * on its own. Visual continuity with the read-only case-file viewer comes
+ * from app.css (.codeview, .line-no metrics); this co-located stylesheet only
+ * adds arrangement. No shadows, no gradients, radius 3px max.
+ */
 
 .ede {
   display: flex;
