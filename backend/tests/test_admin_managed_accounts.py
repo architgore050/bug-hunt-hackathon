@@ -119,10 +119,13 @@ def test_admin_only_participant_registration_move_remove_and_password_reset(clie
     assert reset.status_code == 200, reset.text
     assert reset.json()["email"] == email
     assert client.get("/v1/me", headers=participant_client.headers).status_code == 401
-    assert client.post(
-        "/v1/auth/login",
-        json={"email": email, "password": initial_password},
-    ).status_code == 401
+    assert (
+        client.post(
+            "/v1/auth/login",
+            json={"email": email, "password": initial_password},
+        ).status_code
+        == 401
+    )
     new_login = client.post(
         "/v1/auth/login",
         json={"email": email, "password": replacement_password},
