@@ -6,6 +6,7 @@ import Privacy from './pages/Privacy'
 import Terms from './pages/Terms'
 import Login from './pages/Login'
 import NotFound from './pages/NotFound'
+import EventDetails from './pages/EventDetails'
 import Dashboard from './pages/participant/Dashboard'
 import Submissions from './pages/participant/Submissions'
 import SubmissionDetail from './pages/participant/SubmissionDetail'
@@ -23,6 +24,7 @@ export default function App() {
       {/* Public case file */}
       <Route element={<PublicLayout />}>
         <Route path="/" element={<Landing />} />
+        <Route path="/event" element={<EventDetails />} />
         <Route path="/rules" element={<Rules />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
