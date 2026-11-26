@@ -79,15 +79,21 @@ def test_admin_registration_and_passwordless_first_sign_in(client):
     assert unknown.json()["error"]["message"] == wrong.json()["error"]["message"]
 
     # Activation and public self-service password reset are not registered.
-    assert client.post(
-        "/v1/auth/activate",
-        json={"invite_token": "x" * 32, "password": initial_password, "accept_rules": True},
-    ).status_code == 404
+    assert (
+        client.post(
+            "/v1/auth/activate",
+            json={"invite_token": "x" * 32, "password": initial_password, "accept_rules": True},
+        ).status_code
+        == 404
+    )
     assert client.post("/v1/auth/password/reset-request", json={"email": email}).status_code == 404
-    assert client.post(
-        "/v1/auth/password/reset",
-        json={"token": "x" * 32, "password": "Another-Password-123"},
-    ).status_code == 404
+    assert (
+        client.post(
+            "/v1/auth/password/reset",
+            json={"token": "x" * 32, "password": "Another-Password-123"},
+        ).status_code
+        == 404
+    )
 
     # A normal organizer cannot create staff or participant accounts via the global registration endpoint.
     organizer_login = client.post(
@@ -111,9 +117,7 @@ def test_pending_password_account_activates_only_after_successful_verification(c
     email = f"pending-{__import__('uuid').uuid4().hex[:8]}@example.com"
     password = "Pending-Account-Password-123"
     with app_engine.begin() as conn:
-        tenant_id = conn.execute(
-            text("SELECT tenant_id FROM app.events ORDER BY created_at DESC LIMIT 1")
-        ).scalar_one()
+        tenant_id = conn.execute(text("SELECT tenant_id FROM app.events ORDER BY created_at DESC LIMIT 1")).scalar_one()
         conn.execute(
             text(
                 "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash, status) "
