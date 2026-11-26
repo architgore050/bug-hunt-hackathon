@@ -168,7 +168,8 @@ def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal 
         s.execute(
             text(
                 "INSERT INTO app.event_config_revisions (id, event_id, version, config, rule_set_hash, reason, created_by, frozen_at) "
-                "VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :v, CAST(:cfg AS jsonb), :h, :reason, CAST(:u AS uuid), :frozen)"
+                "VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :v, CAST(:cfg AS jsonb), :h, :reason, CAST(:u AS uuid), "
+                "CASE WHEN :freeze THEN now() ELSE NULL END)"
             ),
             {
                 "id": str(uuid7()),
@@ -178,7 +179,7 @@ def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal 
                 "h": rule_set_hash,
                 "reason": body.reason,
                 "u": p.id,
-                "frozen": "now()" if body.freeze else None,
+                "freeze": body.freeze,
             },
         )
         if body.freeze:
@@ -199,6 +200,39 @@ def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal 
             details={"version": int(ver) + 1, "frozen": body.freeze, "reason": body.reason},
         )
     return {"ok": True, "rule_set_hash": rule_set_hash}
+
+
+@router.get("/admin/events/{event_id}/config/revisions")
+def list_config_revisions(event_id: str, p: Principal = Depends(require_organizer)):
+    """Return current event config and the bounded immutable revision history."""
+    with app_session() as s:
+        event = (
+            s.execute(
+                text("SELECT config, config_version FROM app.events WHERE id = CAST(:e AS uuid)"),
+                {"e": event_id},
+            )
+            .mappings()
+            .first()
+        )
+        if event is None:
+            raise ApiError("NOT_FOUND")
+        rows = (
+            s.execute(
+                text(
+                    "SELECT version, config, rule_set_hash, reason, created_at, frozen_at "
+                    "FROM app.event_config_revisions WHERE event_id = CAST(:e AS uuid) "
+                    "ORDER BY version DESC LIMIT 100"
+                ),
+                {"e": event_id},
+            )
+            .mappings()
+            .all()
+        )
+    return {
+        "config_version": int(event["config_version"]),
+        "current_config": event["config"] or {},
+        "revisions": [dict(row) for row in rows],
+    }
 
 
 @router.get("/admin/events")
@@ -450,11 +484,17 @@ def create_team(event_id: str, body: TeamIn, request: Request, p: Principal = De
     import secrets
 
     with app_session() as s:
+        ev = s.execute(
+            text("SELECT max_teams FROM app.events WHERE id = CAST(:e AS uuid) FOR UPDATE"),
+            {"e": event_id},
+        ).first()
+        if ev is None:
+            raise ApiError("NOT_FOUND")
         count = s.execute(
-            text("SELECT count(*) FROM app.teams WHERE event_id = CAST(:e AS uuid)"), {"e": event_id}
+            text("SELECT count(*) FROM app.teams WHERE event_id = CAST(:e AS uuid)"),
+            {"e": event_id},
         ).scalar_one()
-        ev = s.execute(text("SELECT max_teams FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": event_id}).first()
-        if ev and int(count) >= int(ev[0]):
+        if int(count) >= int(ev[0]):
             raise ApiError("VALIDATION_ERROR", details={"capacity": f"Team cap ({ev[0]}) reached."})
         team_id = str(uuid7())
         join_code = secrets.token_hex(4).upper()
@@ -1397,7 +1437,34 @@ def time_adjustment(event_id: str, body: dict, request: Request, p: Principal = 
         raise ApiError("VALIDATION_ERROR", details={"adjustment": "stage_id and nonzero delta_seconds required."})
     if reason_code not in ("ACCOMMODATION", "OUTAGE", "DEVICE_FAILURE", "OTHER"):
         raise ApiError("VALIDATION_ERROR", details={"reason_code": "ACCOMMODATION|OUTAGE|DEVICE_FAILURE|OTHER"})
+    if abs(delta) > 86400:
+        raise ApiError(
+            "VALIDATION_ERROR",
+            details={"delta_seconds": "Time adjustments must be within +/- 86400 seconds."},
+        )
     with app_session() as s:
+        stage = s.execute(
+            text("SELECT 1 FROM app.stages WHERE id = CAST(:s AS uuid) AND event_id = CAST(:e AS uuid)"),
+            {"s": stage_id, "e": event_id},
+        ).first()
+        if stage is None:
+            raise ApiError("VALIDATION_ERROR", details={"stage_id": "Stage must belong to the selected event."})
+        if user_id:
+            participant = s.execute(
+                text(
+                    "SELECT 1 FROM app.team_members tm "
+                    "JOIN app.teams t ON t.id = tm.team_id "
+                    "JOIN app.users u ON u.id = tm.user_id "
+                    "WHERE tm.user_id = CAST(:u AS uuid) AND t.event_id = CAST(:e AS uuid) "
+                    "AND u.role = 'participant' AND u.status = 'active'"
+                ),
+                {"u": user_id, "e": event_id},
+            ).first()
+            if participant is None:
+                raise ApiError(
+                    "VALIDATION_ERROR",
+                    details={"user_id": "Participant must have an active team membership in the selected event."},
+                )
         s.execute(
             text(
                 "INSERT INTO app.time_adjustments (id, stage_id, user_id, delta_seconds, reason_code, created_by) VALUES (CAST(:id AS uuid), CAST(:s AS uuid), CAST(:u AS uuid), :d, :r, CAST(:by AS uuid))"
@@ -1734,18 +1801,27 @@ def resolve_dispute(dispute_id: str, body: dict, request: Request, p: Principal 
 
 
 @router.post("/admin/adjustments")
-def manual_adjustment(body: dict, request: Request, p: Principal = Depends(require_admin)):
-    """Admin-only manual score adjustment (audit reason required; ADM-RS)."""
+def manual_adjustment(body: dict, request: Request, p: Principal = Depends(admin_step_up_verified)):
+    """Admin-only manual score adjustment; requires recent password step-up."""
     stage_id = body.get("stage_id")
     team_id = body.get("team_id")
     points = float(body.get("points", 0))
     reason = body.get("reason", "")
     if not stage_id or not team_id or not reason or points == 0:
         raise ApiError("VALIDATION_ERROR", details={"adjustment": "stage_id, team_id, points, reason required."})
+    if abs(points) > 10000 or len(reason) > 1000:
+        raise ApiError("VALIDATION_ERROR", details={"adjustment": "Points must be within +/-10000 and reason <=1000 chars."})
     with app_session() as s:
         event_id = s.execute(
             text("SELECT event_id FROM app.stages WHERE id = CAST(:s AS uuid)"), {"s": stage_id}
-        ).scalar_one()
+        ).scalar_one_or_none()
+        if event_id is None:
+            raise ApiError("NOT_FOUND")
+        team_event = s.execute(
+            text("SELECT event_id FROM app.teams WHERE id = CAST(:t AS uuid)"), {"t": team_id}
+        ).scalar_one_or_none()
+        if str(team_event) != str(event_id):
+            raise ApiError("VALIDATION_ERROR", details={"team_id": "Team must belong to the stage event."})
         tenant_id = s.execute(
             text("SELECT tenant_id FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": str(event_id)}
         ).scalar_one()
