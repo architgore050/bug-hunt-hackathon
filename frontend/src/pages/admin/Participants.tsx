@@ -66,7 +66,7 @@ export default function AdminParticipants() {
   const [form, setForm] = useState({ email: '', name: '', team_id: '' })
   const [teamChoices, setTeamChoices] = useState<Record<string, string>>({})
   const [resetTarget, setResetTarget] = useState<string | null>(null)
-  const [resetPassword, setResetPassword] = useState('')
+  const [resetPasswordValue, setResetPasswordValue] = useState('')
 
   useEffect(() => {
     if (!eventId && eventsQ.data?.events.length) setEventId(eventsQ.data.events[0].id)
@@ -95,7 +95,7 @@ export default function AdminParticipants() {
     setForm({ email: '', name: '', team_id: '' })
     setTeamChoices({})
     setResetTarget(null)
-    setResetPassword('')
+    setResetPasswordValue('')
   }, [eventId])
 
   function clearMessages() {
@@ -179,20 +179,20 @@ export default function AdminParticipants() {
     }
   }
 
-  async function resetPassword(participant: Participant) {
-    if (!isAdmin || !elevated || resetPassword.length < 12) return
+  async function resetParticipantPassword(participant: Participant) {
+    if (!isAdmin || !elevated || resetPasswordValue.length < 12) return
     setBusy(true)
     clearMessages()
     try {
       await api(`/v1/admin/users/${participant.id}/password-reset`, {
         method: 'POST',
-        body: { password: resetPassword },
+        body: { password: resetPasswordValue },
       })
       setNotice(
         `Password reset for ${participant.email}. All previous sessions and refresh tokens were revoked. Deliver the new password through an approved private channel.`,
       )
       setResetTarget(null)
-      setResetPassword('')
+      setResetPasswordValue('')
       await queryClient.invalidateQueries({ queryKey: ['admin-participants', eventId] })
     } catch (err) {
       showError(err)
@@ -327,17 +327,17 @@ export default function AdminParticipants() {
                                     maxLength={200}
                                     placeholder="New password (12+ chars)"
                                     aria-label={`New password for ${participant.email}`}
-                                    value={resetPassword}
-                                    onChange={(e) => setResetPassword(e.target.value)}
+                                    value={resetPasswordValue}
+                                    onChange={(e) => setResetPasswordValue(e.target.value)}
                                   />
                                   <div style={{ display: 'flex', gap: 6 }}>
-                                    <Button size="sm" variant="primary" disabled={busy || !elevated || resetPassword.length < 12} onClick={() => void resetPassword(participant)}>Reset password</Button>
-                                    <Button size="sm" variant="ghost" onClick={() => { setResetTarget(null); setResetPassword('') }}>Cancel</Button>
+                                    <Button size="sm" variant="primary" disabled={busy || !elevated || resetPasswordValue.length < 12} onClick={() => void resetParticipantPassword(participant)}>Reset password</Button>
+                                    <Button size="sm" variant="ghost" onClick={() => { setResetTarget(null); setResetPasswordValue('') }}>Cancel</Button>
                                   </div>
                                 </div>
                               ) : (
                                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                  <Button size="sm" disabled={busy || !elevated} onClick={() => { setResetTarget(participant.id); setResetPassword('') }}>Reset password</Button>
+                                  <Button size="sm" disabled={busy || !elevated} onClick={() => { setResetTarget(participant.id); setResetPasswordValue('') }}>Reset password</Button>
                                   <Button size="sm" variant="danger" disabled={busy || !elevated} onClick={() => void removeParticipant(participant)}>Remove participant</Button>
                                 </div>
                               )}
