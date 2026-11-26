@@ -1,0 +1,96 @@
+/* Repository lock section: option cards with real radio inputs.
+   Co-located styles only; app.css stays untouched. */
+
+.repo-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.repo-card {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  cursor: pointer;
+}
+
+.repo-card:hover {
+  border-color: var(--muted);
+}
+
+.repo-card:focus-within {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.repo-card-selected {
+  border-color: var(--signal);
+}
+
+.repo-card-disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.repo-card-disabled:hover {
+  border-color: var(--line-strong);
+}
+
+.repo-card-body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.repo-card-title {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--paper);
+}
+
+.repo-card-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.repo-radio {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin: 3px 0 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--panel);
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+}
+
+.repo-radio:checked {
+  border-color: var(--signal);
+}
+
+.repo-radio:checked::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--signal);
+}
+
+.repo-radio:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+@media (max-width: 640px) {
+  .repo-options {
+    grid-template-columns: 1fr;
+  }
+}
