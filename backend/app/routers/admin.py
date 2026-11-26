@@ -518,10 +518,13 @@ def create_team(event_id: str, body: TeamIn, request: Request, p: Principal = De
 @router.get("/admin/events/{event_id}/teams")
 def list_teams(event_id: str, p: Principal = Depends(require_organizer)):
     with app_session() as s:
-        if s.execute(
-            text("SELECT 1 FROM app.events WHERE id = CAST(:e AS uuid)"),
-            {"e": event_id},
-        ).first() is None:
+        if (
+            s.execute(
+                text("SELECT 1 FROM app.events WHERE id = CAST(:e AS uuid)"),
+                {"e": event_id},
+            ).first()
+            is None
+        ):
             raise ApiError("NOT_FOUND")
         rows = (
             s.execute(
@@ -857,10 +860,13 @@ def admin_reset_user_password(
 @router.get("/admin/events/{event_id}/participants")
 def list_participants(event_id: str, p: Principal = Depends(require_organizer)):
     with app_session() as s:
-        if s.execute(
-            text("SELECT 1 FROM app.events WHERE id = CAST(:e AS uuid)"),
-            {"e": event_id},
-        ).first() is None:
+        if (
+            s.execute(
+                text("SELECT 1 FROM app.events WHERE id = CAST(:e AS uuid)"),
+                {"e": event_id},
+            ).first()
+            is None
+        ):
             raise ApiError("NOT_FOUND")
         rows = (
             s.execute(
@@ -893,10 +899,13 @@ class ChallengeIn(BaseModel):
 def list_challenge_versions(event_id: str, p: Principal = Depends(require_organizer)):
     """List safe challenge metadata without participant content or ground-truth secrets."""
     with app_session() as s:
-        if s.execute(
-            text("SELECT 1 FROM app.events WHERE id = CAST(:e AS uuid)"),
-            {"e": event_id},
-        ).first() is None:
+        if (
+            s.execute(
+                text("SELECT 1 FROM app.events WHERE id = CAST(:e AS uuid)"),
+                {"e": event_id},
+            ).first()
+            is None
+        ):
             raise ApiError("NOT_FOUND")
         rows = (
             s.execute(
@@ -1203,10 +1212,13 @@ class FlagPatchIn(BaseModel):
 def list_ground_truth_flags(challenge_id: str, p: Principal = Depends(step_up_verified)):
     """Return editable flag metadata only; neither plaintext codes nor hashes are exposed."""
     with app_session() as s:
-        if s.execute(
-            text("SELECT 1 FROM app.challenge_versions WHERE id = CAST(:c AS uuid)"),
-            {"c": challenge_id},
-        ).first() is None:
+        if (
+            s.execute(
+                text("SELECT 1 FROM app.challenge_versions WHERE id = CAST(:c AS uuid)"),
+                {"c": challenge_id},
+            ).first()
+            is None
+        ):
             raise ApiError("NOT_FOUND")
     with gt_session() as gts:
         rows = (
