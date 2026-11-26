@@ -1,0 +1,112 @@
+// Controlled editable code editor for levels 3 and 4.
+//
+// A plain textarea bound to a synchronized line-number gutter: both use the
+// same font metrics, the gutter scrolls with the textarea and never scrolls
+// on its own. Visual continuity with the read-only case-file viewer comes
+// from app.css (.codeview, .line-no metrics); this co-located stylesheet only
+// adds arrangement. No shadows, no gradients, radius 3px max.
+
+.ede {
+  display: flex;
+  align-items: stretch;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-family: var(--font-mono);
+}
+
+.ede-gutter {
+  flex: none;
+  width: 52px;
+  overflow: hidden;
+  text-align: right;
+  padding: 10px 12px 10px 0;
+  color: #5d666f;
+  user-select: none;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.ede-gutter-line {
+  font-size: 0.86em;
+  line-height: 1.9;
+}
+
+.ede-textarea {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  background: none;
+  color: var(--paper);
+  border: 0;
+  margin: 0;
+  padding: 10px 16px 10px 12px;
+  font-family: var(--font-mono);
+  line-height: 1.9;
+  resize: vertical;
+  outline: none;
+}
+
+.ede-textarea:focus-visible {
+  outline: 1px solid var(--line-strong);
+  outline-offset: -1px;
+}
+
+/* ---------- build panel ---------- */
+
+.bpan-disabled {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.bpan-output {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  white-space: pre;
+  color: var(--paper);
+}
+
+/* ---------- upload dialog ---------- */
+
+.edlg-warn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  border: 1px solid var(--line-strong);
+  border-left: 2px solid var(--warn);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  color: var(--muted);
+}
+
+.edlg-note {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.edlg-staged {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: var(--panel-2);
+}
+
+.edlg-staged-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
