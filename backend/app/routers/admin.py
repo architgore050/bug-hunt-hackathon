@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import UTC
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from pydantic import BaseModel, EmailStr, Field
@@ -26,7 +25,7 @@ from .. import security
 from ..audit import audit_verify, audit_write
 from ..config import settings
 from ..db import app_session, gt_session, health_probe, uuid7
-from ..deps import Principal, require_admin, require_organizer, step_up_verified
+from ..deps import Principal, require_organizer, step_up_verified
 from ..errors import ApiError
 from ..jobs import enqueue
 from ..scoring import add_ledger_entry
