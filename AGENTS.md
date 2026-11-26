@@ -55,7 +55,7 @@ This file governs any AI agent or human contributor working in
 
 ## Testing gates
 
-- `cd backend && pytest` must pass (75 tests: 37 v1 + 38 four-level flow) before any backend change merges.
+- `cd backend && pytest` must pass (74 tests: 36 v1 + 38 four-level flow) before any backend change merges.
 - `scripts/e2e_journey.py` (46 checks, needs running API + worker + seeded DB)
   before any release-worthy change.
 - `cd frontend && npm run build` must be clean; no TODO/Lorem/XXX anywhere.
