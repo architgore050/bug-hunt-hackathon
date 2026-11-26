@@ -288,10 +288,19 @@ export function fetchTeamScore(): Promise<TeamScoreResponse> {
 }
 
 export function lockRepo(option: string): Promise<RepoLockResult> {
+  return lockRepoWithKey(option, newIdempotencyKey())
+}
+
+/**
+ * Repo lock with a caller-held idempotency key so a lost response can be
+ * retried with the SAME key (the server replays the existing choice instead
+ * of surfacing a generic failure).
+ */
+export function lockRepoWithKey(option: string, key: string): Promise<RepoLockResult> {
   return api<RepoLockResult>('/v1/team/repo-lock', {
     method: 'POST',
     body: { option, confirm: true },
-    idempotencyKey: newIdempotencyKey(),
+    idempotencyKey: key,
   })
 }
 
