@@ -570,10 +570,7 @@ def register_event_participant(
         with app_session() as s:
             event = (
                 s.execute(
-                    text(
-                        "SELECT tenant_id, max_participants FROM app.events "
-                        "WHERE id = CAST(:e AS uuid) FOR UPDATE"
-                    ),
+                    text("SELECT tenant_id, max_participants FROM app.events WHERE id = CAST(:e AS uuid) FOR UPDATE"),
                     {"e": event_id},
                 )
                 .mappings()
@@ -650,7 +647,9 @@ def register_event_participant(
                 if membership is not None:
                     raise ApiError(
                         "VALIDATION_ERROR",
-                        details={"email": "This participant already belongs to a team in this event. Use team reassignment."},
+                        details={
+                            "email": "This participant already belongs to a team in this event. Use team reassignment."
+                        },
                     )
                 if existing["status"] != "active":
                     s.execute(
@@ -788,7 +787,9 @@ def remove_event_participant(
                 {"u": user_id},
             )
             s.execute(
-                text("UPDATE app.sessions SET revoked_at = now() WHERE user_id = CAST(:u AS uuid) AND revoked_at IS NULL"),
+                text(
+                    "UPDATE app.sessions SET revoked_at = now() WHERE user_id = CAST(:u AS uuid) AND revoked_at IS NULL"
+                ),
                 {"u": user_id},
             )
             s.execute(
@@ -1256,9 +1257,7 @@ def add_flag(challenge_id: str, body: FlagIn, request: Request, p: Principal = D
     try:
         with gt_session() as gts:
             duplicate_key = gts.execute(
-                text(
-                    "SELECT 1 FROM gt.gt_flags WHERE challenge_version_id = CAST(:c AS uuid) AND flag_key = :k"
-                ),
+                text("SELECT 1 FROM gt.gt_flags WHERE challenge_version_id = CAST(:c AS uuid) AND flag_key = :k"),
                 {"c": challenge_id, "k": body.flag_key},
             ).first()
             if duplicate_key:
@@ -1279,7 +1278,9 @@ def add_flag(challenge_id: str, body: FlagIn, request: Request, p: Principal = D
                 },
             ).scalar_one_or_none()
             if flag_id is None:
-                raise ApiError("VALIDATION_ERROR", details={"code": "This flag code already exists for this challenge."})
+                raise ApiError(
+                    "VALIDATION_ERROR", details={"code": "This flag code already exists for this challenge."}
+                )
             audit_write(
                 gts,
                 actor_id=p.id,
@@ -1821,7 +1822,9 @@ def manual_adjustment(body: dict, request: Request, p: Principal = Depends(admin
     if not stage_id or not team_id or not reason or points == 0:
         raise ApiError("VALIDATION_ERROR", details={"adjustment": "stage_id, team_id, points, reason required."})
     if abs(points) > 10000 or len(reason) > 1000:
-        raise ApiError("VALIDATION_ERROR", details={"adjustment": "Points must be within +/-10000 and reason <=1000 chars."})
+        raise ApiError(
+            "VALIDATION_ERROR", details={"adjustment": "Points must be within +/-10000 and reason <=1000 chars."}
+        )
     with app_session() as s:
         event_id = s.execute(
             text("SELECT event_id FROM app.stages WHERE id = CAST(:s AS uuid)"), {"s": stage_id}
