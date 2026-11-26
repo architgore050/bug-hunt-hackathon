@@ -285,7 +285,7 @@ function Conduct() {
               <span className="banner-title">Accounts are personal</span>
             </div>
             <div className="small">
-              One account per person, activated through the invite the organizers send to your registered email.
+              One account per person, created by organizers through the admin panel.
               Account sharing is prohibited.
             </div>
           </div>
