@@ -1203,3 +1203,103 @@ table.table {
   padding: 10px 12px;
   background: transparent;
 }
+
+/* ---------------- event progress bar (four-level flow) ---------------- */
+
+.eprogress {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+}
+
+.eprogress-line {
+  position: relative;
+  height: 4px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.eprogress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--signal);
+  transition: width 150ms ease;
+}
+
+.eprogress-tick {
+  position: absolute;
+  top: -2px;
+  width: 1px;
+  height: 8px;
+  background: var(--line-strong);
+}
+
+.eprogress-tick.done {
+  background: var(--signal);
+}
+
+.eprogress-chipbar {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.eprogress-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  padding: 16px 0 18px;
+}
+
+.eprogress-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.eprogress-pin {
+  margin-left: auto;
+}
+
+.eprogress-levels {
+  display: grid;
+  gap: 0;
+}
+
+.eprogress-level {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.eprogress-level.current {
+  background: var(--panel-2);
+  margin: 0 -12px;
+  padding-left: 12px;
+  padding-right: 12px;
+  border-radius: var(--radius);
+  border-top-color: transparent;
+}
+
+.eprogress-nodes {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.eprogress-note {
+  grid-column: 2 / 4;
+  color: var(--muted);
+}
