@@ -57,10 +57,12 @@ def test_reviewer_cannot_use_admin_event_creation(client):
 
 
 def test_forged_challenge_id_is_ignored_by_server(client):
-    """Identity binding: the server NEVER trusts the challenge_id from the body
-    (architecture 8.1 step 1). A forged id is replaced by the team's actual
-    assignment, so cross-challenge or cross-team submission binding is impossible."""
+    """The persisted challenge version must come from the participant's assignment."""
+    from app.db import app_engine
+    from sqlalchemy import text
+
     pc = participant_client(client, "p2.team2@example.com")
+    asg = pc.get("/v1/assignments").json()["assignments"][0]
     fake_challenge = str(uuid.uuid4())
     r = pc.post(
         "/v1/submissions",
@@ -77,11 +79,19 @@ def test_forged_challenge_id_is_ignored_by_server(client):
         headers={"Idempotency-Key": str(uuid.uuid4())},
     )
     assert r.status_code == 202
-    detail = pc.get(f"/v1/submissions/{r.json()['submission_id']}").json()
-    asg = pc.get("/v1/assignments").json()["assignments"][0]
-    assert detail["payload"]["challenge_id"] != fake_challenge or detail["file_path"] in [
-        f["path"] for f in asg["files"]
-    ]
+    submission_id = r.json()["submission_id"]
+    detail = pc.get(f"/v1/submissions/{submission_id}").json()
+
+    with app_engine.connect() as conn:
+        stored_challenge_id = conn.execute(
+            text("SELECT challenge_version_id FROM app.submissions WHERE id = CAST(:sid AS uuid)"),
+            {"sid": submission_id},
+        ).scalar_one()
+
+    assert str(stored_challenge_id) == asg["challenge_id"]
+    assert detail["payload"]["challenge_id"] == asg["challenge_id"]
+    assert detail["payload"]["challenge_id"] != fake_challenge
+    assert detail["file_path"] in {file["path"] for file in asg["files"]}
 
 
 def test_unauthenticated_requests_rejected(client):
@@ -98,12 +108,12 @@ def test_path_traversal_rejected(client):
     asg = pc.get("/v1/assignments").json()["assignments"][0]
     for evil in ("../../etc/passwd", "/etc/passwd", "routes/../../secrets.txt", "notes.js\x00.txt"):
         r = pc.get("/v1/challenges/{}/files/content".format(asg["challenge_id"]), params={"path": evil})
-        assert r.status_code in (400, 404), f"{evil}: {r.status_code}"
+        assert r.status_code == 400, f"{evil}: {r.status_code} {r.text}"
+        assert r.json()["error"]["code"] == "PATH_INVALID", f"{evil}: {r.text}"
 
 
-def test_report_payload_with_script_text_is_stored_as_text(client):
-    """AT-10: SQL/XSS-looking report text is accepted, stored, and must be
-    returned inert (the API never renders participant content as HTML)."""
+def test_report_payload_preserves_untrusted_text_for_frontend_rendering(client):
+    """The API preserves report text; the frontend renderer is tested separately."""
     pc = participant_client(client, "p3.team1@example.com")
     asg = pc.get("/v1/assignments").json()["assignments"][0]
     nasty = "<script>alert('xss')</script> '; DELETE FROM users; --"

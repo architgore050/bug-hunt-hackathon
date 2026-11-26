@@ -251,6 +251,11 @@ def create_submission(
                 raise ApiError("SUBMISSION_INVALID", details={"challenge": "No challenge assigned to your team."})
             challenge_id = str(ch[0])
 
+        # The body value is untrusted. Persist the challenge version resolved from
+        # this participant's team assignment, not the caller-supplied identifier.
+        persisted_payload = body.model_dump()
+        persisted_payload["challenge_id"] = challenge_id
+
         # --- insert submission + job + audit + outbox in ONE transaction -------
         submission_id = str(uuid7())
         receipt = security.receipt_code(submission_id, now)
@@ -274,7 +279,7 @@ def create_submission(
                 "au": p.id,
                 "kind": body.kind,
                 "idem": idempotency_key,
-                "payload": __import__("json").dumps(body.model_dump(), default=str),
+                "payload": __import__("json").dumps(persisted_payload, default=str),
                 "ph": payload_hash,
                 "status": status0,
                 "receipt": receipt,
