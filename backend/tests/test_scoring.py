@@ -8,7 +8,7 @@ from threading import Barrier
 
 import psycopg
 import pytest
-from conftest import APP_URL, participant_client, worker_drain
+from conftest import APP_URL, worker_drain
 from sqlalchemy import text
 
 APP_DSN = APP_URL.replace("+psycopg", "")
