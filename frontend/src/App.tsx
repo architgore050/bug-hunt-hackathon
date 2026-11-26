@@ -12,6 +12,7 @@ import LevelExplain from './pages/participant/LevelExplain'
 import LevelRules from './pages/participant/LevelRules'
 import LevelGuide from './pages/participant/LevelGuide'
 import LevelKnowMore from './pages/participant/LevelKnowMore'
+import LevelWorkspace from './pages/participant/LevelWorkspace'
 import Submissions from './pages/participant/Submissions'
 import SubmissionDetail from './pages/participant/SubmissionDetail'
 import Results from './pages/participant/Results'
@@ -44,6 +45,17 @@ export default function App() {
             <ConsoleShell area="/app">
               <Dashboard />
             </ConsoleShell>
+          </RequireRole>
+        }
+      />
+
+      {/* Level workspace: own chrome, guarded by RequireRole + the page-level
+          server-derived guard. */}
+      <Route
+        path="/level/:levelNo/run"
+        element={
+          <RequireRole roles={['participant']}>
+            <LevelWorkspace />
           </RequireRole>
         }
       />
