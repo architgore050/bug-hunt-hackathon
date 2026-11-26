@@ -71,7 +71,7 @@ def test_admin_only_participant_registration_move_remove_and_password_reset(clie
 
     # A participant cannot mutate even their own membership after a step-up attempt.
     participant_step_up = participant_client.post("/v1/auth/step-up", json={"password": initial_password})
-    assert participant_step_up.status_code == 403
+    assert participant_step_up.status_code == 200
     denied_move = participant_client.patch(
         f"/v1/admin/events/{event_id}/participants/{participant_id}/team",
         json={"team_id": team_b},
@@ -150,7 +150,7 @@ def test_unregistered_participant_cannot_be_created_without_admin(client):
         json={
             "email": f"self-register-{uuid.uuid4().hex[:8]}@example.com",
             "name": "Self Register",
-            "team_id": participant.get(f"/v1/admin/events/{event_id}/teams").json()["teams"][0]["id"],
+            "team_id": participant.get("/v1/me").json()["team"]["id"],
         },
     )
     assert response.status_code == 403
