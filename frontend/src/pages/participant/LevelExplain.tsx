@@ -53,7 +53,6 @@ export default function LevelExplain() {
 
   const content = contentQ.data!
   const summary = levelsQ.data?.levels.find((l) => l.level_no === n) ?? null
-  const deadlineMs = content.ends_at_effective ? new Date(content.ends_at_effective).getTime() : null
 
   return (
     <div>
