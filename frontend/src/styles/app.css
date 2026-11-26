@@ -1303,3 +1303,61 @@ table.table {
   grid-column: 2 / 4;
   color: var(--muted);
 }
+
+/* ---------------- confirmation modal ---------------- */
+
+.cmodal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(16 20 24 / 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 100;
+}
+
+.cmodal {
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  max-width: 520px;
+  width: 100%;
+  padding: 20px;
+  display: grid;
+  gap: 12px;
+}
+
+.cmodal-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--paper);
+}
+
+.cmodal-body {
+  color: var(--muted);
+  font-size: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.cmodal-body strong {
+  color: var(--paper);
+}
+
+.cmodal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+/* ---------------- warning banners ---------------- */
+
+.wstack {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
