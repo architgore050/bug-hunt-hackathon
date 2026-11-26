@@ -269,19 +269,19 @@ def test_leaderboard_uses_earlier_acceptance_as_final_tiebreaker(seeded_db):
         stage_id = str(s.execute(text("SELECT id FROM app.stages LIMIT 1")).scalar_one())
         event_id = str(s.execute(text("SELECT id FROM app.events LIMIT 1")).scalar_one())
 
-    now = datetime.now(UTC)
-    first_team, second_team = str(teams[0][0]), str(teams[1][0])
-    board = build_leaderboard(
-        s,
-        event_id=event_id,
-        stage_id=stage_id,
-        team_names=team_names,
-        invalid_counts={first_team: 0, second_team: 0},
-        last_accepted_at={
-            first_team: now - timedelta(seconds=1),
-            second_team: now,
-        },
-    )
+        now = datetime.now(UTC)
+        first_team, second_team = str(teams[0][0]), str(teams[1][0])
+        board = build_leaderboard(
+            s,
+            event_id=event_id,
+            stage_id=stage_id,
+            team_names=team_names,
+            invalid_counts={first_team: 0, second_team: 0},
+            last_accepted_at={
+                first_team: now - timedelta(seconds=1),
+                second_team: now,
+            },
+        )
 
     assert [row["team_id"] for row in board["rows"]] == [first_team, second_team]
 
