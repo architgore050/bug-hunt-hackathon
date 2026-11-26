@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from .. import security
 from ..audit import audit_write
@@ -89,6 +90,16 @@ def login(body: LoginIn, request: Request, response: Response):
             s.execute(
                 text("UPDATE app.users SET password_hash = :pw, status = 'active' WHERE id = CAST(:uid AS uuid)"),
                 {"pw": pw_hash, "uid": str(user["id"])},
+            )
+            audit_write(
+                s,
+                actor_id=str(user["id"]),
+                actor_role=user["role"],
+                action="auth.first_password_claimed",
+                entity_type="user",
+                entity_id=str(user["id"]),
+                request_id=request.state.request_id,
+                details={"email": user["email"]},
             )
             user = {**user, "password_hash": pw_hash, "status": "active"}
         elif not security.verify_password(body.password, user["password_hash"]):
@@ -212,18 +223,19 @@ class RegisterIn(BaseModel):
 def register(body: RegisterIn, request: Request, p: Principal = Depends(require_admin)):
     """Admin-only staff registration. No password is set until the first sign-in."""
     rate_limit(f"register:{request.client.host if request.client else ''}", limit=10, window_s=60)
-    with app_session() as s:
-        tenant = s.execute(text("SELECT id FROM app.tenants ORDER BY created_at LIMIT 1")).first()
-        if tenant is None:
-            raise ApiError("VALIDATION_ERROR", details={"tenant": "No tenant exists. Run the seed script."})
-        try:
+    try:
+        with app_session() as s:
+            tenant = s.execute(text("SELECT id FROM app.tenants ORDER BY created_at LIMIT 1")).first()
+            if tenant is None:
+                raise ApiError("VALIDATION_ERROR", details={"tenant": "No tenant exists. Run the seed script."})
+            user_id = str(uuid7())
             s.execute(
                 text(
                     "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash, status, registration_id) "
                     "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), :email, :name, :role, NULL, 'active', :reg)"
                 ),
                 {
-                    "id": str(uuid7()),
+                    "id": user_id,
                     "t": str(tenant[0]),
                     "email": body.email.lower(),
                     "name": body.name,
@@ -231,18 +243,18 @@ def register(body: RegisterIn, request: Request, p: Principal = Depends(require_
                     "reg": str(uuid7())[:8],
                 },
             )
-        except Exception:  # noqa: BLE001 - keep account-existence details private.
-            raise ApiError("VALIDATION_ERROR", details={"email": "Registration failed. Try again."}) from None
-        audit_write(
-            s,
-            actor_id=p.id,
-            actor_role=p.role,
-            action="auth.registered",
-            entity_type="user",
-            entity_id=str(body.email.lower()),
-            request_id=request.state.request_id,
-            details={"email": body.email.lower(), "role": body.role, "password_setup_required": True},
-        )
+            audit_write(
+                s,
+                actor_id=p.id,
+                actor_role=p.role,
+                action="auth.registered",
+                entity_type="user",
+                entity_id=user_id,
+                request_id=request.state.request_id,
+                details={"email": body.email.lower(), "role": body.role, "password_setup_required": True},
+            )
+    except IntegrityError:
+        raise ApiError("VALIDATION_ERROR", details={"email": "This email is already registered."}) from None
     return {
         "ok": True,
         "email": body.email.lower(),
