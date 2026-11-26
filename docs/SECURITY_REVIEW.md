@@ -4,7 +4,7 @@ Status: CURRENT as of the v1 one-shot build. A self-review by the build team, no
 
 ## Scope
 
-Reviewed: auth flows (login, refresh rotation, step-up, activation), RBAC (participant/reviewer/organizer), ground truth isolation, the submissions transaction (idempotency, locks, caps, cooldown), rate limits, response headers, path handling on challenge file reads, the audit hash chain, and frontend XSS posture.
+Reviewed: auth flows (login, refresh rotation, step-up, admin registration, first-password claim and admin-only reset), RBAC (participant/reviewer/organizer), ground truth isolation, the submissions transaction (idempotency, locks, caps, cooldown), rate limits, response headers, path handling on challenge file reads, the audit hash chain, and frontend XSS posture.
 
 ## Method
 
@@ -49,6 +49,11 @@ grep -rn "dangerouslySetInnerHTML" frontend/src/ || echo "clean"
 
 # audit chain verify (E2E covers it; manual: as organizer, call the verify endpoint after any admin action)
 ```
+
+
+### Event account-policy exception
+
+The event intentionally allows the first password claim for a pre-registered email without verifying mailbox ownership. Unknown emails still receive the same generic invalid-credentials response as incorrect passwords. This is an accepted residual risk, not an email-verification guarantee. Participant registration, team changes, removal and password reset are admin-only; participant mutations and resets require step-up. Public activation and self-service reset routes are not registered, and migration `0005_remove_legacy_account_tokens.sql` drops the legacy token stores.
 
 ## Limits of this review
 
