@@ -8,6 +8,10 @@ import Login from './pages/Login'
 import NotFound from './pages/NotFound'
 import EventDetails from './pages/EventDetails'
 import Dashboard from './pages/participant/Dashboard'
+import LevelExplain from './pages/participant/LevelExplain'
+import LevelRules from './pages/participant/LevelRules'
+import LevelGuide from './pages/participant/LevelGuide'
+import LevelKnowMore from './pages/participant/LevelKnowMore'
 import Submissions from './pages/participant/Submissions'
 import SubmissionDetail from './pages/participant/SubmissionDetail'
 import Results from './pages/participant/Results'
@@ -39,6 +43,24 @@ export default function App() {
           <RequireRole roles={['participant']}>
             <ConsoleShell area="/app">
               <Dashboard />
+            </ConsoleShell>
+          </RequireRole>
+        }
+      />
+
+      {/* Level routes: guards inside each page redirect to the server's
+          current node; guards are UX only, the backend re-checks everything. */}
+      <Route
+        path="/level/:levelNo"
+        element={
+          <RequireRole roles={['participant']}>
+            <ConsoleShell area="/app">
+              <Routes>
+                <Route path="explain" element={<LevelExplain />} />
+                <Route path="rules" element={<LevelRules />} />
+                <Route path="guide" element={<LevelGuide />} />
+                <Route path="repo/:optionKey" element={<LevelKnowMore />} />
+              </Routes>
             </ConsoleShell>
           </RequireRole>
         }
