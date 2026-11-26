@@ -1,0 +1,70 @@
+/* Co-located layout glue for the structured flag panel (levels 1 and 2).
+   Colors, fonts, radius and form controls come from app.css and tokens.css;
+   these rules only add arrangement. No shadows, no gradients. */
+
+.flag-list {
+  display: grid;
+  gap: 8px;
+}
+
+.flag-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.flag-row-select {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  font: inherit;
+  color: var(--paper);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.flag-row-select:hover {
+  border-color: var(--line-strong);
+  background: var(--panel-2);
+}
+
+.flag-row-select.active {
+  border-color: var(--signal);
+}
+
+.flag-row-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flag-editor {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.flag-loc {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.flag-loc-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
