@@ -26,7 +26,8 @@ export type LevelRouteNode = 'explain' | 'run'
 export function guardRedirect(
   pointer: NodePointer | null | undefined,
   targetLevel: number,
-  targetNode: LevelRouteNode,
+  /** Kept for call-site clarity: both nodes of the current level are reachable. */
+  _targetNode: LevelRouteNode,
 ): string | null {
   if (!pointer) return null
   if (pointer.node === 'done') return '/dashboard'
