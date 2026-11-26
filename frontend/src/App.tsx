@@ -17,6 +17,8 @@ import ReviewQueue from './pages/review/Queue'
 import ReviewItem from './pages/review/ItemDetail'
 import AdminDashboard from './pages/admin/Dashboard'
 import AdminChallenges from './pages/admin/Challenges'
+import AdminParticipants from './pages/admin/Participants'
+import GroundTruthFlags from './pages/admin/GroundTruthFlags'
 
 export default function App() {
   return (
@@ -75,6 +77,8 @@ export default function App() {
               <Routes>
                 <Route index element={<AdminDashboard />} />
                 <Route path="challenges" element={<AdminChallenges />} />
+                <Route path="participants" element={<AdminParticipants />} />
+                <Route path="ground-truth-flags" element={<GroundTruthFlags />} />
               </Routes>
             </ConsoleShell>
           </RequireRole>
