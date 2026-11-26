@@ -871,6 +871,7 @@ def main(reset: bool) -> None:
         "  participants: p1..p5.team1@ / p1..p5.team2@ example.com - password Dev-only!Passw0rd! (first member is the team lead)"
     )
 
+
 def _lang(rel: str) -> str:
     ext = rel.rsplit(".", 1)[-1]
     return {"js": "javascript", "html": "html", "css": "css", "json": "json", "md": "markdown"}.get(ext, "text")
