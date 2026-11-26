@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiRequestError } from '../../lib/api'
 import type { AdminEvent } from '../../lib/types'
-import { Button, Chip, EmptyState, ErrorBanner, Field, LoadingShell, Panel, StatusChip } from '../../ui/components'
+import { Button, EmptyState, ErrorBanner, Field, LoadingShell, Panel } from '../../ui/components'
 import { adminErrorText, StepUpGateHint, StepUpPanel } from '../../components/StepUp'
 
 interface ChallengeVersion {
