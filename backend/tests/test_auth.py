@@ -135,10 +135,14 @@ def test_refresh_rotation_and_reuse_detection(client):
     # Both the old and successor refresh tokens are revoked, and the access
     # token issued for this session is no longer accepted.
     with app_session() as s:
-        statuses = s.execute(
-            text("SELECT status FROM app.refresh_tokens WHERE session_id = CAST(:sid AS uuid)"),
-            {"sid": session_id},
-        ).scalars().all()
+        statuses = (
+            s.execute(
+                text("SELECT status FROM app.refresh_tokens WHERE session_id = CAST(:sid AS uuid)"),
+                {"sid": session_id},
+            )
+            .scalars()
+            .all()
+        )
         revoked_at = s.execute(
             text("SELECT revoked_at FROM app.sessions WHERE id = CAST(:sid AS uuid)"),
             {"sid": session_id},

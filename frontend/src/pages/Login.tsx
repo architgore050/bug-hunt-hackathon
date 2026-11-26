@@ -86,7 +86,7 @@ export default function Login() {
         </Panel>
 
         <p className="muted small">
-          No account yet? Just sign in with your email id — your account is created on first sign-in. The server
+          No account yet? Just sign in with your email id - your account is created on first sign-in. The server
           rejects wrong credentials with one generic message; it never reveals whether an email exists.
         </p>
       </div>

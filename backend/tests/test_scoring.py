@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
-import uuid
 
 import psycopg
 import pytest

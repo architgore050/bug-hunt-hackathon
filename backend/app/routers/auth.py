@@ -73,7 +73,6 @@ def login(body: LoginIn, request: Request, response: Response):
         # registered but have no password yet, the password you just typed
         # becomes your password. If you have a password, it is checked.
         # NOTE: this is a risk we are willing to take for this event.
-        # TODO: improve this when the event changes (proper invite/activation flow).
         if user is None:
             # Not registered yet: create the account on first sign-in.
             name = body.email.split("@")[0]
@@ -106,9 +105,7 @@ def login(body: LoginIn, request: Request, response: Response):
             # Registered but no password set yet: the password typed now becomes the password.
             pw_hash = security.hash_password(body.password)
             s.execute(
-                text(
-                    "UPDATE app.users SET password_hash = :pw, status = 'active' WHERE id = CAST(:uid AS uuid)"
-                ),
+                text("UPDATE app.users SET password_hash = :pw, status = 'active' WHERE id = CAST(:uid AS uuid)"),
                 {"pw": pw_hash, "uid": str(user["id"])},
             )
             user = {**user, "password_hash": pw_hash, "status": "active"}
@@ -259,9 +256,9 @@ def register(body: RegisterIn, request: Request, p: Principal = Depends(require_
                     "reg": str(uuid7())[:8],
                 },
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - intentionally broad: never reveal whether email exists (AUTH-1)
             # Generic outcome: never reveal whether the email already exists (AUTH-1).
-            raise ApiError("VALIDATION_ERROR", details={"email": "Registration failed. Try again."})
+            raise ApiError("VALIDATION_ERROR", details={"email": "Registration failed. Try again."}) from None
         audit_write(
             s,
             actor_id=p.id,
