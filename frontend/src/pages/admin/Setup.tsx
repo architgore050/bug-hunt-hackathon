@@ -285,11 +285,13 @@ export default function AdminSetup() {
 
       {eventId && (
         <>
-          <StepUpPanel
-            stepUpUntil={stepUpUntil}
-            onStepUp={setStepUpUntil}
-            note="Manual score adjustments require admin access and a fresh password confirmation."
-          />
+          {isAdmin && (
+            <StepUpPanel
+              stepUpUntil={stepUpUntil}
+              onStepUp={setStepUpUntil}
+              note="Manual score adjustments require admin access and a fresh password confirmation."
+            />
+          )}
 
           <div className="grid-2">
             <Panel exhibit="01" title="Create stage">
