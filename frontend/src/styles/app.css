@@ -1361,3 +1361,7 @@ table.table {
   gap: 10px;
   margin-bottom: 14px;
 }
+
+.highlight-row {
+  background: var(--panel-2);
+}

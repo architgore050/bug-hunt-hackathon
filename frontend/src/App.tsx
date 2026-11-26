@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom'
+import { Route, Routes, Navigate } from 'react-router-dom'
 import { PublicLayout, RequireRole, ConsoleShell } from './components/chrome'
 import Landing from './pages/Landing'
 import Rules from './pages/Rules'
@@ -6,8 +6,7 @@ import Privacy from './pages/Privacy'
 import Terms from './pages/Terms'
 import Login from './pages/Login'
 import NotFound from './pages/NotFound'
-import Lobby from './pages/participant/Lobby'
-import Workspace from './pages/participant/Workspace'
+import Dashboard from './pages/participant/Dashboard'
 import Submissions from './pages/participant/Submissions'
 import SubmissionDetail from './pages/participant/SubmissionDetail'
 import Results from './pages/participant/Results'
@@ -31,15 +30,29 @@ export default function App() {
 
       <Route path="/login" element={<Login />} />
 
-      {/* Participant console */}
+      {/* Participant four-level experience */}
+      <Route
+        path="/dashboard"
+        element={
+          <RequireRole roles={['participant']}>
+            <ConsoleShell area="/app">
+              <Dashboard />
+            </ConsoleShell>
+          </RequireRole>
+        }
+      />
+
+      {/* Participant console: v1 compatibility routes. The Lobby and the v1
+          single-round workspace are superseded by the four-level flow; their
+          URLs redirect to the dashboard. */}
       <Route
         path="/app"
         element={
           <RequireRole roles={['participant']}>
             <ConsoleShell area="/app">
               <Routes>
-                <Route index element={<Lobby />} />
-                <Route path="workspace" element={<Workspace />} />
+                <Route index element={<Navigate to="/dashboard" replace />} />
+                <Route path="workspace" element={<Navigate to="/dashboard" replace />} />
                 <Route path="submissions" element={<Submissions />} />
                 <Route path="submissions/:submissionId" element={<SubmissionDetail />} />
                 <Route path="results" element={<Results />} />

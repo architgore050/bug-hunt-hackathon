@@ -85,8 +85,7 @@ export function SiteFooter() {
 
 const NAV: Record<string, { to: string; label: string; roles: string[] }[]> = {
   '/app': [
-    { to: '/app', label: 'Lobby', roles: ['participant'] },
-    { to: '/app/workspace', label: 'Workspace', roles: ['participant'] },
+    { to: '/dashboard', label: 'Dashboard', roles: ['participant'] },
     { to: '/app/submissions', label: 'Submissions', roles: ['participant'] },
     { to: '/app/results', label: 'Results', roles: ['participant'] },
     { to: '/app/leaderboard', label: 'Leaderboard', roles: ['participant'] },

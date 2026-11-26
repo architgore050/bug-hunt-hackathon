@@ -4,7 +4,7 @@ import { api, refreshSession, setAccessToken } from './api'
 import type { Me, LoginResponse, Role } from './types'
 
 export function homePathFor(role: Role): string {
-  if (role === 'participant') return '/app'
+  if (role === 'participant') return '/dashboard'
   if (role === 'reviewer') return '/review'
   return '/admin'
 }
