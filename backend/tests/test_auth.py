@@ -6,13 +6,18 @@ from fastapi.testclient import TestClient
 
 
 def test_login_rejects_wrong_password_generically(client):
+    # Existing user, wrong password → 401 (no enumeration)
     r = client.post("/v1/auth/login", json={"email": "p1.team1@example.com", "password": "wrong-password"})
     assert r.status_code == 401
     body = r.json()["error"]
     assert body["code"] == "AUTH_INVALID_CREDENTIALS"
-    # generic message, no account enumeration signal difference for unknown users
-    r2 = client.post("/v1/auth/login", json={"email": "nobody@example.com", "password": "wrong-password"})
-    assert r2.json()["error"]["message"] == body["message"]
+    # New email on first sign-in → account created, no error (no enumeration signal either way)
+    r2 = client.post("/v1/auth/login", json={"email": "nobody@example.com", "password": "New-User-Pass-123!"})
+    assert r2.status_code == 200, r2.text
+    # The new user can now sign in with the same password
+    r3 = client.post("/v1/auth/login", json={"email": "nobody@example.com", "password": "New-User-Pass-123!"})
+    assert r3.status_code == 200
+    assert r3.json()["user"]["email"] == "nobody@example.com"
 
 
 def test_password_reset_revokes_sessions_and_bumps_token_version(client):
@@ -89,21 +94,59 @@ def _any_challenge_id(oc):
 
 
 def test_refresh_rotation_and_reuse_detection(client):
-    """AUTH-04: rotation issues a new cookie; reuse of the OLD token outside the
-    grace window revokes the family."""
+    """AUTH-04: grace-period retries reuse the successor; late reuse revokes the family."""
+    from app import security
+    from app.db import app_session
+    from sqlalchemy import text
+
     login = client.post("/v1/auth/login", json={"email": "p3.team2@example.com", "password": "Dev-only!Passw0rd!"})
+    access_token = login.json()["access_token"]
+    session_id = security.decode_access_token(access_token)["sid"]
     old_cookie = login.cookies.get("bhctf_refresh")
     assert old_cookie
-    # rotate
-    r1 = client.post(
-        "/v1/auth/refresh",
-        headers={"Origin": "http://localhost:5173", "X-BHCTF-Client": "web"},
-    )
+
+    headers = {"Origin": "http://localhost:5173", "X-BHCTF-Client": "web"}
+    r1 = client.post("/v1/auth/refresh", headers=headers)
     assert r1.status_code == 200
-    # reuse the old token within the grace window: tolerated, same successor
+    successor_cookie = r1.cookies.get("bhctf_refresh")
+    assert successor_cookie
+
+    # A retry with the rotated token inside the grace window gets the same successor.
+    client.cookies.clear()
     client.cookies.set("bhctf_refresh", old_cookie)
-    r2 = client.post("/v1/auth/refresh", headers={"Origin": "http://localhost:5173", "X-BHCTF-Client": "web"})
+    r2 = client.post("/v1/auth/refresh", headers=headers)
     assert r2.status_code == 200
+    assert r2.cookies.get("bhctf_refresh") == successor_cookie
+
+    # Move the original token outside the grace window without sleeping in the test.
+    old_hash = security.token_hash(old_cookie)
+    with app_session() as s:
+        s.execute(
+            text("UPDATE app.refresh_tokens SET rotated_at = now() - interval '1 hour' WHERE token_hash = :h"),
+            {"h": old_hash},
+        )
+
+    client.cookies.clear()
+    client.cookies.set("bhctf_refresh", old_cookie)
+    r3 = client.post("/v1/auth/refresh", headers=headers)
+    assert r3.status_code == 401
+    assert r3.json()["error"]["code"] == "AUTH_SESSION_REVOKED"
+
+    # Both the old and successor refresh tokens are revoked, and the access
+    # token issued for this session is no longer accepted.
+    with app_session() as s:
+        statuses = s.execute(
+            text("SELECT status FROM app.refresh_tokens WHERE session_id = CAST(:sid AS uuid)"),
+            {"sid": session_id},
+        ).scalars().all()
+        revoked_at = s.execute(
+            text("SELECT revoked_at FROM app.sessions WHERE id = CAST(:sid AS uuid)"),
+            {"sid": session_id},
+        ).scalar_one()
+    assert statuses
+    assert set(statuses) == {"revoked"}
+    assert revoked_at is not None
+    assert client.get("/v1/me", headers={"Authorization": f"Bearer {access_token}"}).status_code == 401
 
 
 def _login(client, email):

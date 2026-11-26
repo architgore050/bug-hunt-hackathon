@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth, homePathFor } from '../lib/auth'
 import { ApiRequestError } from '../lib/api'
 import { Button, ErrorBanner, Field, Panel } from '../ui/components'
@@ -43,8 +43,11 @@ export default function Login() {
           <span className="exhibit-num">EX-AUTH</span>
           <h1 className="display" style={{ fontSize: 'clamp(1.6rem, 4vw, 2.2rem)', margin: 0 }}>Sign in</h1>
           <p className="muted small">
-            Use the account you activated from your team invite. The console opens by role: participants land in
-            the lobby, reviewers in the queue, organizers in operations.
+            Sign in with your email id. On first sign-in, the platform checks whether you are registered: if not,
+            your account is created right here. If you are registered but have no password yet, the password you type
+            becomes your password; if you already have one, it is checked. No separate activation step is needed for
+            this event. The console opens by role: participants land in the lobby, reviewers in the queue,
+            organizers in operations.
           </p>
         </header>
 
@@ -83,9 +86,8 @@ export default function Login() {
         </Panel>
 
         <p className="muted small">
-          No account yet? Your team invite contains an activation link, or open it directly at{' '}
-          <Link to="/activate">/activate</Link>. The server rejects wrong credentials with one generic message;
-          it never reveals whether an email exists.
+          No account yet? Just sign in with your email id — your account is created on first sign-in. The server
+          rejects wrong credentials with one generic message; it never reveals whether an email exists.
         </p>
       </div>
     </div>

@@ -1,18 +1,18 @@
-Status: describes the implementation as of 2026-11-22
+Status: describes the implementation as of 2026-11-26
 
 # Testing Strategy
 
 The pyramid as actually implemented:
 
-- A pytest integration-heavy suite against real PostgreSQL (34 tests).
+- A pytest integration-heavy suite against real PostgreSQL (38 tests).
 - Pure-function unit tests for the deterministic matcher and scoring math.
 - One end-to-end journey script against a running stack (46 checks).
-- Frontend type-check + build + lint with a manual browser matrix.
+- Frontend type-check, build, lint, and server-rendered security regression tests.
 - The gt-isolation tests that assert the database boundary itself.
 
-CI wiring is specified in `CI_CD_PIPELINE.md` (the workflow file is not committed yet).
+The committed workflow is `.github/workflows/ci.yml`.
 
-## 1. Backend pytest suite (34 tests)
+## 1. Backend pytest suite (38 tests)
 
 Layout: `backend/tests/`, driven by `pytest.ini` (`testpaths = tests`, 120 s timeout).
 
@@ -29,12 +29,12 @@ Per-file coverage:
 
 | File | Tests | What it proves |
 | --- | --- | --- |
-| `test_auth.py` (4) | Wrong password -> generic 401 (ATH-01). Password reset bumps token_version and revokes sessions + refresh families (ATH-03). Admin routes demand step-up within 5 min (AUTH-09). Refresh rotation returns the same successor inside the 10 s grace and revokes the family outside it (AUTH-04) |
-| `test_authorization.py` (7) | Cross-team submission read -> 404 (SEC-02 IDOR). Participants blocked from admin endpoints. Reviewers blocked from event creation. Forged `challenge_id` in the body is ignored (server resolves the assignment). Unauthenticated 401. Path traversal -> 400 `PATH_INVALID` (SEC-03). Script text in report payload stored and returned as inert text (EVA-05) |
+| `test_auth.py` (6) | Generic login failures prevent account enumeration; password reset revokes sessions and bumps token_version; sensitive admin routes require step-up; refresh rotation reuses the successor inside grace and revokes the entire family outside grace; session caps evict the oldest live session; expired refresh-token families do not hold session slots |
+| `test_authorization.py` (7) | Cross-team submission read -> 404 (SEC-02 IDOR); participant/reviewer role boundaries; persisted challenge binding is the server-resolved assignment; unauthenticated requests rejected; traversal paths return exactly 400 `PATH_INVALID`; report text is preserved for the separately tested frontend renderer |
 | `test_gt_isolation.py` (5) | Real `app_api` role denied on `gt.gt_bugs` / `gt.gt_flags` / gt INSERT. `gt_admin` positive control. The platform never lists or serves `ORGANIZER_ANSWER_KEY.md` (DAT-03, AT-08) |
 | `test_idempotency.py` (4) | Same key five times -> one receipt (DAT-02). Same key different payload -> 409 `IDEMPOTENCY_CONFLICT`. Committed-key replay returns the ORIGINAL receipt even after the deadline. Cooldown races on the same file rejected with 429 (INT-05) |
 | `test_matching.py` (8) | Deterministic matcher units: exact overlap auto-accept; near location plus alias evidence accepts; wrong file needs review; thin unmatched report structurally rejected; span over cap rejected; already-awarded unit -> duplicate; `location_score` bounds; weighted alias fraction |
-| `test_scoring.py` (5) | Weight split math. Ledger append-only convention. `award_claims` unique constraint blocks double award (DAT-01). CTF bonus capped at `ctf_bonus_cap_points`. Leaderboard tie-break order (total, fewer invalid, earlier last accepted, INT-12). Hidden feedback mode reveals nothing before release (INT-01) |
+| `test_scoring.py` (7) | Weight split math; database-enforced ledger immutability and reversal linkage; two independent transactions racing for an award unit produce one claim; four distinct CTF flags exercise the 100-point cap; leaderboard tests cover both tie-break levels; hidden feedback stays hidden before release |
 
 Run:
 
@@ -43,7 +43,7 @@ bash scripts/dev_db.sh     # once; conftest creates bughunt_test itself
 cd backend && python -m pytest -v
 ```
 
-Verified result: 34/34 passing.
+The current inventory contains 38 pytest test functions. Passing status must be taken from the CI run for the exact commit, not inferred from the inventory.
 
 ## 2. Deterministic matcher tests
 
@@ -92,14 +92,15 @@ bash scripts/run_dev.sh && python scripts/e2e_journey.py   # pass --base for a r
 
 Automated:
 
-- `npm run build` (runs `tsc -b && vite build`, clean today).
 - `npm run lint` (oxlint, config in `.oxlintrc.json`).
-- No component/E2E test framework is wired for the frontend yet (honest limitation); query behavior is exercised indirectly by the backend e2e.
+- `npm test` (Node's built-in test runner; renders the actual submission payload component through React SSR and verifies hostile markup is escaped).
+- `npm run build` (runs `tsc -b && vite build`).
+- These are targeted rendering regression tests, not a full browser/component E2E suite.
 
 Safety greps that must stay clean:
 
 - No `dangerouslySetInnerHTML` anywhere in `frontend/src`.
-- Participant content only through `PlainMarkdown` (EVA-05).
+- Submission payloads are rendered as React text children by `SubmissionPayload`; the SSR regression test verifies that markup-looking text is escaped.
 
 Manual matrix (pre-event):
 
@@ -127,7 +128,7 @@ Re-run the role tests against PRODUCTION after any database grant change; this i
 See `CI_CD_PIPELINE.md`. Contract:
 
 - Backend job runs the pytest suite against a PostgreSQL 17 service container (conftest is already service-compatible: it calls `dev_db.sh`/`migrate.sh`, which need `psql` on PATH and `PGPORT=5433`).
-- Frontend job runs `npm ci`, `npm run lint`, `npm run build`.
+- Frontend job runs `npm ci`, `npm audit`, `npm run lint`, `npm test`, and `npm run build`.
 - The first real CI run must be verified on GitHub after push and the green run recorded as readiness evidence (OPS-02: never let the live event be the first full run).
 
 ## 7. Pre-event test gate list
@@ -145,7 +146,8 @@ All of these must be green before the event goes live. They map to the seeded `a
 
 Per-suite gates for every code change:
 
-- pytest 34/34.
+- pytest 38 test functions.
 - e2e journey 46/46.
 - frontend build clean.
+- frontend SSR rendering regression test clean.
 - oxlint clean.

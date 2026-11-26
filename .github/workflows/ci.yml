@@ -229,6 +229,12 @@ jobs:
       - name: Dependency vulnerability audit (npm, high+)
         run: npm audit --audit-level=high
         working-directory: frontend
+      - name: Lint frontend
+        run: npm run lint
+        working-directory: frontend
+      - name: Frontend rendering regression tests
+        run: npm test
+        working-directory: frontend
       - name: Build frontend (tsc -b && vite build)
         run: npm run build
         working-directory: frontend
