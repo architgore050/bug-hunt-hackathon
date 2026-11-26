@@ -19,7 +19,6 @@ def test_login_rejects_wrong_password_generically(client):
 
 
 def test_admin_registration_and_passwordless_first_sign_in(client):
-    from app import security
     from app.db import app_engine
     from sqlalchemy import text
 
