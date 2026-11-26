@@ -9,7 +9,7 @@ Creates deterministic demo data that exercises every role and state:
   EXCLUDED from participant-visible storage)
 - ground truth (10 bugs, 2 flags) seeded from the manifest below with
   pattern-anchored locations (DAT-06)
-- rules document, announcements, invites (activation tokens printed once)
+- rules document, announcements, admin-managed participants (no invitation tokens)
 
 Never run against a live deployment: known credentials are dev-only.
 Usage: python seed.py [--reset]
@@ -513,12 +513,11 @@ def main(reset: bool) -> None:
                 "DELETE FROM app.stage_transitions",
                 "DELETE FROM app.time_adjustments",
                 "DELETE FROM app.stages",
-                "DELETE FROM app.invites",
+                "",
                 "DELETE FROM app.team_members",
                 "DELETE FROM app.teams",
                 "DELETE FROM app.acceptances",
                 "DELETE FROM app.refresh_tokens",
-                "DELETE FROM app.password_resets",
                 "DELETE FROM app.sessions",
                 "DELETE FROM app.announcements",
                 "DELETE FROM app.exports",
@@ -761,7 +760,7 @@ def main(reset: bool) -> None:
                 },
             )
 
-        # --- teams, participants, invites ----------------------------------------
+        # --- teams and registered participants -----------------------------------
         teams = {}
         for team_name, member_emails in [
             (
@@ -809,23 +808,6 @@ def main(reset: bool) -> None:
                     ),
                     {"i": str(uuid7()), "t": team_id, "u": uid, "lead": idx == 0},
                 )
-
-        invite_tokens = []
-        for email in ["organizer3@example.com"]:
-            raw = secrets.token_urlsafe(32)
-            invite_tokens.append((email, raw))
-            s.execute(
-                text(
-                    "INSERT INTO app.invites (id, event_id, email, token_hash, role, expires_at) VALUES (CAST(:i AS uuid), CAST(:ev AS uuid), :em, :th, 'organizer', :exp)"
-                ),
-                {
-                    "i": str(uuid7()),
-                    "ev": event_id,
-                    "em": email,
-                    "th": security.token_hash(raw),
-                    "exp": now + timedelta(hours=48),
-                },
-            )
 
         s.execute(
             text(
@@ -888,9 +870,6 @@ def main(reset: bool) -> None:
     print(
         "  participants: p1..p5.team1@ / p1..p5.team2@ example.com - password Dev-only!Passw0rd! (first member is the team lead)"
     )
-    for email, raw in invite_tokens:
-        print(f"  invite for {email}: {raw}")
-
 
 def _lang(rel: str) -> str:
     ext = rel.rsplit(".", 1)[-1]
