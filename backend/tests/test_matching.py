@@ -55,8 +55,10 @@ def test_near_location_with_alias_accepts():
         RULES,
         set(),
     )
-    assert d.outcome in ("accept_full", "accept_partial", "needs_review")
-    assert d.features.location_score > 0
+    assert d.outcome == "accept_full"
+    assert d.features.location_score == 1.0
+    assert d.features.category_score == 1.0
+    assert d.features.alias_evidence == 1.0
 
 
 def test_wrong_file_needs_review():

@@ -285,7 +285,7 @@ function Conduct() {
               <span className="banner-title">Accounts are personal</span>
             </div>
             <div className="small">
-              One account per person, activated through the invite the organizers send to your registered email.
+              One account per person, created by organizers through the admin panel.
               Account sharing is prohibited.
             </div>
           </div>
@@ -303,7 +303,7 @@ function Conduct() {
 const FAQ: { q: string; a: string }[] = [
   {
     q: 'Who can participate and how do we register?',
-    a: 'Teams of 4 to 5 participants, registered by the Software Development Club, VIT Bhopal University. Every member receives an invite email with a single-use activation link; accounts are personal and sharing them is prohibited.',
+    a: 'Teams of 4 to 5 participants, registered by the Software Development Club, VIT Bhopal University. Organizers create accounts through the admin panel; members then sign in with their email id. Accounts are personal and sharing them is prohibited.',
   },
   {
     q: 'What exactly do we receive at the start?',
@@ -374,9 +374,6 @@ export default function Landing() {
             <Link to="/rules" className="btn btn-ghost">
               Read the rules
             </Link>
-            <Link to="/activate" className="btn btn-ghost">
-              Activate an invite
-            </Link>
           </div>
         </div>
         <EventStatusStrip />
@@ -394,13 +391,12 @@ export default function Landing() {
         <div className="grid-split">
           <div>
             <p className="serif-quote">
-              Registrations run through the club. Once your team is registered, each member activates an account
-              with the invite link and accepts the rules. On event day, sign in and the lobby takes over: round
-              state, announcements and your assignment.
+              Registrations run through the club. Organizers create accounts through the admin panel; members then
+              sign in with their email id. Accept the rules and you are in. On event day, sign in and the lobby takes
+              over: round state, announcements and your assignment.
             </p>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 14 }}>
               <Link to="/login" className="btn btn-primary">Sign in</Link>
-              <Link to="/activate" className="btn btn-ghost">Activate an invite</Link>
             </div>
           </div>
           <div className="ruled panel-2" style={{ padding: '6px 16px' }}>

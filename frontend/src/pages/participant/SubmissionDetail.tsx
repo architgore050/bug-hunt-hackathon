@@ -5,16 +5,7 @@ import type { SubmissionDetail as Detail } from '../../lib/types'
 import { fmtDateTime } from '../../lib/format'
 import { Chip, EmptyState, ErrorBanner, KVRow, LoadingShell, Panel, StatusChip } from '../../ui/components'
 import { DisputeForm } from '../../components/DisputeForm'
-
-function payloadLines(payload: Record<string, unknown> | undefined | null): string[] {
-  if (!payload) return []
-  const out: string[] = []
-  for (const [k, v] of Object.entries(payload)) {
-    if (v === null || v === undefined || v === '') continue
-    out.push(`${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`)
-  }
-  return out
-}
+import { SubmissionPayload } from '../../components/SubmissionPayload'
 
 export default function SubmissionDetail() {
   const { submissionId } = useParams()
@@ -55,20 +46,7 @@ export default function SubmissionDetail() {
                 {q.data.category && <KVRow k="Category" v={q.data.category.replaceAll('_', ' ')} />}
                 <KVRow k="Received" v={fmtDateTime(q.data.received_at)} />
               </div>
-              <pre
-                className="mono small"
-                style={{
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  background: 'var(--panel-2)',
-                  border: '1px solid var(--line)',
-                  borderRadius: 'var(--radius)',
-                  padding: 14,
-                  margin: 0,
-                }}
-              >
-                {payloadLines(q.data.payload).join('\n') || 'No payload fields.'}
-              </pre>
+              <SubmissionPayload payload={q.data.payload} />
             </Panel>
           </div>
           <div className="stack">

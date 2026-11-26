@@ -303,7 +303,7 @@ def main(reset: bool) -> None:
     if reset:
         with app_session() as s:
             for stmt in (
-                "DELETE FROM app.score_ledger_entries",
+                "TRUNCATE app.score_ledger_entries RESTART IDENTITY CASCADE",
                 "DELETE FROM app.award_claims",
                 "DELETE FROM app.reviews",
                 "DELETE FROM app.review_items",

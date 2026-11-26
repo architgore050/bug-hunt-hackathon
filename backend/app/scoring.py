@@ -24,7 +24,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .db import uuid7
-from .models_app import AwardClaim, LeaderboardSnapshot, ScoreLedgerEntry
+from .models_app import LeaderboardSnapshot, ScoreLedgerEntry
 
 
 def add_ledger_entry(
@@ -74,29 +74,31 @@ def claim_award_unit(
     award_unit_id: str,
     submission_id: str,
 ) -> bool:
-    """Insert one award claim. Returns False when the unit is already claimed.
+    """Atomically claim one award unit for a team and stage.
 
-    Uniqueness is enforced by the database (stage_id, team_id, award_unit_id):
-    concurrent evaluations cannot double-award (DAT-01).
+    PostgreSQL arbitrates concurrent claims through the unique constraint
+    (stage_id, team_id, award_unit_id). A losing worker receives False rather
+    than an IntegrityError, so duplicate evaluation jobs remain harmless.
     """
-    existing = session.execute(
-        text("SELECT 1 FROM app.award_claims WHERE stage_id = :s AND team_id = :t AND award_unit_id = :u FOR UPDATE"),
-        {"s": stage_id, "t": team_id, "u": award_unit_id},
-    ).first()
-    if existing:
-        return False
-    row = AwardClaim(
-        id=uuid.uuid4(),
-        event_id=uuid.UUID(event_id),
-        stage_id=uuid.UUID(stage_id),
-        team_id=uuid.UUID(team_id),
-        award_unit_id=award_unit_id,
-        submission_id=uuid.UUID(submission_id),
-    )
-    session.add(row)
-    session.flush()  # make the claim visible within this transaction and let the
-    # unique constraint reject cross-transaction races (DAT-01)
-    return True
+    claimed_id = session.execute(
+        text(
+            "INSERT INTO app.award_claims "
+            "(id, event_id, stage_id, team_id, award_unit_id, submission_id) "
+            "VALUES (CAST(:id AS uuid), CAST(:event_id AS uuid), CAST(:stage_id AS uuid), "
+            "CAST(:team_id AS uuid), :award_unit_id, CAST(:submission_id AS uuid)) "
+            "ON CONFLICT (stage_id, team_id, award_unit_id) DO NOTHING "
+            "RETURNING id"
+        ),
+        {
+            "id": str(uuid.uuid4()),
+            "event_id": event_id,
+            "stage_id": stage_id,
+            "team_id": team_id,
+            "award_unit_id": award_unit_id,
+            "submission_id": submission_id,
+        },
+    ).scalar_one_or_none()
+    return claimed_id is not None
 
 
 def compute_award_points(
