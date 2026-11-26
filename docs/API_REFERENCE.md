@@ -1,4 +1,4 @@
-Status: describes the implementation as of 2026-11-22
+Status: describes the implementation as of 2026-11-25 (four-level flow endpoints added by migration 0002 work)
 
 # API Reference
 
@@ -154,3 +154,44 @@ Auth as listed; `step_up` column means the route additionally requires a fresh s
 `AUTH_INVALID_CREDENTIALS` 401, `AUTH_TOKEN_EXPIRED` 401, `AUTH_SESSION_REVOKED` 401, `AUTH_RATE_LIMITED` 429, `AUTH_FORBIDDEN` 403, `AUTH_NOT_ACTIVATED` 403, `RULES_NOT_ACCEPTED` 403, `ROUND_NOT_ACTIVE` 409, `ROUND_PAUSED` 409, `ROUND_ENDED` 409, `SUBMISSION_INVALID` 422, `SUBMISSION_CAP_REACHED` 429, `SUBMISSION_COOLDOWN` 429, `IDEMPOTENCY_CONFLICT` 409, `DRAFT_VERSION_CONFLICT` 412, `RUN_RATE_LIMITED` 429, `RUN_LANGUAGE_UNSUPPORTED` 422, `RUNNER_UNAVAILABLE` 503, `FILE_NOT_FOUND` 404, `PATH_INVALID` 400, `KEY_NOT_AVAILABLE` 425, `SERVICE_DEGRADED` 503, `ADMIN_STEP_UP_REQUIRED` 403, `GROUND_TRUTH_LOCKED` 409, `FLAG_INVALID` 422, `FLAG_ALREADY_SUBMITTED` 409, `NOT_FOUND` 404, `VALIDATION_ERROR` 422, `INTERNAL_ERROR` 500. The `RUN_*`, `KEY_NOT_AVAILABLE`, `FLAG_*` and `SERVICE_DEGRADED` codes are defined for spec compatibility but are not raised anywhere in the current code (verified by grep); the runner and flag endpoints they were designed for are either disabled (ADR-010) or implemented through the generic submission path with `SUBMISSION_INVALID`/`duplicate` outcomes instead.
 
 Rate limiting is an in-process sliding-window bucket keyed by identity (`deps.rate_limit`, NET-01 identity keys, SEC-07 caveat: per-replica, resets on restart). `max_concurrent_requests_per_user` exists in `config.py` but no middleware enforces it yet.
+
+## 10. Four-level event flow endpoints (added 2026-11-25)
+
+All participant routes below enforce: identity from the token, rules
+acceptance, live event, and the server-owned node pointer. Details and
+semantics: `docs/EVENT_FLOW.md`. Admin additions live under the existing
+admin boundary.
+
+| Endpoint | Method | Role | Notes |
+| --- | --- | --- | --- |
+| GET `/v1/levels` | auth | participant | Level catalog with gate state, per-level participant status, and the pointer |
+| GET `/v1/levels/{n}/gate` | participant | `allowed, reason, waiting_on[]`; authoritative at call time, never cached |
+| GET `/v1/levels/{n}/content` | participant | Explanation-node content plus gate state, repo options and deadlines |
+| GET `/v1/levels/{n}/workspace` | participant | Enters the execution node: gate enforced server-side, pointer explain->exec, file list, editable flag, draft |
+| GET/PUT `/v1/levels/{n}/draft` | participant | Versioned server draft per level; PUT rejected once the level is submitted |
+| POST `/v1/levels/{n}/submit` | participant | 202 receipt; ordered transaction identical to the v1 flow (idempotency reservation, stage lock, one clock read, gate re-check, payload validation, artifact binding, pointer advance in ONE transaction) |
+| GET `/v1/progress` | participant | Pointer, per-level statuses, teammates, repo choice, live gates |
+| GET `/v1/team` | auth | Team, members with lead badge, per-level statuses, locked option |
+| POST `/v1/team/repo-lock` | participant (lead only) | `{option, confirm:true}` + `Idempotency-Key`; 403 non-lead, 409 `REPO_ALREADY_LOCKED` on conflicting choice, idempotent replay |
+| GET `/v1/team/score` | auth | Per-level ledger totals for the team |
+| GET `/v1/repo/tree`, GET `/v1/repo/files/{path}` | participant | Read-only delivery of the team's locked option only; path traversal rejected; levels above the pointer are 409 |
+| POST `/v1/uploads` | participant | `.zip/.diff/.patch` staging for the current level; central-directory-only ZIP inspection (no extraction in the API process): absolute paths, `..`, duplicate names, symlink/device entries, entry-count and decompression caps rejected |
+| POST `/v1/runs`, GET `/v1/runs/{id}` | participant | Runner disabled (ADR-010): 503 `RUNNER_UNAVAILABLE`; saving and submission continue |
+| POST `/v1/admin/teams/{id}/repo-lock` | organizer + step_up | Audited set/override with reason; `lock_source=admin_override` |
+| POST `/v1/admin/events/{id}/repo-options` | organizer + step_up | Data-driven option registration bound to a challenge version |
+| GET `/v1/admin/events/{id}/progress` | organizer | Team x member x level progression matrix |
+| POST `/v1/admin/jobs/auto-submit` | organizer | Manual enqueue of the deadline scan (the worker also scans every 10 s) |
+| POST `/v1/admin/events/{id}/levels/bootstrap` | organizer | Creates missing level stages (kind=level, ordinals 1-4) |
+
+New error codes: `REPO_ALREADY_LOCKED` 409, `REPO_NOT_LOCKED` 409,
+`LEVEL_NOT_OPEN` 409, `TEAM_GATE_BLOCKED` 409, `LEVEL_ALREADY_SUBMITTED` 409,
+`ARTIFACT_INVALID` 422, `ARTIFACT_REQUIRED` 422, `LOCATION_INVALID` 422.
+`RUNNER_UNAVAILABLE` is now actually raised by the run endpoints (was
+spec-only before this branch).
+
+Submission kinds: the level surface writes `level_report` (Levels 1-2, flag
+list with ordered locations) and `level_artifact` (Levels 3-4, zip/diff/patch
+binding or a server-computed draft diff) into the existing `app.submissions`
+table; evaluation runs through the `evaluate_level_submission` job and the
+same append-only ledger. The v1 `/v1/submissions` surface is unchanged and
+the single-stage endpoints ignore `kind='level'` stages explicitly.

@@ -1,0 +1,72 @@
+:root {
+  --ink: #1d2733;
+  --paper: #f7f5f0;
+  --accent: #2563a8;
+}
+
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+header {
+  padding: 2rem 1.5rem 1rem;
+}
+
+h1 {
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+
+.tagline {
+  margin: 0.25rem 0 0;
+  color: #5a6472;
+}
+
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 1.5rem 3rem;
+}
+
+.search {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+input[type="search"] {
+  flex: 1;
+  min-width: 200px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #b9b3a6;
+  background: #fff;
+  font: inherit;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.notes article {
+  border-top: 1px solid #d8d2c4;
+  padding: 0.75rem 0;
+}
+
+.muted {
+  color: #5a6472;
+  font-size: 0.9rem;
+}

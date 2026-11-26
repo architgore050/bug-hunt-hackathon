@@ -35,7 +35,7 @@ def _require_released_stage(s) -> dict:
             text(
                 "SELECT st.id, st.status, st.starts_at FROM app.stages st "
                 "JOIN app.events e ON e.id = st.event_id "
-                "WHERE e.status IN ('ready','live','closed','finalized') ORDER BY st.ordinal DESC LIMIT 1"
+                "WHERE e.status IN ('ready','live','closed','finalized') AND st.kind <> 'level' ORDER BY st.ordinal DESC LIMIT 1"
             )
         )
         .mappings()

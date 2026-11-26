@@ -1,4 +1,4 @@
-Status: describes the implementation as of 2026-11-22
+Status: describes the implementation as of 2026-11-25 (migration 0002 tables included)
 
 # Data Model
 
@@ -61,6 +61,37 @@ Readable and writable by `app_api` and `gt_admin`.
 - `readiness_items`: `event_id`, `key`, `label`, `state DEFAULT 'unchecked'` (checked | unchecked | na), `owner`, `note`, `checked_at`, `UNIQUE (event_id, key)`. Seed installs 8 items (load test, gt isolation, backup/restore, pen test, challenge audit, dry run, rules published, runbooks); any unchecked row blocks the live transition.
 - `rules_documents`: `event_id`, `version`, `body_md`, `content_hash`, `frozen_at`, `UNIQUE (event_id, version)`.
 - `exports`: `event_id`, `kind`, `content`, `content_hash`, `created_by`. Note: the export endpoint currently returns CSV text directly and does not persist rows here; the table is ready for persisted exports but is unused by code as of this date.
+
+## 2b. Migration `0002_four_level_flow.sql` (four-level event flow, 2026-11-25)
+
+Additive expand migration; no existing table changes. Same grant model as
+section 2 (app_api/gt_admin/scheduler).
+
+- `repo_options`: data-driven option set per event (`option_key` A/B today,
+  UNIQUE (event_id, option_key)), each bound to one `challenge_versions` row.
+- `team_repo_choices`: one immutable choice per team (UNIQUE (team_id)),
+  option key, challenge version, lock actor/time, `idempotency_key`,
+  `lock_source` (lead | admin_override | auto), audit reason.
+- `participant_pointers`: the server-owned monotonic node pointer; one row per
+  user (UNIQUE (user_id)), `level_no` CHECK 1..4, `node` CHECK
+  explain/exec/done. Only `app.flow.advance_pointer` writes it, and only
+  forward.
+- `participant_progress`: per-user per-level status
+  (locked | available | in_progress | submitted | auto_submitted | missed),
+  UNIQUE (user_id, level_no), submission link and submitted_at.
+- `level_drafts`: versioned server draft per (author, level), optimistic
+  concurrency like `drafts`.
+- `submission_artifacts`: immutable artifact metadata (kind zip/diff/patch,
+  sha256, size, entry count, uncompressed size, private storage key,
+  staged->submitted status) bound to a submission at submit time. Bytes live
+  behind the storage adapter (`app/storage.py`), never in the database.
+- `team_members.is_lead`: explicit lead flag (one true row per team); teams
+  created before the flag fall back to the deterministic lowest joined_at
+  member until an organizer promotes one (`app.flow.is_team_lead`).
+
+The four levels are `app.stages` rows with `kind='level'` and ordinals 1..4;
+the v1 single-stage surfaces (state, config, assignments, v1 submissions)
+filter `kind <> 'level'` so both models coexist.
 
 ## 3. Schema `gt` (6 tables, ground truth)
 

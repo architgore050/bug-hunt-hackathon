@@ -17,7 +17,19 @@ from fastapi.responses import JSONResponse
 
 from .config import cors_origins, settings
 from .errors import ApiError, api_error_handler, unhandled_error_handler
-from .routers import admin, announcements, auth, challenges, leaderboard, public, review, state, submissions
+from .routers import (
+    admin,
+    admin_levels,
+    announcements,
+    auth,
+    challenges,
+    leaderboard,
+    levels,
+    public,
+    review,
+    state,
+    submissions,
+)
 
 logging.basicConfig(level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("bughunt")
@@ -53,9 +65,11 @@ def create_app() -> FastAPI:
     async def request_context_middleware(request: Request, call_next):
         request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
         request.state.request_id = request_id
-        # body size limit (architecture 7.3)
+        # body size limit (architecture 7.3); artifact uploads get the upload cap
+        is_upload = request.url.path == "/v1/uploads"
+        limit = settings.max_upload_bytes if is_upload else settings.max_body_bytes
         cl = request.headers.get("content-length")
-        if cl and int(cl) > settings.max_body_bytes:
+        if cl and int(cl) > limit:
             return JSONResponse(
                 status_code=413,
                 content={
@@ -85,11 +99,13 @@ def create_app() -> FastAPI:
         auth.router,
         state.router,
         challenges.router,
+        levels.router,
         submissions.router,
         leaderboard.router,
         announcements.router,
         review.router,
         admin.router,
+        admin_levels.router,
     ):
         app.include_router(router, prefix="/v1")
 

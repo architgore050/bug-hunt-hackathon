@@ -968,7 +968,8 @@ def live_ops(event_id: str, p: Principal = Depends(require_organizer)):
         stages = (
             s.execute(
                 text(
-                    "SELECT id, name, status, starts_at, ends_at, config FROM app.stages WHERE event_id = CAST(:e AS uuid) ORDER BY ordinal"
+                    "SELECT id, name, kind, status, starts_at, ends_at, config FROM app.stages WHERE event_id = CAST(:e AS uuid) "
+                    "ORDER BY (kind = 'level') ASC, ordinal ASC"
                 ),
                 {"e": event_id},
             )

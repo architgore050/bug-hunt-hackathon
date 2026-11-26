@@ -28,11 +28,13 @@ from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parent
 CHALLENGE_DIR = BACKEND.parent / "challenge-app"
+CHALLENGE_DIR_B = BACKEND.parent / "challenge-app-option-b"
 sys.path.insert(0, str(BACKEND))
 
 from app import security  # noqa: E402
 from app.audit import audit_write  # noqa: E402
 from app.db import app_session, gt_session, uuid7  # noqa: E402
+from app.flow import init_participant_flow  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
 # Files served to participants (answer key deliberately excluded).
@@ -48,6 +50,23 @@ PARTICIPANT_FILES = [
     "public/styles.css",
     "public/admin.html",
     "README.md",
+]
+
+# Option B fixture (Marina, FastAPI + SQLite): same product concept, same bug
+# count, severities, categories and point values as Option A. Development
+# fixture only - the production challenge packages are organizer deliverables.
+PARTICIPANT_FILES_B = [
+    "README.md",
+    "requirements.txt",
+    "main.py",
+    "database.py",
+    "routes/__init__.py",
+    "routes/auth.py",
+    "routes/notes.py",
+    "routes/comments.py",
+    "public/index.html",
+    "public/app.js",
+    "public/styles.css",
 ]
 
 EVENT_CONFIG = {
@@ -240,6 +259,175 @@ GT_FLAGS = [
     ),
 ]
 
+# Option B (Marina) ground truth: mirrors the Option A set one-for-one
+# (same codes, severities, categories, points, root-cause groups). Locations
+# anchor on the Option B files. DEVELOPMENT FIXTURE ONLY.
+GT_BUGS_B = [
+    (
+        "BUG-01",
+        "database.py",
+        r"WHERE title LIKE \? OR body LIKE \?",
+        "Search never matches notes",
+        "medium",
+        "input_validation",
+        25,
+        "search-binding",
+        "The prepared statement binds the raw term so LIKE compares the exact full value; wildcards are never added.",
+        [("like", 1.0), ("wildcard", 0.8), ("search", 0.6)],
+        [("routes/notes.py", r"def search\(term", False)],
+    ),
+    (
+        "BUG-02",
+        "routes/notes.py",
+        r'return \{"id": 1, "saved"',
+        "Save response reports the wrong note id",
+        "medium",
+        "logic",
+        25,
+        "create-response-id",
+        "The response reports a hardcoded rowcount-style value instead of the new note id from the insert, so the client banner links to the wrong note.",
+        [("rowcount", 1.0), ("lastrowid", 0.8), ("insert", 0.5), ("wrong id", 0.5)],
+        [("database.py", r"def create_note", False)],
+    ),
+    (
+        "BUG-03",
+        "routes/comments.py",
+        r'f"<li><strong>\{c\[.author_name.\]\}</strong> \{c\[.body.\]\}</li>"',
+        "Comments execute injected markup (controlled XSS)",
+        "critical",
+        "injection",
+        50,
+        "comment-render",
+        "Comment bodies are interpolated into the HTML response without escaping, so markup posted as a comment executes in every reader's browser.",
+        [("innerhtml", 1.0), ("xss", 1.0), ("escape", 0.6), ("htmlresponse", 0.6)],
+        [("public/app.js", r"list\.innerHTML = data\.notes", False)],
+    ),
+    (
+        "BUG-04",
+        "routes/notes.py",
+        r"str\(datetime\.now\(UTC\)\.second\)",
+        "Last edited shows meaningless digits",
+        "low",
+        "logic",
+        15,
+        "updated-at-units",
+        "The update response reports the seconds component of the current time instead of the stored ISO timestamp.",
+        [("second", 1.0), ("iso", 0.6), ("updated", 0.5), ("timestamp", 0.5)],
+        [("database.py", r"def update_note", False)],
+    ),
+    (
+        "BUG-05",
+        "routes/notes.py",
+        r'database\.delete_note\(note\["author_id"\]\)',
+        "Deleting a note removes a different note than requested",
+        "high",
+        "data_handling",
+        40,
+        "delete-target",
+        "The route passes note.author_id where the query expects the note id, so the request silently deletes the note whose id equals the caller's user id.",
+        [("author", 1.0), ("delete", 0.8), ("wrong note", 0.8), ("id mismatch", 0.5)],
+        [("database.py", r"def delete_note", False)],
+    ),
+    (
+        "BUG-06",
+        "database.py",
+        r"WHERE note_id = \? ORDER BY created_at DESC",
+        "Comments render in reverse order",
+        "low",
+        "logic",
+        15,
+        "comment-order",
+        "The comment query orders created_at DESC while the product expects chronological ascending order.",
+        [("desc", 1.0), ("asc", 0.8), ("order", 0.6), ("chronological", 0.6)],
+        [("routes/comments.py", r"def list_comments", False)],
+    ),
+    (
+        "BUG-07",
+        "routes/auth.py",
+        r"INSERT INTO users \(email, name, password_hash, created_at\) VALUES",
+        "Registration crashes with a raw 500 on duplicates",
+        "medium",
+        "input_validation",
+        25,
+        "register-validation",
+        "No duplicate check runs before the INSERT; the UNIQUE constraint error escapes as an unhandled exception.",
+        [("unique", 1.0), ("constraint", 0.8), ("validation", 0.8), ("500", 0.4)],
+        [("database.py", r"CREATE TABLE IF NOT EXISTS users", False)],
+    ),
+    (
+        "BUG-08",
+        "main.py",
+        r"max_age = SESSION_TTL_S // 1000",
+        "Sessions expire after ~10 minutes instead of 7 days",
+        "high",
+        "configuration",
+        40,
+        "cookie-ttl-units",
+        "The TTL is already seconds but is divided by 1000 again, collapsing the intended 7-day TTL to ~10 minutes.",
+        [("maxage", 1.0), ("ttl", 0.8), ("cookie", 0.8), ("units", 0.6)],
+        [("main.py", r"SESSION_TTL_DAYS \* 24 \* 60 \* 60", False)],
+    ),
+    (
+        "BUG-09",
+        "database.py",
+        r"\(SELECT count\(\*\) FROM notes\) AS notes_total",
+        "Profile notes total counts everyone's notes",
+        "medium",
+        "logic",
+        25,
+        "author-stats",
+        "The stats query counts every row of notes with no author filter for the total.",
+        [("count", 1.0), ("stats", 0.8), ("profile", 0.6), ("author", 0.6)],
+        [("routes/auth.py", r"def me\(user_id", False)],
+    ),
+    (
+        "BUG-10",
+        "public/app.js",
+        r'document\.querySelector\("\.search-go"\)',
+        "Search button does nothing (Enter works)",
+        "low",
+        "integration_api_contract",
+        15,
+        "search-handler",
+        "The click handler queries the .search-go class selector but the button only has the search-go id, so the listener never attaches.",
+        [("queryselector", 1.0), ("class", 0.6), ("id", 0.6), ("handler", 0.5)],
+        [("public/index.html", r'id="search-go"', False)],
+    ),
+]
+
+GT_FLAGS_B = [
+    (
+        "FLAG-1",
+        "FLAG{fastapi_0pen_0verview_7d21}",
+        30,
+        99,
+        "Admin overview API on the Option B app served without authentication (broken access control).",
+    ),
+    (
+        "FLAG-2",
+        "FLAG{b64_1s_n0t_3ncrypt10n_9c4f}",
+        30,
+        99,
+        "Base64-encoded string in the onboarding comment of the Option B public/app.js.",
+    ),
+]
+
+# Four level stages with SYNTHETIC development windows (minutes). These are
+# NOT event times; the production schedule is an organizer configuration task.
+LEVEL_NAMES = {
+    1: "Level 1: Find the Bugs",
+    2: "Level 2: Trace the Cross-File Defect",
+    3: "Level 3: Repair and Side Quest",
+    4: "Level 4: Tests and Documentation",
+}
+LEVEL_EXPLAIN_MD = {
+    1: "Inspect your team's locked repository and file one flag per bug. Each flag needs a file, a line range, a category and an explanation.",
+    2: "One defect spans several files. Report every location it touches as one ordered list on a single flag.",
+    3: "Fix the defects in the editable workspace and complete the side quest. Submit a .zip/.diff/.patch artifact or submit the computed draft diff.",
+    4: "Write the missing tests and update the documentation, then submit your artifact.",
+}
+LEVEL_WINDOWS = {1: ("active", -30, 60), 2: ("armed", 15, 45), 3: ("draft", None, None), 4: ("draft", None, None)}
+
 RULES_MD = """# Fall Back - Competition Rules (v1, draft for organizer review)
 
 ## 1. Participation
@@ -303,6 +491,12 @@ def main(reset: bool) -> None:
     if reset:
         with app_session() as s:
             for stmt in (
+                "DELETE FROM app.submission_artifacts",
+                "DELETE FROM app.level_drafts",
+                "DELETE FROM app.participant_progress",
+                "DELETE FROM app.participant_pointers",
+                "DELETE FROM app.team_repo_choices",
+                "DELETE FROM app.repo_options",
                 "TRUNCATE app.score_ledger_entries RESTART IDENTITY CASCADE",
                 "DELETE FROM app.award_claims",
                 "DELETE FROM app.reviews",
@@ -487,6 +681,86 @@ def main(reset: bool) -> None:
             {"i": str(uuid7()), "e": event_id, "s": stage_id, "c": challenge_id, "repo": None},
         )
 
+        # --- four-level flow: repo options and level stages -----------------------
+        # Option B challenge version (Marina fixture), development-only.
+        challenge_b_id = str(uuid7())
+        instructions_b = Path(CHALLENGE_DIR_B / "README.md").read_text()
+        s.execute(
+            text(
+                "INSERT INTO app.challenge_versions (id, event_id, slug, title, version, instructions_md) "
+                "VALUES (CAST(:i AS uuid), CAST(:e AS uuid), 'marina', 'Marina - Campus Notes (Option B fixture)', 1, :inst)"
+            ),
+            {"i": challenge_b_id, "e": event_id, "inst": instructions_b},
+        )
+        _ingest_challenge(s, challenge_b_id, CHALLENGE_DIR_B, PARTICIPANT_FILES_B)
+        s.execute(
+            text(
+                "UPDATE app.challenge_versions SET status='published', content_hash=:h, frozen_at=now(), published_at=now() WHERE id = CAST(:i AS uuid)"
+            ),
+            {
+                "h": "sha256:" + hashlib.sha256(json.dumps(list(PARTICIPANT_FILES_B)).encode()).hexdigest(),
+                "i": challenge_b_id,
+            },
+        )
+        s.execute(
+            text("UPDATE app.challenge_versions SET instructions_md = :inst WHERE id = CAST(:i AS uuid)"),
+            {"inst": Path(CHALLENGE_DIR / "README.md").read_text(), "i": challenge_id},
+        )
+        for key, label, desc, cv_id in [
+            (
+                "A",
+                "Option A: Papyrus (Node/Express + SQLite)",
+                "MERN-style Node/Express campus notes app with the common frontend.",
+                challenge_id,
+            ),
+            (
+                "B",
+                "Option B: Marina (FastAPI + SQLite)",
+                "nginx + FastAPI + SQLite campus notes app with the same frontend concept.",
+                challenge_b_id,
+            ),
+        ]:
+            s.execute(
+                text(
+                    "INSERT INTO app.repo_options (id, event_id, option_key, label, description, challenge_version_id) "
+                    "VALUES (CAST(:i AS uuid), CAST(:e AS uuid), :k, :l, :d, CAST(:cv AS uuid))"
+                ),
+                {"i": str(uuid7()), "e": event_id, "k": key, "l": label, "d": desc, "cv": cv_id},
+            )
+        level_stage_ids = {}
+        for n in range(1, 5):
+            status, start_off, dur = LEVEL_WINDOWS[n]
+            cfg = {
+                "explain_title": LEVEL_NAMES[n],
+                "explain_md": LEVEL_EXPLAIN_MD[n],
+                "max_span": 25,
+                "max_flags_per_level": 12,
+                "feedback_mode": "hidden",
+                "leaderboard_mode": "hidden",
+            }
+            starts = now + timedelta(minutes=start_off) if start_off is not None else None
+            ends = (starts + timedelta(minutes=dur)) if dur is not None and starts is not None else None
+            lid = str(uuid7())
+            level_stage_ids[n] = lid
+            s.execute(
+                text(
+                    "INSERT INTO app.stages (id, event_id, name, kind, ordinal, status, starts_at, ends_at, grace_seconds, config, rule_set_hash) "
+                    "VALUES (CAST(:i AS uuid), CAST(:e AS uuid), :name, 'level', :n, :status, :starts, :ends, 3, CAST(:c AS jsonb), :rsh)"
+                ),
+                {
+                    "i": lid,
+                    "e": event_id,
+                    "name": LEVEL_NAMES[n],
+                    "n": n,
+                    "status": status,
+                    "starts": starts,
+                    "ends": ends,
+                    "c": json.dumps(cfg),
+                    "rsh": "sha256:"
+                    + hashlib.sha256(json.dumps(cfg, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+                },
+            )
+
         # --- teams, participants, invites ----------------------------------------
         teams = {}
         for team_name, member_emails in [
@@ -514,7 +788,7 @@ def main(reset: bool) -> None:
                 ),
                 {"i": team_id, "e": event_id, "n": team_name, "jc": join_code},
             )
-            for email in member_emails:
+            for idx, email in enumerate(member_emails):
                 uid = str(uuid7())
                 users[email] = uid
                 s.execute(
@@ -531,9 +805,9 @@ def main(reset: bool) -> None:
                 )
                 s.execute(
                     text(
-                        "INSERT INTO app.team_members (id, team_id, user_id) VALUES (CAST(:i AS uuid), CAST(:t AS uuid), CAST(:u AS uuid))"
+                        "INSERT INTO app.team_members (id, team_id, user_id, is_lead) VALUES (CAST(:i AS uuid), CAST(:t AS uuid), CAST(:u AS uuid), :lead)"
                     ),
-                    {"i": str(uuid7()), "t": team_id, "u": uid},
+                    {"i": str(uuid7()), "t": team_id, "u": uid, "lead": idx == 0},
                 )
 
         invite_tokens = []
@@ -564,6 +838,11 @@ def main(reset: bool) -> None:
                 "u": users["organizer@example.com"],
             },
         )
+        # initialize the four-level progression for every participant
+        for email, uid in users.items():
+            if email.endswith("@example.com") and email.startswith("p"):
+                init_participant_flow(s, event_id, uid)
+
         audit_write(
             s,
             actor_id=None,
@@ -576,96 +855,8 @@ def main(reset: bool) -> None:
         )
 
     with gt_session() as g:
-        for (
-            code,
-            filename,
-            pattern,
-            title,
-            severity,
-            category,
-            points,
-            rcg,
-            explanation,
-            aliases,
-            extra_locs,
-        ) in GT_BUGS:
-            bug_id = str(uuid7())
-            g.execute(
-                text(
-                    "INSERT INTO gt.gt_bugs (id, challenge_version_id, code, title, severity, category, points, "
-                    "root_cause_group, explanation) VALUES (CAST(:i AS uuid), CAST(:c AS uuid), :code, :t, :sev, :cat, :pts, :rcg, :expl)"
-                ),
-                {
-                    "i": bug_id,
-                    "c": challenge_id,
-                    "code": code,
-                    "t": title,
-                    "sev": severity,
-                    "cat": category,
-                    "pts": points,
-                    "rcg": rcg,
-                    "expl": explanation,
-                },
-            )
-            path = CHALLENGE_DIR / filename
-            lineno = find_line(path, pattern)
-            if lineno is None:
-                print(f"WARNING: anchor pattern not found for {code} in {filename}")
-                continue
-            g.execute(
-                text(
-                    "INSERT INTO gt.gt_locations (id, bug_id, file_path, line_start, line_end, is_primary, anchor_hash) VALUES (CAST(:i AS uuid), CAST(:b AS uuid), :fp, :ls, :le, true, :ah)"
-                ),
-                {
-                    "i": str(uuid7()),
-                    "b": bug_id,
-                    "fp": filename,
-                    "ls": max(1, lineno - 1),
-                    "le": lineno + 1,
-                    "ah": anchor_hash(path, lineno),
-                },
-            )
-            for loc_file, loc_pattern, primary in extra_locs:
-                lp = CHALLENGE_DIR / loc_file
-                lno = find_line(lp, loc_pattern)
-                if lno is None:
-                    continue
-                g.execute(
-                    text(
-                        "INSERT INTO gt.gt_locations (id, bug_id, file_path, line_start, line_end, is_primary, anchor_hash) VALUES (CAST(:i AS uuid), CAST(:b AS uuid), :fp, :ls, :le, :prim, :ah)"
-                    ),
-                    {
-                        "i": str(uuid7()),
-                        "b": bug_id,
-                        "fp": loc_file,
-                        "ls": max(1, lno - 1),
-                        "le": lno + 1,
-                        "prim": primary,
-                        "ah": anchor_hash(lp, lno),
-                    },
-                )
-            for kw, w in aliases:
-                g.execute(
-                    text(
-                        "INSERT INTO gt.gt_aliases (id, bug_id, keyword, weight) VALUES (CAST(:i AS uuid), CAST(:b AS uuid), :kw, :w)"
-                    ),
-                    {"i": str(uuid7()), "b": bug_id, "kw": kw, "w": w},
-                )
-        for flag_key, plaintext, points, max_awards, note in GT_FLAGS:
-            g.execute(
-                text(
-                    "INSERT INTO gt.gt_flags (id, challenge_version_id, flag_key, code_hash, points, max_awards, position_label) VALUES (CAST(:i AS uuid), CAST(:c AS uuid), :k, :h, :p, :m, :n)"
-                ),
-                {
-                    "i": str(uuid7()),
-                    "c": challenge_id,
-                    "k": flag_key,
-                    "h": security.flag_code_hash(plaintext),
-                    "p": points,
-                    "m": max_awards,
-                    "n": note,
-                },
-            )
+        _seed_ground_truth(g, challenge_id, CHALLENGE_DIR, GT_BUGS, GT_FLAGS)
+        _seed_ground_truth(g, challenge_b_id, CHALLENGE_DIR_B, GT_BUGS_B, GT_FLAGS_B)
         g.execute(
             text(
                 "INSERT INTO gt.gt_revisions (id, challenge_version_id, revision_no, reason, payload) VALUES (CAST(:i AS uuid), CAST(:c AS uuid), 1, 'initial seed', CAST(:p AS jsonb))"
@@ -676,14 +867,27 @@ def main(reset: bool) -> None:
                 "p": json.dumps({"bugs": [b[0] for b in GT_BUGS], "flags": [f[0] for f in GT_FLAGS]}),
             },
         )
+        g.execute(
+            text(
+                "INSERT INTO gt.gt_revisions (id, challenge_version_id, revision_no, reason, payload) VALUES (CAST(:i AS uuid), CAST(:c AS uuid), 1, 'initial seed (option B fixture)', CAST(:p AS jsonb))"
+            ),
+            {
+                "i": str(uuid7()),
+                "c": challenge_b_id,
+                "p": json.dumps({"bugs": [b[0] for b in GT_BUGS_B], "flags": [f[0] for f in GT_FLAGS_B]}),
+            },
+        )
 
     print("seed complete:")
     print(f"  event fall-back-2026, stage {stage_id[:8]}, challenge papyrus ({len(PARTICIPANT_FILES)} files)")
+    print(f"  option B fixture marina ({len(PARTICIPANT_FILES_B)} files), four level stages (synthetic windows)")
     print(
-        f"  ground truth: {len(GT_BUGS)} bugs ({sum(b[6] for b in GT_BUGS)} pts), {len(GT_FLAGS)} flags ({sum(f[2] for f in GT_FLAGS)} pts)"
+        f"  ground truth: option A {len(GT_BUGS)} bugs ({sum(b[6] for b in GT_BUGS)} pts), option B {len(GT_BUGS_B)} bugs ({sum(b[6] for b in GT_BUGS_B)} pts), 2 flags per option"
     )
     print("  staff: admin@ / organizer@ / reviewer1@ / reviewer2@ example.com - password Dev-only!Passw0rd!")
-    print("  participants: p1..p5.team1@ / p1..p5.team2@ example.com - password Dev-only!Passw0rd!")
+    print(
+        "  participants: p1..p5.team1@ / p1..p5.team2@ example.com - password Dev-only!Passw0rd! (first member is the team lead)"
+    )
     for email, raw in invite_tokens:
         print(f"  invite for {email}: {raw}")
 
@@ -691,6 +895,123 @@ def main(reset: bool) -> None:
 def _lang(rel: str) -> str:
     ext = rel.rsplit(".", 1)[-1]
     return {"js": "javascript", "html": "html", "css": "css", "json": "json", "md": "markdown"}.get(ext, "text")
+
+
+def _ingest_challenge(app_session_, challenge_id: str, base_dir: Path, files: list[str]) -> int:
+    """Insert participant-visible files and the search line index for one challenge version."""
+    line_index = []
+    for rel in files:
+        path = base_dir / rel
+        content = path.read_text()
+        sha = hashlib.sha256(content.encode()).hexdigest()
+        app_session_.execute(
+            text(
+                "INSERT INTO app.challenge_files (id, challenge_version_id, path, lang, content, sha256, size_bytes, line_count) "
+                "VALUES (CAST(:i AS uuid), CAST(:c AS uuid), :p, :lang, :content, :sha, :size, :lines)"
+            ),
+            {
+                "i": str(uuid7()),
+                "c": challenge_id,
+                "p": rel,
+                "lang": _lang(rel),
+                "content": content,
+                "sha": sha,
+                "size": len(content.encode()),
+                "lines": content.count("\n") + 1,
+            },
+        )
+        for ln, line in enumerate(content.splitlines()[:5000], start=1):
+            line_index.append((rel, ln, line[:500]))
+    for rel, ln, txt in line_index:
+        app_session_.execute(
+            text(
+                "INSERT INTO app.challenge_file_lines (id, challenge_version_id, path, line_number, line_text) VALUES (CAST(:i AS uuid), CAST(:c AS uuid), :p, :ln, :lt)"
+            ),
+            {"i": str(uuid7()), "c": challenge_id, "p": rel, "ln": ln, "lt": txt},
+        )
+    return len(line_index)
+
+
+def _seed_ground_truth(gt_session_, challenge_id: str, base_dir: Path, bugs: list, flags: list) -> None:
+    """Insert the sealed ground truth for one challenge version (gt schema only)."""
+    for code, filename, pattern, title, severity, category, points, rcg, explanation, aliases, extra_locs in bugs:
+        bug_id = str(uuid7())
+        gt_session_.execute(
+            text(
+                "INSERT INTO gt.gt_bugs (id, challenge_version_id, code, title, severity, category, points, "
+                "root_cause_group, explanation) VALUES (CAST(:i AS uuid), CAST(:c AS uuid), :code, :t, :sev, :cat, :pts, :rcg, :expl)"
+            ),
+            {
+                "i": bug_id,
+                "c": challenge_id,
+                "code": code,
+                "t": title,
+                "sev": severity,
+                "cat": category,
+                "pts": points,
+                "rcg": rcg,
+                "expl": explanation,
+            },
+        )
+        path = base_dir / filename
+        lineno = find_line(path, pattern)
+        if lineno is None:
+            print(f"WARNING: anchor pattern not found for {code} in {filename}")
+            continue
+        gt_session_.execute(
+            text(
+                "INSERT INTO gt.gt_locations (id, bug_id, file_path, line_start, line_end, is_primary, anchor_hash) VALUES (CAST(:i AS uuid), CAST(:b AS uuid), :fp, :ls, :le, true, :ah)"
+            ),
+            {
+                "i": str(uuid7()),
+                "b": bug_id,
+                "fp": filename,
+                "ls": max(1, lineno - 1),
+                "le": lineno + 1,
+                "ah": anchor_hash(path, lineno),
+            },
+        )
+        for loc_file, loc_pattern, primary in extra_locs:
+            lp = base_dir / loc_file
+            lno = find_line(lp, loc_pattern)
+            if lno is None:
+                continue
+            gt_session_.execute(
+                text(
+                    "INSERT INTO gt.gt_locations (id, bug_id, file_path, line_start, line_end, is_primary, anchor_hash) VALUES (CAST(:i AS uuid), CAST(:b AS uuid), :fp, :ls, :le, :prim, :ah)"
+                ),
+                {
+                    "i": str(uuid7()),
+                    "b": bug_id,
+                    "fp": loc_file,
+                    "ls": max(1, lno - 1),
+                    "le": lno + 1,
+                    "prim": primary,
+                    "ah": anchor_hash(lp, lno),
+                },
+            )
+        for kw, w in aliases:
+            gt_session_.execute(
+                text(
+                    "INSERT INTO gt.gt_aliases (id, bug_id, keyword, weight) VALUES (CAST(:i AS uuid), CAST(:b AS uuid), :kw, :w)"
+                ),
+                {"i": str(uuid7()), "b": bug_id, "kw": kw, "w": w},
+            )
+    for flag_key, plaintext, points, max_awards, note in flags:
+        gt_session_.execute(
+            text(
+                "INSERT INTO gt.gt_flags (id, challenge_version_id, flag_key, code_hash, points, max_awards, position_label) VALUES (CAST(:i AS uuid), CAST(:c AS uuid), :k, :h, :p, :m, :n)"
+            ),
+            {
+                "i": str(uuid7()),
+                "c": challenge_id,
+                "k": flag_key,
+                "h": security.flag_code_hash(plaintext),
+                "p": points,
+                "m": max_awards,
+                "n": note,
+            },
+        )
 
 
 if __name__ == "__main__":
