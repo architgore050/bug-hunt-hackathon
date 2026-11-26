@@ -303,7 +303,7 @@ function Conduct() {
 const FAQ: { q: string; a: string }[] = [
   {
     q: 'Who can participate and how do we register?',
-    a: 'Teams of 4 to 5 participants, registered by the Software Development Club, VIT Bhopal University. On first sign-in with your email id, your account is created automatically if it does not exist yet. Accounts are personal and sharing them is prohibited.',
+    a: 'Teams of 4 to 5 participants, registered by the Software Development Club, VIT Bhopal University. Organizers create accounts through the admin panel; members then sign in with their email id. Accounts are personal and sharing them is prohibited.',
   },
   {
     q: 'What exactly do we receive at the start?',
@@ -391,9 +391,9 @@ export default function Landing() {
         <div className="grid-split">
           <div>
             <p className="serif-quote">
-              Registrations run through the club. On first sign-in with your email id, your account is created
-              automatically if it does not exist yet. Accept the rules and you are in. On event day, sign in and the
-              lobby takes over: round state, announcements and your assignment.
+              Registrations run through the club. Organizers create accounts through the admin panel; members then
+              sign in with their email id. Accept the rules and you are in. On event day, sign in and the lobby takes
+              over: round state, announcements and your assignment.
             </p>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 14 }}>
               <Link to="/login" className="btn btn-primary">Sign in</Link>

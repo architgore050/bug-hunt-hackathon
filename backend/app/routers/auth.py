@@ -68,39 +68,14 @@ def login(body: LoginIn, request: Request, response: Response):
             .first()
         )
         # First sign-in flow: no activation invite needed. Signing in with your
-        # email id activates the account. On first sign-in we check whether you
-        # are registered; if not, we create the account right here. If you are
-        # registered but have no password yet, the password you just typed
+        # email id activates the account. Only registered accounts can sign in;
+        # unregistered emails are rejected with a generic error (no enumeration).
+        # If you are registered but have no password yet, the password you type
         # becomes your password. If you have a password, it is checked.
         # NOTE: this is a risk we are willing to take for this event.
         if user is None:
-            # Not registered yet: create the account on first sign-in.
-            name = body.email.split("@")[0]
-            pw_hash = security.hash_password(body.password)
-            user_id = str(uuid7())
-            s.execute(
-                text(
-                    "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash, status, registration_id) "
-                    "SELECT :id, t.id, :email, :name, 'participant', :pw, 'active', :reg "
-                    "FROM app.tenants t ORDER BY t.created_at LIMIT 1"
-                ),
-                {
-                    "id": user_id,
-                    "email": body.email.lower(),
-                    "name": name,
-                    "pw": pw_hash,
-                    "reg": str(uuid7())[:8],
-                },
-            )
-            user = {
-                "id": user_id,
-                "email": body.email.lower(),
-                "name": name,
-                "role": "participant",
-                "status": "active",
-                "password_hash": pw_hash,
-                "token_version": 1,
-            }
+            # Unregistered email: reject generically (no account enumeration).
+            raise ApiError("AUTH_INVALID_CREDENTIALS")
         elif not user["password_hash"]:
             # Registered but no password set yet: the password typed now becomes the password.
             pw_hash = security.hash_password(body.password)

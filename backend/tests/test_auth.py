@@ -11,13 +11,11 @@ def test_login_rejects_wrong_password_generically(client):
     assert r.status_code == 401
     body = r.json()["error"]
     assert body["code"] == "AUTH_INVALID_CREDENTIALS"
-    # New email on first sign-in → account created, no error (no enumeration signal either way)
+    # Unregistered email → same generic 401 (no account enumeration)
     r2 = client.post("/v1/auth/login", json={"email": "nobody@example.com", "password": "New-User-Pass-123!"})
-    assert r2.status_code == 200, r2.text
-    # The new user can now sign in with the same password
-    r3 = client.post("/v1/auth/login", json={"email": "nobody@example.com", "password": "New-User-Pass-123!"})
-    assert r3.status_code == 200
-    assert r3.json()["user"]["email"] == "nobody@example.com"
+    assert r2.status_code == 401
+    assert r2.json()["error"]["code"] == "AUTH_INVALID_CREDENTIALS"
+    assert r2.json()["error"]["message"] == body["message"]
 
 
 def test_password_reset_revokes_sessions_and_bumps_token_version(client):

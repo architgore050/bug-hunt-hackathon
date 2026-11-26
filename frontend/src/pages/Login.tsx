@@ -43,10 +43,10 @@ export default function Login() {
           <span className="exhibit-num">EX-AUTH</span>
           <h1 className="display" style={{ fontSize: 'clamp(1.6rem, 4vw, 2.2rem)', margin: 0 }}>Sign in</h1>
           <p className="muted small">
-            Sign in with your email id. On first sign-in, the platform checks whether you are registered: if not,
-            your account is created right here. If you are registered but have no password yet, the password you type
-            becomes your password; if you already have one, it is checked. No separate activation step is needed for
-            this event. The console opens by role: participants land in the lobby, reviewers in the queue,
+            Sign in with your email id. Accounts are created by an organizer through the admin panel; unregistered
+            emails are rejected with a generic error. If you are registered but have no password yet, the password you
+            type becomes your password; if you already have one, it is checked. No separate activation step is needed
+            for this event. The console opens by role: participants land in the lobby, reviewers in the queue,
             organizers in operations.
           </p>
         </header>
