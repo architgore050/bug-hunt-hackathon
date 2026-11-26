@@ -1,4 +1,4 @@
-# BUG HUNT CTF — CLEAN-ROOM FRONTEND REBUILD EXECUTION PROMPT
+# BUG HUNT CTF - CLEAN-ROOM FRONTEND REBUILD EXECUTION PROMPT
 
 > **Mission:** Replace the existing frontend with a genuinely exceptional, fully functional, independently art-directed frontend. Do not inspect or reuse the existing frontend implementation. Develop several materially different concepts in parallel, document each concept before coding it, implement each as a complete alternative, and open a separate reviewable pull request for every finished concept against `main`. The result must be beautiful, but it must also preserve and correctly use the real product workflows and backend.
 
@@ -138,10 +138,10 @@ Each agent must invent a distinct creative direction, not a reskin. Vary the vis
 
 Suggested starting territories (agents may reinterpret or replace them):
 
-1. **The Incident Archive** — editorial evidence, forensic documentation, archival typography, layered artefacts, annotated visual records and a strong sense of discovery.
-2. **The Recovery Instrument** — precise, high-craft technical instrumentation, distinctive spatial organisation, tactile status language and purposeful motion without falling into generic terminal/mission-control clichés.
-3. **The Failure Atlas** — a visual exploration of software systems, dependencies, breakpoints, root causes and repair; spatial storytelling and diagrams do the explanatory work.
-4. **An independent wild card** — a bold, researched concept that does not simply combine the other three.
+1. **The Incident Archive** - editorial evidence, forensic documentation, archival typography, layered artefacts, annotated visual records and a strong sense of discovery.
+2. **The Recovery Instrument** - precise, high-craft technical instrumentation, distinctive spatial organisation, tactile status language and purposeful motion without falling into generic terminal/mission-control clichés.
+3. **The Failure Atlas** - a visual exploration of software systems, dependencies, breakpoints, root causes and repair; spatial storytelling and diagrams do the explanatory work.
+4. **An independent wild card** - a bold, researched concept that does not simply combine the other three.
 
 These are prompts for exploration, not templates. An agent may reject a territory if it finds a stronger direction.
 

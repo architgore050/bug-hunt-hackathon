@@ -72,35 +72,35 @@ Investigate the following books, prioritising legally accessible previews, publi
 
 ### Branding and visual identity
 
-1. Designing Brand Identity — Alina Wheeler and Rob Meyerson, sixth edition.
-2. The Brand Handbook — Wally Olins.
-3. Building Strong Brands — David A. Aaker.
-4. Designing Brand Experiences — J. Robert Rossman and Mathew D. Duerden, where relevant.
-5. The Brand Gap — Marty Neumeier.
+1. Designing Brand Identity - Alina Wheeler and Rob Meyerson, sixth edition.
+2. The Brand Handbook - Wally Olins.
+3. Building Strong Brands - David A. Aaker.
+4. Designing Brand Experiences - J. Robert Rossman and Mathew D. Duerden, where relevant.
+5. The Brand Gap - Marty Neumeier.
 
 ### Typography and editorial design
 
-6. Thinking with Type — Ellen Lupton, third edition.
-7. The Elements of Typographic Style — Robert Bringhurst.
-8. Grid Systems in Graphic Design — Josef Müller-Brockmann.
-9. Making and Breaking the Grid — Timothy Samara.
-10. The New Typography — Jan Tschichold.
+6. Thinking with Type - Ellen Lupton, third edition.
+7. The Elements of Typographic Style - Robert Bringhurst.
+8. Grid Systems in Graphic Design - Josef Müller-Brockmann.
+9. Making and Breaking the Grid - Timothy Samara.
+10. The New Typography - Jan Tschichold.
 
 ### Graphic design theory and practice
 
-11. Meggs' History of Graphic Design — Philip B. Meggs and Alston W. Purvis.
-12. Graphic Design Thinking — Ellen Lupton.
-13. Graphic Design: The New Basics — Ellen Lupton and Jennifer Cole Phillips.
-14. A Smile in the Mind — Beryl McAlhone and David Stuart.
-15. Universal Principles of Design — William Lidwell, Kritina Holden and Jill Butler.
+11. Meggs' History of Graphic Design - Philip B. Meggs and Alston W. Purvis.
+12. Graphic Design Thinking - Ellen Lupton.
+13. Graphic Design: The New Basics - Ellen Lupton and Jennifer Cole Phillips.
+14. A Smile in the Mind - Beryl McAlhone and David Stuart.
+15. Universal Principles of Design - William Lidwell, Kritina Holden and Jill Butler.
 
 ### Design philosophy and creative thinking
 
 16. Dieter Rams' Ten Principles for Good Design.
-17. The Design of Everyday Things — Don Norman.
-18. Change by Design — Tim Brown.
-19. The Art of Looking Sideways — Alan Fletcher.
-20. Design as Art — Bruno Munari.
+17. The Design of Everyday Things - Don Norman.
+18. Change by Design - Tim Brown.
+19. The Art of Looking Sideways - Alan Fletcher.
+20. Design as Art - Bruno Munari.
 
 This list is a research starting point, not an exhaustive boundary. Discover additional foundational texts and professional resources where they add meaningful knowledge.
 
@@ -131,10 +131,10 @@ Use actual educational institutions and professional organisations wherever poss
 
 Starting references include:
 
-- John Cabot University — Corporate Identity and Branding syllabus.
-- UCLL — Brand Identity and Graphic Design.
-- University of Wisconsin–Madison — Branding resources.
-- University of Exeter — Brand Guidelines.
+- John Cabot University - Corporate Identity and Branding syllabus.
+- UCLL - Brand Identity and Graphic Design.
+- University of Wisconsin–Madison - Branding resources.
+- University of Exeter - Brand Guidelines.
 - Other reputable university design departments and design schools.
 
 Extract the actual subjects taught, learning objectives, exercises, design methodologies, and expected student competencies.
@@ -203,7 +203,7 @@ Each domain must contain substantive educational material, practical instruction
 
 Do not create empty placeholder files merely to make the directory look comprehensive.
 
-## DOMAIN A — FOUNDATIONS OF VISUAL DESIGN
+## DOMAIN A - FOUNDATIONS OF VISUAL DESIGN
 
 Cover:
 
@@ -280,7 +280,7 @@ Explain how they influence perception, composition, grouping, and UI design.
 
 ---
 
-## DOMAIN B — COLOUR THEORY AND COLOUR SYSTEMS
+## DOMAIN B - COLOUR THEORY AND COLOUR SYSTEMS
 
 Cover:
 
@@ -337,7 +337,7 @@ Include practical methods for generating, evaluating, documenting and testing pa
 
 ---
 
-## DOMAIN C — TYPOGRAPHY AND EDITORIAL DESIGN
+## DOMAIN C - TYPOGRAPHY AND EDITORIAL DESIGN
 
 This domain should be particularly comprehensive.
 
@@ -413,7 +413,7 @@ Provide CSS examples and practical typographic systems.
 
 ---
 
-## DOMAIN D — GRID SYSTEMS AND LAYOUT
+## DOMAIN D - GRID SYSTEMS AND LAYOUT
 
 Cover:
 
@@ -445,7 +445,7 @@ Include practical grid-building exercises and implementation examples in CSS.
 
 ---
 
-## DOMAIN E — BRAND STRATEGY AND IDENTITY
+## DOMAIN E - BRAND STRATEGY AND IDENTITY
 
 This is one of the most important domains.
 
@@ -511,7 +511,7 @@ This is one of the most important domains.
 
 ---
 
-## DOMAIN F — LOGO SYSTEMS AND LOGO APPLICATION
+## DOMAIN F - LOGO SYSTEMS AND LOGO APPLICATION
 
 Even when the logo is already fixed, agents must understand how to use it correctly.
 
@@ -541,7 +541,7 @@ Include a specific procedure for analysing a fixed logo and extracting possible 
 
 ---
 
-## DOMAIN G — GRAPHIC LANGUAGE AND ART DIRECTION
+## DOMAIN G - GRAPHIC LANGUAGE AND ART DIRECTION
 
 Cover how to create a recognisable visual language beyond the logo.
 
@@ -584,7 +584,7 @@ For each major style, explain:
 
 ---
 
-## DOMAIN H — PHOTOGRAPHY, IMAGERY AND VISUAL ASSETS
+## DOMAIN H - PHOTOGRAPHY, IMAGERY AND VISUAL ASSETS
 
 Cover:
 - Photography as a brand component.
@@ -617,7 +617,7 @@ Explain when an image should be generated, photographed, illustrated, sourced or
 
 ---
 
-## DOMAIN I — GRAPHIC DESIGN APPLICATIONS
+## DOMAIN I - GRAPHIC DESIGN APPLICATIONS
 
 Teach how to apply the same identity to different formats.
 
@@ -682,7 +682,7 @@ For each application, provide practical composition principles, specifications a
 
 ---
 
-## DOMAIN J — UI/UX AND FRONTEND DESIGN
+## DOMAIN J - UI/UX AND FRONTEND DESIGN
 
 This domain must be substantial, not an afterthought.
 
@@ -764,7 +764,7 @@ Include practical CSS examples and reusable implementation patterns.
 
 ---
 
-## DOMAIN K — ACCESSIBILITY AND INCLUSIVE DESIGN
+## DOMAIN K - ACCESSIBILITY AND INCLUSIVE DESIGN
 
 Cover:
 - WCAG principles.
@@ -788,7 +788,7 @@ Include practical testing procedures.
 
 ---
 
-## DOMAIN L — INFORMATION DESIGN AND DATA VISUALISATION
+## DOMAIN L - INFORMATION DESIGN AND DATA VISUALISATION
 
 Cover:
 - Information hierarchy.
@@ -813,7 +813,7 @@ Explain how to make complex information understandable without sacrificing accur
 
 ---
 
-## DOMAIN M — CREATIVE THINKING AND DESIGN METHODOLOGY
+## DOMAIN M - CREATIVE THINKING AND DESIGN METHODOLOGY
 
 Cover:
 - Design thinking.
@@ -837,7 +837,7 @@ Explain how to avoid premature convergence on the first visually attractive idea
 
 ---
 
-## DOMAIN N — DESIGN EVALUATION AND QUALITY ASSURANCE
+## DOMAIN N - DESIGN EVALUATION AND QUALITY ASSURANCE
 
 Build explicit evaluation frameworks.
 
@@ -867,7 +867,7 @@ Teach agents how to identify defects, prioritise them and propose corrections.
 
 ---
 
-## DOMAIN O — DESIGN HISTORY AND FOUNDATIONAL PHILOSOPHY
+## DOMAIN O - DESIGN HISTORY AND FOUNDATIONAL PHILOSOPHY
 
 Build a practical reference to the history of graphic design.
 
@@ -1472,7 +1472,7 @@ This project is large. Work systematically.
 
 Do not attempt to write every file from memory.
 
-## Phase 1 — Repository and environment inspection
+## Phase 1 - Repository and environment inspection
 
 Before doing anything:
 
@@ -1489,7 +1489,7 @@ Do not overwrite unrelated work.
 
 Create a research and execution plan.
 
-## Phase 2 — Source discovery
+## Phase 2 - Source discovery
 
 Research the books, curricula, professional resources and case studies.
 
@@ -1506,7 +1506,7 @@ Do not let the research process become an endless link-collection exercise.
 
 The goal is to extract useful knowledge.
 
-## Phase 3 — Knowledge architecture
+## Phase 3 - Knowledge architecture
 
 Finalise the directory structure.
 
@@ -1519,7 +1519,7 @@ Create:
 
 Define relationships and cross-references between domains.
 
-## Phase 4 — Knowledge extraction and synthesis
+## Phase 4 - Knowledge extraction and synthesis
 
 Work through the domains systematically.
 
@@ -1537,13 +1537,13 @@ For each topic:
 
 Prioritise complete, useful documents over superficial coverage of every conceivable subtopic.
 
-## Phase 5 — Practical framework development
+## Phase 5 - Practical framework development
 
 Write the task-specific procedures, checklists, exercises and evaluation frameworks.
 
 Ensure they are consistent with the foundational theory.
 
-## Phase 6 — README routing
+## Phase 6 - README routing
 
 Construct the root README only after the actual repository architecture and contents are established.
 
@@ -1551,7 +1551,7 @@ Verify every referenced path exists.
 
 Ensure that routing is task-oriented and useful to autonomous agents.
 
-## Phase 7 — Validation
+## Phase 7 - Validation
 
 Perform a thorough repository audit.
 

@@ -1,4 +1,4 @@
-# BUG HUNT CTF / FALL BACK — ONE-SHOT BUILD MASTER PROMPT
+# BUG HUNT CTF / FALL BACK - ONE-SHOT BUILD MASTER PROMPT
 
 > **Mission:** Build and launch a complete, usable first version of the Fall Back hackathon platform in one autonomous execution. Prioritize end-to-end functionality, an exceptional frontend, and a lean backend that runs locally now and can later fit a constrained/free-tier hosting environment. Do not stop after planning or documentation. Make the strongest working implementation that can be verified in this run, document every important decision, and leave the team with a clear handoff.
 
@@ -44,9 +44,9 @@ Do not optimise for architectural impressiveness, number of services, number of 
 First inspect the entire repository, all existing branches/configuration, and every source/reference file supplied with this task. The six known reference files are:
 
 1. `SDC_SAMVITYA_PROPOSAL.pdf`
-2. `Bug Hunt CTF — System Architecture.docx`
-3. `Bug Hunt CTF — Specification of Sections and Components.docx`
-4. `Bug Hunt CTF — Blind Spots and Cautions.docx`
+2. `Bug Hunt CTF - System Architecture.docx`
+3. `Bug Hunt CTF - Specification of Sections and Components.docx`
+4. `Bug Hunt CTF - Blind Spots and Cautions.docx`
 5. `Bug Hunt CTF_ Why We Build It This Way (D1 Guide).docx`
 6. `bug_hunt_ctf_setup.pdf`
 
@@ -58,9 +58,9 @@ Use this hierarchy when sources disagree:
 
 1. **Explicit instructions in this prompt and the user's latest clarifications.** These represent current decisions and may supersede stale engineering assumptions.
 2. **`SDC_SAMVITYA_PROPOSAL.pdf`.** This was submitted to higher management/event hosts and is locked. It outranks all engineering documents for event name, event format, schedule, team structure, scope, and promises. Do not silently change it.
-3. **`Bug Hunt CTF — System Architecture.docx`.** It is the technical architecture authority among the engineering documents where the proposal and this prompt are silent. Respect its explicit architectural decisions unless a current user instruction overrides them or an ADR demonstrates a necessary revision.
-4. **`Bug Hunt CTF — Specification of Sections and Components.docx`.** Use it as the detailed screen, workflow, permission, and API requirements catalogue. Reconcile it with the proposal and architecture.
-5. **`Bug Hunt CTF — Blind Spots and Cautions.docx`.** Treat its risks, mitigations, and verification obligations as a serious risk register. Do not ignore a risk because it is inconvenient to implement.
+3. **`Bug Hunt CTF - System Architecture.docx`.** It is the technical architecture authority among the engineering documents where the proposal and this prompt are silent. Respect its explicit architectural decisions unless a current user instruction overrides them or an ADR demonstrates a necessary revision.
+4. **`Bug Hunt CTF - Specification of Sections and Components.docx`.** Use it as the detailed screen, workflow, permission, and API requirements catalogue. Reconcile it with the proposal and architecture.
+5. **`Bug Hunt CTF - Blind Spots and Cautions.docx`.** Treat its risks, mitigations, and verification obligations as a serious risk register. Do not ignore a risk because it is inconvenient to implement.
 6. **`Bug Hunt CTF_ Why We Build It This Way (D1 Guide).docx`.** Use it to understand intent and trade-offs. It explains the architecture; it does not override the architecture document.
 7. **`bug_hunt_ctf_setup.pdf`.** Use as a lightweight brainstorming/reference document only. It does not override the formal proposal or architecture.
 8. **Your own decisions.** Where sources leave a gap, make a reversible choice, record the alternatives and rationale, and make the relevant value configurable when practical.
@@ -85,7 +85,7 @@ Do not mechanically merge contradictory documents. Do not silently “correct”
 
 Verify these against the PDF and use the PDF as final authority:
 
-- Event name: **Fall Back — Full-Stack Software Debugging Challenge**.
+- Event name: **Fall Back - Full-Stack Software Debugging Challenge**.
 - Date: **6 December 2026**.
 - Duration: **180 minutes**.
 - Mode: **offline**.
@@ -621,13 +621,13 @@ Create and maintain all 27 documents below. They must be consistent with one ano
 
 Also create and maintain:
 
-- `AGENTS.md` — canonical project instructions, architecture summary, coding conventions, security constraints, test commands, subagent ownership rules, source hierarchy, and how future agents should continue safely.
-- `AUTONOMOUS_DECISION_LOG.md` — every meaningful autonomous decision with: decision ID, date, requirement/source, context, options considered, selected option, rationale, alternatives rejected, trade-offs, risks, reversibility, evidence, code/docs/tests affected, and reviewer follow-up.
-- `ONE_SHOT_ACCEPTANCE_CRITERIA.md` — executable pass/fail criteria for the v1, divided into P0/P1/P2. Include user-journey acceptance, design/frontend acceptance, security, performance, data integrity, browser/device coverage, CI, documentation, and operational readiness. Each criterion must have a verification method and evidence location.
-- `SOURCE_OF_TRUTH_AND_TRACEABILITY.md` — source precedence, requirement map, conflicts, requirement IDs, and links from source requirements to implementation/tests/docs.
-- `AI_TOOLING_RESEARCH_AND_DECISION.md` — current free-tier agent research and chosen/fallback plan.
-- `FRONTEND_DESIGN_DIRECTION.md` — actual inspiration research and the approved design language.
-- `OPEN_DECISIONS_AND_FOLLOW_UP.md` — unresolved items, why unresolved, options, evidence needed, owner/role, priority, and suggested next step.
+- `AGENTS.md` - canonical project instructions, architecture summary, coding conventions, security constraints, test commands, subagent ownership rules, source hierarchy, and how future agents should continue safely.
+- `AUTONOMOUS_DECISION_LOG.md` - every meaningful autonomous decision with: decision ID, date, requirement/source, context, options considered, selected option, rationale, alternatives rejected, trade-offs, risks, reversibility, evidence, code/docs/tests affected, and reviewer follow-up.
+- `ONE_SHOT_ACCEPTANCE_CRITERIA.md` - executable pass/fail criteria for the v1, divided into P0/P1/P2. Include user-journey acceptance, design/frontend acceptance, security, performance, data integrity, browser/device coverage, CI, documentation, and operational readiness. Each criterion must have a verification method and evidence location.
+- `SOURCE_OF_TRUTH_AND_TRACEABILITY.md` - source precedence, requirement map, conflicts, requirement IDs, and links from source requirements to implementation/tests/docs.
+- `AI_TOOLING_RESEARCH_AND_DECISION.md` - current free-tier agent research and chosen/fallback plan.
+- `FRONTEND_DESIGN_DIRECTION.md` - actual inspiration research and the approved design language.
+- `OPEN_DECISIONS_AND_FOLLOW_UP.md` - unresolved items, why unresolved, options, evidence needed, owner/role, priority, and suggested next step.
 
 ### Documentation quality rules
 
@@ -645,7 +645,7 @@ Also create and maintain:
 
 Use the following sequence flexibly, but do not skip a phase without recording why.
 
-### Phase A — reconnaissance and truth-finding
+### Phase A - reconnaissance and truth-finding
 
 - Inspect the repository, current code, branches, issue tracker/README, available credentials, runtime, and supplied documents.
 - Inspect the Zivon skills repository selectively.
@@ -654,7 +654,7 @@ Use the following sequence flexibly, but do not skip a phase without recording w
 - Check the user-supplied logo/brand assets if present.
 - Write down the smallest end-to-end scope that satisfies the proposal and the current user priorities.
 
-### Phase B — decide and establish the working baseline
+### Phase B - decide and establish the working baseline
 
 - Create a lightweight project plan with P0/P1/P2 and a critical path.
 - Define domain entities, state machines, API contracts, permission rules, and a provisional scoring config before independent agents start overlapping work.
@@ -662,7 +662,7 @@ Use the following sequence flexibly, but do not skip a phase without recording w
 - Establish the monorepo/repo layout and coding/test commands.
 - Get the app booting locally as early as possible.
 
-### Phase C — implement the complete vertical slice
+### Phase C - implement the complete vertical slice
 
 Build in coherent end-to-end slices rather than creating disconnected screens. At minimum, demonstrate:
 
@@ -678,7 +678,7 @@ Build in coherent end-to-end slices rather than creating disconnected screens. A
 
 The exact UI can differ if source documents require it, but the underlying path must be real. Seed enough data to exercise every role and state.
 
-### Phase D — frontend art direction and polish
+### Phase D - frontend art direction and polish
 
 - Complete the design-direction research.
 - Build and refine public landing, participant workspace, reviewer queue, and admin surfaces.
@@ -686,7 +686,7 @@ The exact UI can differ if source documents require it, but the underlying path 
 - Fix responsive issues, typography, spacing, contrast, awkward content density, navigation, empty/error/offline states, keyboard paths, and reduced-motion behaviour.
 - Verify there are no inert buttons, broken links, unstyled browser defaults, placeholder assets, fake metrics, or console errors.
 
-### Phase E — quality, security, performance, and failure tests
+### Phase E - quality, security, performance, and failure tests
 
 - Run format/lint, type checks, unit, integration, contract, migration, and end-to-end tests.
 - Test tenant/team/resource isolation and IDOR cases.
@@ -700,7 +700,7 @@ The exact UI can differ if source documents require it, but the underlying path 
 - Simulate AI provider outage, runner outage, browser offline, database unavailability, and static-host/API degradation; verify defined fallback states.
 - Conduct a security review and write a prioritised defect list. Fix P0 and feasible P1 issues before calling the build complete.
 
-### Phase F — operational handoff
+### Phase F - operational handoff
 
 - Verify clean clone → setup → migration → seed → run → test from documented commands.
 - Confirm no secret or answer key is accidentally committed or served.
@@ -716,7 +716,7 @@ The exact UI can differ if source documents require it, but the underlying path 
 
 The build is not complete merely because the UI renders or the tests pass. The following should be treated as P0 unless demonstrably blocked by unavailable external credentials/services.
 
-### P0 — usable, real v1
+### P0 - usable, real v1
 
 - Repository has a documented, repeatable local run path.
 - Public event landing page is visually complete, responsive, and carries the correct Fall Back identity/details.
@@ -733,7 +733,7 @@ The build is not complete merely because the UI renders or the tests pass. The f
 - No critical security issue is known to be left unmitigated; any unavoidable limitation is explicit and disables the risky feature where necessary.
 - All required docs exist and accurately describe what was built.
 
-### P1 — important quality
+### P1 - important quality
 
 - High-quality reviewer/admin experience and complete empty/error/offline/degraded states.
 - Cross-browser and cross-OS compatibility verification for the supported matrix.
@@ -744,7 +744,7 @@ The build is not complete merely because the UI renders or the tests pass. The f
 - Basic observability, load test, and restore rehearsal evidence.
 - SEO fundamentals and accessible interaction details.
 
-### P2 — deferred but prepared
+### P2 - deferred but prepared
 
 - Alternate AI coding-agent integrations that cannot be proven free/equitable during the one-shot.
 - Additional challenge repositories and sophisticated repository provisioning automation.
