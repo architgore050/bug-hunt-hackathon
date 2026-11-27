@@ -22,6 +22,7 @@ own limits honestly.
 | `docs/` | The full documentation set (27+ documents, see below) |
 | `scripts/` | Dev bootstrap, migrations, seed reset, E2E journey, load test |
 | `.github/workflows/` | CI: backend tests + frontend build |
+| `.opencode/skills/` | Project-local OpenCode skills: eight-lens code review suite and `be-ambitious` |
 
 ## Quick start (D0 local profile)
 
