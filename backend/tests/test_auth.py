@@ -104,7 +104,11 @@ def test_admin_registration_and_passwordless_first_sign_in(client):
     organizer.headers.update({"Authorization": f"Bearer {organizer_login['access_token']}"})
     forbidden = organizer.post(
         "/v1/auth/register",
-        json={"email": f"unauthorized-{__import__('uuid').uuid4().hex[:8]}@example.com", "name": "Unauthorized", "role": "reviewer"},
+        json={
+            "email": f"unauthorized-{__import__('uuid').uuid4().hex[:8]}@example.com",
+            "name": "Unauthorized",
+            "role": "reviewer",
+        },
     )
     assert forbidden.status_code == 403
 
