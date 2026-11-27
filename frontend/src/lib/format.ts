@@ -69,8 +69,8 @@ export function fmtPoints(n: number | null | undefined): string {
 }
 
 /** Milliseconds between the server clock and this browser at fetch time. */
-export function clockOffset(serverIso: string): number {
-  return new Date(serverIso).getTime() - Date.now()
+export function clockOffset(serverIso: string, fetchedAtMs = Date.now()): number {
+  return new Date(serverIso).getTime() - fetchedAtMs
 }
 
 export function nowWithOffset(offsetMs: number): number {

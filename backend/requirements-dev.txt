@@ -1,6 +1,0 @@
-# Development and CI tooling. Not part of the runtime image.
-# Pinned exactly: CI and local runs must see identical tool behavior.
-ruff==0.17.6
-bandit[toml]==1.9.4
-pip-audit==2.10.1
-pytest-cov==7.1.0

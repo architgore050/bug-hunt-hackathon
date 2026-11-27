@@ -1,0 +1,24 @@
+{
+  "name": "bug-hunt-ctf-platform",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "cd frontend && npm run build",
+    "lint": "cd frontend && npm run lint",
+    "start": "NODE_ENV=production tsx server.ts"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "express": "^5.3.0",
+    "multer": "^2.5.0"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^24.19.2",
+    "tsx": "^4.23.15"
+  }
+}
