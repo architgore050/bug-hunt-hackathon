@@ -23,12 +23,18 @@ function roleLabel(role: string): string {
 
 export function PublicLayout() {
   const { user } = useAuth()
+  const { pathname } = useLocation()
   return (
     <div>
       <header className="topbar">
         <div className="wrap topbar-inner">
           <Wordmark />
           <nav className="topnav" aria-label="Site">
+            {pathname === '/' ? (
+              <a href="#how-it-works">How it works</a>
+            ) : (
+              <Link to="/#how-it-works">How it works</Link>
+            )}
             <NavLink to="/rules">Rules</NavLink>
             {user ? (
               <NavLink to={homePathFor(user.role)}>Open console</NavLink>

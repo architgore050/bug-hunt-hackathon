@@ -224,3 +224,107 @@ export function ReceiptIcon(props: IconProps) {
     props,
   )
 }
+
+export function CaptureFlagMark({
+  className = '',
+  style,
+}: {
+  className?: string
+  style?: CSSProperties
+}) {
+  return (
+    <svg
+      viewBox="0 0 260 250"
+      width="260"
+      height="250"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+      className={className}
+      style={style}
+    >
+      {/* Concentric dashed ground anchor rings */}
+      <ellipse
+        cx="84"
+        cy="214"
+        rx="60"
+        ry="16"
+        stroke="var(--line-strong)"
+        strokeWidth="1.2"
+        strokeDasharray="2 4"
+      />
+      <ellipse
+        cx="84"
+        cy="214"
+        rx="34"
+        ry="9"
+        stroke="var(--signal-dim)"
+        strokeWidth="1.35"
+        strokeDasharray="3 4"
+      />
+
+      {/* Static vertical flagpole mast and finial */}
+      <line
+        x1="84"
+        y1="38"
+        x2="84"
+        y2="214"
+        stroke="var(--signal)"
+        strokeWidth="4.5"
+        strokeLinecap="round"
+      />
+      <circle cx="84" cy="30" r="6" fill="var(--signal)" />
+
+      {/* Waving curved swallowtail pennant with crisp </> mark */}
+      <g className="flag-cloth-front">
+        <path
+          d="M84 48 C118 32, 152 60, 198 44 L177 82 L202 118 C154 132, 120 104, 84 118 Z"
+          fill="var(--signal)"
+          stroke="var(--signal)"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+        {/* Crisp </> code mark in dark ink */}
+        <path
+          d="M123 73 L110 83 L123 93"
+          stroke="var(--ink)"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <line
+          x1="141"
+          y1="70"
+          x2="132"
+          y2="96"
+          stroke="var(--ink)"
+          strokeWidth="3"
+          strokeLinecap="round"
+        />
+        <path
+          d="M149 73 L162 83 L149 93"
+          stroke="var(--ink)"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </g>
+
+      {/* Architectural crosshairs and pinpoint accents matching reference */}
+      <g stroke="var(--muted)" strokeWidth="1.25">
+        <line x1="36" y1="84" x2="36" y2="94" />
+        <line x1="31" y1="89" x2="41" y2="89" />
+
+        <line x1="210" y1="138" x2="210" y2="148" />
+        <line x1="205" y1="143" x2="215" y2="143" />
+
+        <line x1="176" y1="168" x2="176" y2="174" />
+        <line x1="173" y1="171" x2="179" y2="171" />
+      </g>
+      <circle cx="198" cy="36" r="2.2" fill="var(--signal)" />
+      <circle cx="54" cy="144" r="2.2" fill="var(--signal)" />
+      <circle cx="190" cy="70" r="1.4" fill="var(--muted)" />
+    </svg>
+  )
+}
+
