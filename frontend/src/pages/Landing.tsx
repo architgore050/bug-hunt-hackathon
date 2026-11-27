@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
@@ -7,6 +8,29 @@ import { CountdownTimer, ErrorBanner, LoadingLine, Panel, SectionHeading, Status
 import { FlagIcon, ShieldIcon, TerminalCaretIcon } from '../ui/icons'
 
 const EVENT_DATE_LINE = 'Proposed date: 6 December 2026, Asia/Kolkata (IST)'
+
+function useScrollReveal(): void {
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('IntersectionObserver' in window)) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-revealed')
+            observer.unobserve(entry.target)
+          }
+        }
+      },
+      { threshold: 0.08, rootMargin: '0px 0px -30px 0px' }
+    )
+
+    const elements = document.querySelectorAll('.scroll-reveal')
+    elements.forEach((el) => observer.observe(el))
+
+    return () => observer.disconnect()
+  }, [])
+}
 
 function useServerOffset(): number | null {
   const q = useQuery({
@@ -167,7 +191,7 @@ function EventStatusStrip() {
 
 function EventOverview() {
   return (
-    <section id="how-it-works" aria-labelledby="overview-h" style={{ display: 'grid', gap: 18 }}>
+    <section id="how-it-works" className="scroll-reveal" aria-labelledby="overview-h" style={{ display: 'grid', gap: 18 }}>
       <SectionHeading num="01" title="Event overview" note="SDC · full-stack debugging" />
       <div className="grid-2">
         <div>
@@ -216,7 +240,7 @@ const FORMAT_PARTS = [
 
 function TheFormat() {
   return (
-    <section aria-labelledby="format-h" style={{ display: 'grid', gap: 18 }}>
+    <section className="scroll-reveal" aria-labelledby="format-h" style={{ display: 'grid', gap: 18 }}>
       <SectionHeading num="02" title="The format" note="180 working minutes" />
       <div className="timeline">
         {FORMAT_PARTS.map((p, i) => (
@@ -251,7 +275,7 @@ const SCORE_SEGMENTS = [
 
 function Scoring() {
   return (
-    <section aria-labelledby="scoring-h" style={{ display: 'grid', gap: 18 }}>
+    <section className="scroll-reveal" aria-labelledby="scoring-h" style={{ display: 'grid', gap: 18 }}>
       <SectionHeading num="03" title="Scoring" note="provisional, frozen before the event" />
       <div className="scorebar" role="img" aria-label="Score split: functional tests 50 percent, code review 30 percent, evidence and report quality 20 percent">
         {SCORE_SEGMENTS.map((s) => (
@@ -304,7 +328,7 @@ const SIDE_ITEMS = [
 
 function SideQuests() {
   return (
-    <section aria-labelledby="sidequests-h" style={{ display: 'grid', gap: 18 }}>
+    <section className="scroll-reveal" aria-labelledby="sidequests-h" style={{ display: 'grid', gap: 18 }}>
       <SectionHeading num="04" title="Side quests" note="optional CTF track" />
       <div className="grid-split">
         <p>
@@ -340,7 +364,7 @@ const CONDUCT_POINTS = [
 
 function Conduct() {
   return (
-    <section aria-labelledby="conduct-h" style={{ display: 'grid', gap: 18 }}>
+    <section className="scroll-reveal" aria-labelledby="conduct-h" style={{ display: 'grid', gap: 18 }}>
       <SectionHeading num="05" title="Conduct" note="scope and fair play" />
       <div className="grid-2">
         <div className="ruled panel">
@@ -413,7 +437,7 @@ const FAQ: { q: string; a: string }[] = [
 
 function Faq() {
   return (
-    <section aria-labelledby="faq-h" style={{ display: 'grid', gap: 12 }}>
+    <section className="scroll-reveal" aria-labelledby="faq-h" style={{ display: 'grid', gap: 12 }}>
       <SectionHeading num="06" title="Questions" note="from the rules" />
       <div>
         {FAQ.map((item) => (
@@ -431,6 +455,7 @@ function Faq() {
 
 export default function Landing() {
   useServerOffset()
+  useScrollReveal()
 
   return (
     <div className="wrap page stack-lg">
@@ -483,36 +508,38 @@ export default function Landing() {
       <Faq />
 
       {/* Final call line */}
-      <Panel exhibit="EX-END" title="How to enter" className="panel">
-        <div className="grid-split">
-          <div>
-            <p className="serif-quote">
-              Registrations run through the club. Organizers create accounts through the admin panel; members then
-              sign in with their email id. Accept the rules and you are in. On event day, sign in and the lobby takes
-              over: round state, announcements and your assignment.
-            </p>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 14 }}>
-              <Link to="/login" className="btn btn-primary">Sign in</Link>
+      <div className="scroll-reveal">
+        <Panel exhibit="EX-END" title="How to enter" className="panel">
+          <div className="grid-split">
+            <div>
+              <p className="serif-quote">
+                Registrations run through the club. Organizers create accounts through the admin panel; members then
+                sign in with their email id. Accept the rules and you are in. On event day, sign in and the lobby takes
+                over: round state, announcements and your assignment.
+              </p>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 14 }}>
+                <Link to="/login" className="btn btn-primary">Sign in</Link>
+              </div>
+            </div>
+            <div className="ruled panel-2" style={{ padding: '6px 16px' }}>
+              <div className="kv-row">
+                <span className="kv-key">Round flow</span>
+                <span className="stage-flow">draft {'>'} sealed {'>'} armed {'>'} active {'>'} ended {'>'} evaluating {'>'} released</span>
+              </div>
+              <div className="kv-row">
+                <span className="kv-key">Surface</span>
+                <span className="stage-flow">editor {'+'} report desk {'+'} receipts</span>
+              </div>
+              <div className="kv-row" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <span className="kv-key">Bring</span>
+                <span className="stage-flow" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <TerminalCaretIcon size={13} /> your laptop, charger, student ID
+                </span>
+              </div>
             </div>
           </div>
-          <div className="ruled panel-2" style={{ padding: '6px 16px' }}>
-            <div className="kv-row">
-              <span className="kv-key">Round flow</span>
-              <span className="stage-flow">draft {'>'} sealed {'>'} armed {'>'} active {'>'} ended {'>'} evaluating {'>'} released</span>
-            </div>
-            <div className="kv-row">
-              <span className="kv-key">Surface</span>
-              <span className="stage-flow">editor {'+'} report desk {'+'} receipts</span>
-            </div>
-            <div className="kv-row" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <span className="kv-key">Bring</span>
-              <span className="stage-flow" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <TerminalCaretIcon size={13} /> your laptop, charger, student ID
-              </span>
-            </div>
-          </div>
-        </div>
-      </Panel>
+        </Panel>
+      </div>
     </div>
   )
 }
