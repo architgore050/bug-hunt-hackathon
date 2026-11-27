@@ -735,6 +735,9 @@ def main(reset: bool) -> None:
                 "explain_md": LEVEL_EXPLAIN_MD[n],
                 "max_span": 25,
                 "max_flags_per_level": 12,
+                # Development fixture ceiling. Each level can claim every bug once;
+                # CTF bonuses accumulate as points outside this evaluation score.
+                "max_points": sum(bug[6] for bug in GT_BUGS),
                 "feedback_mode": "hidden",
                 "leaderboard_mode": "hidden",
             }

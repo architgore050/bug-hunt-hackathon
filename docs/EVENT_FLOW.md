@@ -161,14 +161,17 @@ whose effective execution close (ends_at + adjustments + grace) has passed:
 - The browser flushing before zero is best-effort only; the scheduler is the
   authority when the participant is offline or the browser is closed.
 
-## 7. Team, score, and results surfaces
+## 7. Team, points, and results surfaces
 
 - `GET /v1/progress`: the participant's pointer, per-level statuses, teammate
   statuses (names only, no content), and the team repo choice.
-- `GET /v1/team/score`: per-level team totals and the aggregate, derived from
-  the ledger (never from client state).
+- `GET /v1/team/score`: cumulative points plus per-level points, evaluation
+  score, configured `max_points`, and evaluation state, all derived from
+  server state. Points include every ledger entry. Level score excludes CTF
+  bonuses and is shown over `max_points` only after evaluation completes.
 - Leaderboard: the existing per-stage snapshot machinery serves each level
-  stage; `GET /v1/leaderboard/{stage_id}` keeps its contract.
+  stage; `GET /v1/leaderboard/{stage_id}` keeps its contract. The participant
+  UI labels snapshot values as points.
 - Team-level deduplication stays as built: award claims are unique per
   (stage, team, award unit), so one award per team per bug/root cause is the
   default; the policy key `scoring.team_dedupe` records the choice

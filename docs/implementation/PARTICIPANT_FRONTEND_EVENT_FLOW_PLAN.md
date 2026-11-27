@@ -1,11 +1,12 @@
-Status: implementation plan for feat/participant-four-level-frontend, created 2026-11-26
+Status: implementation plan for feat/participant-four-level-frontend, created 2026-11-26, updated 2026-11-27
 
 # Participant Frontend Event Flow: Implementation Plan
 
 One-page plan for the participant-facing four-level experience. It reconciles
 the participant website specification (`docs/design/Bug_Hunt_CTF_Participant_Website_Spec.md`)
 with the actual backend in `main` (PR #20 flow). The backend is the authority;
-no backend changes are planned.
+the points-card update adds participant-safe `max_points` and evaluation-state
+fields without changing progression or scoring decisions.
 
 ## 1. Current state summary
 
@@ -51,7 +52,7 @@ implemented. This branch implements it against the shipped backend.
 | Artifact submit L3-4 | same endpoint with `{artifact_id}` or `{compute_diff: true}`; neither -> 422 `ARTIFACT_REQUIRED`; zero flags with `confirm_empty: true` allowed (empty submission recorded) |
 | Upload | `POST /v1/uploads?level=N` multipart `file`; ext zip/diff/patch, <=6 MiB, ZIP central-directory checks -> 200 `{artifact_id, kind, filename, sha256, size_bytes, entry_count, status:"staged"}` |
 | Build/Run | `POST /v1/runs` -> 503 `RUNNER_UNAVAILABLE` while disabled (`/v1/config.runner_enabled`) |
-| Score/leaderboard | `GET /v1/team/score`, `GET /v1/leaderboard/{level_stage_id}` (hidden/frozen/live modes) |
+| Points/leaderboard | `GET /v1/team/score` returns cumulative points and completed-level `score / max_points`; `GET /v1/leaderboard/{level_stage_id}` uses hidden/frozen/live modes |
 | Account | `GET /v1/me/sessions`, `DELETE /v1/me/sessions/{id}` (v1 Account page reused) |
 
 Draft payload conventions the backend reads back (auto-submit + compute_diff):
@@ -92,7 +93,7 @@ deletion, extra path = new file).
 - `src/lib/api-levels.ts` - typed four-level API boundary (all endpoints above,
   request/response types, no `any` at state boundaries). Orchestrator-owned.
 - `src/lib/event-session.tsx` - progress/team/levels query hooks + polling
-  intervals (progress 5 s while pointer level active, 30 s otherwise; score 5 s
+  intervals (progress 5 s while pointer level active, 30 s otherwise; points 5 s
   during levels / 30 s otherwise; gate 5 s while waiting), server clock offset
   via `GET /v1/time` (display only), Continue/Resume derivation.
 - `src/lib/persistence.ts` - IndexedDB store (per user+level): tabs, active
@@ -104,8 +105,8 @@ deletion, extra path = new file).
   single level window), `ConfirmModal.tsx` (focus trap, safe-action default
   focus, Esc = safe, live cooldown announcement, reusable 7 s pattern).
 - Dashboard: `src/pages/participant/Dashboard.tsx` + `src/components/dashboard/*`
-  (score card, leaderboard card with hidden/frozen banner, level list,
-  Continue/Resume CTA).
+  (cumulative points card with completed-level score fractions, leaderboard
+  card with hidden/frozen banner, level list, Continue/Resume CTA).
 - Explanations + repo lock: `src/pages/participant/LevelExplain.tsx`,
   `LevelKnowMore.tsx`, `LevelRules.tsx`, `LevelGuide.tsx`,
   `src/components/lock/RepoLockSection.tsx` (7 s cooldown, idempotent lock).

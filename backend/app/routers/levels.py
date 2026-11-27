@@ -13,6 +13,7 @@ enforced here, on the server, for every write path.
 from __future__ import annotations
 
 import json as jsonlib
+import math
 import os
 from datetime import timedelta
 
@@ -65,6 +66,17 @@ def _member(s, p: Principal) -> dict:
     if row is None:
         raise ApiError("AUTH_FORBIDDEN", message="You are not assigned to a team for this event.")
     return dict(row)
+
+
+def _configured_max_points(config: dict | None) -> float | None:
+    value = (config or {}).get("max_points")
+    if value is None:
+        return None
+    try:
+        points = float(value)
+    except (TypeError, ValueError):
+        return None
+    return points if math.isfinite(points) and points >= 0 else None
 
 
 def _require_live_event(member: dict) -> None:
@@ -227,6 +239,7 @@ def list_levels(p: Principal = Depends(get_principal)):
                     "starts_at": r["starts_at"].isoformat() if r["starts_at"] else None,
                     "ends_at": r["ends_at"].isoformat() if r["ends_at"] else None,
                     "grace_seconds": r["grace_seconds"],
+                    "max_points": _configured_max_points(r["config"]),
                     "gate_allowed": gate["allowed"],
                     "gate_reason": gate["reason"],
                     "participant_status": progress.get(int(r["ordinal"]), "locked"),
@@ -620,40 +633,93 @@ def team_score(p: Principal = Depends(get_principal)):
     with app_session() as s:
         member = _member(s, p)
         team_id = str(member["team_id"])
+        event_id = str(member["event_id"])
+        stages = (
+            s.execute(
+                text(
+                    "SELECT id, ordinal, name, config FROM app.stages "
+                    "WHERE event_id = CAST(:e AS uuid) AND kind = 'level' ORDER BY ordinal"
+                ),
+                {"e": event_id},
+            )
+            .mappings()
+            .all()
+        )
         rows = (
             s.execute(
                 text(
                     "SELECT st.ordinal AS level_no, st.name, l.component, SUM(l.points) AS points "
                     "FROM app.score_ledger_entries l JOIN app.stages st ON st.id = l.stage_id "
-                    "WHERE l.team_id = CAST(:t AS uuid) AND st.kind = 'level' "
+                    "WHERE l.team_id = CAST(:t AS uuid) AND st.event_id = CAST(:e AS uuid) AND st.kind = 'level' "
                     "GROUP BY st.ordinal, st.name, l.component ORDER BY st.ordinal"
                 ),
-                {"t": team_id},
+                {"t": team_id, "e": event_id},
             )
             .mappings()
             .all()
         )
+        evaluations = {
+            r["stage_id"]: r
+            for r in s.execute(
+                text(
+                    "SELECT st.id AS stage_id, COUNT(s.id) AS submission_count, "
+                    "COALESCE(BOOL_OR("
+                    "EXISTS (SELECT 1 FROM app.jobs j WHERE j.payload ->> 'submission_id' = s.id::text "
+                    "AND j.status IN ('queued', 'running', 'dead')) OR "
+                    "EXISTS (SELECT 1 FROM app.review_items r WHERE r.submission_id = s.id AND r.status <> 'decided') OR "
+                    "s.status IN ('needs_review', 'in_review')"
+                    "), false) AS evaluating "
+                    "FROM app.stages st LEFT JOIN app.submissions s "
+                    "ON s.stage_id = st.id AND s.team_id = CAST(:t AS uuid) "
+                    "WHERE st.event_id = CAST(:e AS uuid) AND st.kind = 'level' GROUP BY st.id"
+                ),
+                {"t": team_id, "e": event_id},
+            )
+            .mappings()
+            .all()
+        }
         total = s.execute(
             text(
                 "SELECT COALESCE(SUM(l.points), 0) FROM app.score_ledger_entries l "
-                "JOIN app.stages st ON st.id = l.stage_id WHERE l.team_id = CAST(:t AS uuid) AND st.kind = 'level'"
+                "JOIN app.stages st ON st.id = l.stage_id "
+                "WHERE l.team_id = CAST(:t AS uuid) AND st.event_id = CAST(:e AS uuid) AND st.kind = 'level'"
             ),
-            {"t": team_id},
+            {"t": team_id, "e": event_id},
         ).scalar_one()
     by_level: dict[int, dict] = {}
+    for stage in stages:
+        level_no = int(stage["ordinal"])
+        evaluation = evaluations.get(stage["id"], {})
+        submission_count = int(evaluation.get("submission_count") or 0)
+        evaluation_status = "not_submitted"
+        if submission_count:
+            evaluation_status = "evaluating" if evaluation.get("evaluating") else "complete"
+        by_level[level_no] = {
+            "level_no": level_no,
+            "name": stage["name"],
+            "components": {},
+            "total": 0.0,
+            "points": 0.0,
+            "score": 0.0,
+            "max_points": _configured_max_points(stage["config"]),
+            "evaluation_status": evaluation_status,
+        }
     for r in rows:
-        lvl = by_level.setdefault(
-            int(r["level_no"]), {"level_no": int(r["level_no"]), "name": r["name"], "components": {}, "total": 0.0}
-        )
-        lvl["components"][r["component"]] = float(r["points"])
-        lvl["total"] += float(r["points"])
-    released_only = float(total) if member["event_status"] in ("closed", "finalized") else None
+        lvl = by_level[int(r["level_no"])]
+        points = float(r["points"])
+        lvl["components"][r["component"]] = points
+        lvl["total"] += points
+    for lvl in by_level.values():
+        lvl["points"] = lvl["total"]
+        lvl["score"] = sum(points for component, points in lvl["components"].items() if component != "ctf_bonus")
+    released = member["event_status"] in ("closed", "finalized")
     return {
         "team_id": team_id,
         "levels": list(by_level.values()),
         "total": float(total),
-        "released": member["event_status"] in ("closed", "finalized"),
-        "released_total": released_only,
+        "points": float(total),
+        "released": released,
+        "released_total": float(total) if released else None,
     }
 
 

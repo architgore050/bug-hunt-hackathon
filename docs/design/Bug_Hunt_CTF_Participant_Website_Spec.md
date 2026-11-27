@@ -89,7 +89,7 @@ D1 uses **polling**, not push. The original wording ("server sends data every ti
 
 | Data | Endpoint | Poll interval (default) | Behavior |
 |------|----------|-------------------------|----------|
-| Team score | `GET /v1/team/score` | 5 s during levels, 30 s otherwise | Returns the score and a `version`; UI animates on change |
+| Team points | `GET /v1/team/score` | 5 s during levels, 30 s otherwise | Returns cumulative points and completed-level `score / max points` |
 | Leaderboard | `GET /v1/leaderboard?since=<version>` | Same | `304` if unchanged; otherwise the full snapshot, cached in memory and IndexedDB |
 | Progress / node states | `GET /v1/progress` | Same, plus after every submit | Drives the progress bar and Dashboard cards |
 
@@ -176,9 +176,9 @@ Centered, dimmed backdrop, focus trapped. Default focus on the *safe* button. `E
 - States: *Disabled (waiting)*, *Enabled*, *Checking…*, *Level closed*.
 - The server re-checks on entry to the execution page; the client check is only for the button.
 
-### 3.7 Team score and leaderboard widgets
-- **Team score card:** score, last-updated time, subtle animation on change, live region announcement ("Team score is now 140").
-- **Leaderboard:** rank, team name, score; your team highlighted and pinned if outside the visible rows. Reorders with animation when the version changes. Respects the round's mode (live, frozen, hidden) with a visible banner for frozen or hidden. Tie-break order is published on the Event details page.
+### 3.7 Team points and leaderboard widgets
+- **Points card:** cumulative points at the top. Completed levels appear below as `score / max points`; levels still being evaluated say `Evaluating`.
+- **Leaderboard:** rank, team name, points; your team highlighted and pinned if outside the visible rows. Reorders with animation when the version changes. Respects the round's mode (live, frozen, hidden) with a visible banner for frozen or hidden. Tie-break order is published on the Event details page.
 
 ---
 
@@ -207,7 +207,7 @@ Centered, dimmed backdrop, focus trapped. Default focus on the *safe* button. `E
 **Layout:**
 - **Top:** team name; participant name after sign-in; team info in a corner (members, lead badge, repo choice once locked, each member's level status); progress bar.
 - **Cards:**
-  - Team score (live).
+  - Team points (live).
   - Leaderboard (live, cached).
   - Level status list: each level shows *upcoming, available, in progress, submitted, auto-submitted*.
   - **Resume** button with a dynamic label (for example "Resume: Level 2 execution") leading to the node pointer's page. If the event hasn't started or the participant is finished, it says so.
@@ -385,12 +385,12 @@ All rows carry `tenant_id`, as the architecture requires.
 - **Never unpacked on the API or main VM.** Extraction and patch application happen only on the isolated runner, with path rules (no absolute paths, no `..`, no symlinks, no files outside the repo) and resource limits.
 - **Diff** is applied against the frozen base version of the team's repo; a failed apply is reported to the participant with the reason before they confirm.
 - **Evaluation:** the evaluator creates official runs (for example hidden tests against the submitted code) and writes the results as score components. Level 4 (tests and docs) needs its own scoring definition [OPEN: D-04, D-05].
-- After submit, the participant sees "Submission received, being evaluated". Scores appear on the Dashboard, leaderboard and progress bar as evaluations complete.
+- After submit, the participant sees "Submission received, being evaluated". Points appear on the Dashboard, leaderboard and progress bar as evaluations complete.
 
 ### 5.9 Scoring notes
 - Levels 1-2 are **one-shot submissions**, so showing the team score as soon as it's evaluated gives little room for probing the answer key. If a level ever allows resubmission, hide per-flag results (architecture INT-01).
 - If human review is in the loop, scores update after review, not instantly. The UI shows "Evaluating…" until then.
-- Team total adds up as members' evaluations finish. Dedupe across teammates is a decision (D-02).
+- Team points add up as members' evaluations finish. Dedupe across teammates is a decision (D-02).
 
 ### 5.10 Security notes specific to this UI
 - Flags and explanations are plain text, never rendered as HTML.

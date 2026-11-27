@@ -85,10 +85,10 @@ export default function Results() {
       {resultsQ.data?.released && (
         <>
           <div className="grid-split">
-            <Panel exhibit="EX-01" title="Score breakdown">
+            <Panel exhibit="EX-01" title="Points breakdown">
               <div style={{ display: 'flex', gap: 20, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 14 }}>
                 <div>
-                  <span className="overline" style={{ display: 'block' }}>Total</span>
+                  <span className="overline" style={{ display: 'block' }}>Total points</span>
                   <span className="countdown" style={{ fontSize: 'clamp(2rem, 5vw, 3rem)' }}>{fmtPoints(resultsQ.data.total)}</span>
                 </div>
                 {(resultsQ.data.penalties ?? 0) !== 0 && (
