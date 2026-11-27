@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import type { PublicEvent, TimeResponse } from '../lib/types'
 import { clockOffset, fmtDateTime, proposedDateLabel } from '../lib/format'
-import { Chip, CountdownTimer, ErrorBanner, LoadingLine, Panel, SectionHeading, StatusChip, useNowTick } from '../ui/components'
+import { CountdownTimer, ErrorBanner, LoadingLine, Panel, SectionHeading, StatusChip, useNowTick } from '../ui/components'
 import { FlagIcon, ShieldIcon, TerminalCaretIcon } from '../ui/icons'
 
 const EVENT_DATE_LINE = 'Proposed date: 6 December 2026, Asia/Kolkata (IST)'
@@ -18,6 +18,69 @@ function useServerOffset(): number | null {
   return null
 }
 
+/* ---------- decorative flag illustration ---------- */
+
+function FlagIllustration() {
+  return (
+    <svg
+      viewBox="0 0 220 220"
+      width={280}
+      height={280}
+      fill="none"
+      aria-hidden="true"
+      style={{ maxWidth: '100%', height: 'auto' }}
+    >
+      {/* Dotted arc base */}
+      <path
+        d="M40 188 Q110 218 180 188"
+        stroke="var(--line-strong)"
+        strokeWidth="1.2"
+        strokeDasharray="3.5 5"
+        strokeLinecap="round"
+      />
+      {/* Pole */}
+      <line
+        x1="72" y1="30" x2="72" y2="198"
+        stroke="var(--signal-dim)"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      />
+      {/* Pole cap */}
+      <circle cx="72" cy="28" r="3.5" fill="var(--signal)" />
+      {/* Flag body */}
+      <path
+        d="M72 35 L172 42 Q168 65 172 90 L72 83 Z"
+        fill="var(--signal)"
+      />
+      {/* Code symbol on flag */}
+      <text
+        x="117"
+        y="70"
+        fontFamily="'IBM Plex Mono', ui-monospace, monospace"
+        fontSize="22"
+        fill="var(--ink)"
+        textAnchor="middle"
+        fontWeight="600"
+      >
+        {'< / >'}
+      </text>
+      {/* Trailing wisps */}
+      <path d="M172 50 Q182 48 186 52" stroke="var(--signal)" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+      <path d="M172 65 Q180 63 184 67" stroke="var(--signal)" strokeWidth="1.3" fill="none" strokeLinecap="round" />
+      <path d="M172 80 Q178 78 182 82" stroke="var(--signal)" strokeWidth="1.1" fill="none" strokeLinecap="round" />
+      {/* Decorative crosses */}
+      <text x="190" y="38" fontFamily="'IBM Plex Mono', monospace" fontSize="15" fill="var(--line-strong)">+</text>
+      <text x="198" y="78" fontFamily="'IBM Plex Mono', monospace" fontSize="11" fill="var(--line-strong)">+</text>
+      <text x="190" y="108" fontFamily="'IBM Plex Mono', monospace" fontSize="14" fill="var(--line-strong)">+</text>
+      {/* Decorative dots */}
+      <circle cx="52" cy="100" r="1.8" fill="var(--line-strong)" />
+      <circle cx="202" cy="95" r="1.5" fill="var(--line-strong)" />
+    </svg>
+  )
+}
+
+/* ---------- live event clock ---------- */
+
 function EventStatusStrip() {
   const timeQ = useQuery({
     queryKey: ['public-time'],
@@ -31,16 +94,26 @@ function EventStatusStrip() {
   })
   const nowMs = useNowTick()
   const offset = timeQ.data ? clockOffset(timeQ.data.server_time) : null
+  const event = eventQ.data?.event ?? null
+
+  // Short date label for the countdown header, e.g. "6 Dec"
+  const countdownDateLabel = event?.starts_at
+    ? new Date(event.starts_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })
+    : null
 
   return (
-    <Panel exhibit="EX-00" title="Event status" className="panel" ariaLabel="Live event status">
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        <div style={{ display: 'grid', gap: 8, minWidth: 0 }}>
+    <div className="panel landing-reveal landing-d5" aria-label="Live event status">
+      <div className="landing-clock-header">
+        <span className="landing-clock-live">Live</span>
+        <span className="landing-clock-label">Event clock</span>
+      </div>
+      <div className="landing-clock-body">
+        <div className="landing-clock-info">
           {eventQ.isLoading && <LoadingLine label="Loading event record" />}
           {eventQ.isError && <ErrorBanner error={eventQ.error} onRetry={() => void eventQ.refetch()} />}
           {eventQ.data?.event === null && (
             <>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="landing-clock-event-row">
                 <StatusChip value="pending" />
                 <span className="mono small">Proposed date: {proposedDateLabel()}</span>
               </div>
@@ -50,31 +123,30 @@ function EventStatusStrip() {
               </p>
             </>
           )}
-          {eventQ.data?.event && (
+          {event && (
             <>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span className="mono" style={{ fontSize: 15 }}>{eventQ.data.event.name}</span>
-                <StatusChip value={eventQ.data.event.status} size="lg" />
+              <div className="landing-clock-event-row">
+                <span className="landing-clock-event-name">{event.name}</span>
+                <StatusChip value={event.status} size="lg" />
               </div>
               <div className="muted small mono">
-                {eventQ.data.event.starts_at
-                  ? `Starts ${fmtDateTime(eventQ.data.event.starts_at)}`
+                {event.starts_at
+                  ? `Starts ${fmtDateTime(event.starts_at)}`
                   : 'Start time not announced'}{' '}
-                {'·'} {eventQ.data.event.duration_minutes} minutes {'·'} team cap {eventQ.data.event.max_teams}{' '}
-                {'·'} participant cap {eventQ.data.event.max_participants}
+                · {event.duration_minutes} min · {event.max_teams} teams max
               </div>
             </>
           )}
         </div>
-        <div style={{ textAlign: 'right' }}>
-          {eventQ.data?.event?.starts_at && !timeQ.isError && (
+        <div className="landing-countdown-block">
+          {event?.starts_at && !timeQ.isError && (
             <CountdownTimer
-              targetMs={new Date(eventQ.data.event.starts_at).getTime()}
+              targetMs={new Date(event.starts_at).getTime()}
               nowMs={nowMs + (offset ?? 0)}
-              label="Starts in"
+              label={countdownDateLabel ? `Starts in (${countdownDateLabel})` : 'Starts in'}
             />
           )}
-          {(!eventQ.data || !eventQ.data.event?.starts_at) && (
+          {(!eventQ.data || !event?.starts_at) && (
             <div style={{ display: 'grid', gap: 4 }}>
               <span className="overline">Server clock</span>
               <span className="countdown" style={{ fontSize: 18 }}>
@@ -87,14 +159,16 @@ function EventStatusStrip() {
           </div>
         </div>
       </div>
-    </Panel>
+    </div>
   )
 }
 
-function TheBrief() {
+/* ---------- section: event overview ---------- */
+
+function EventOverview() {
   return (
-    <section aria-labelledby="brief-h" style={{ display: 'grid', gap: 18 }}>
-      <SectionHeading num="01" title="The brief" note="data sheet" />
+    <section id="how-it-works" aria-labelledby="overview-h" style={{ display: 'grid', gap: 18 }}>
+      <SectionHeading num="01" title="Event overview" note="SDC · full-stack debugging" />
       <div className="grid-2">
         <div>
           <p className="serif-quote">
@@ -131,6 +205,8 @@ function TheBrief() {
   )
 }
 
+/* ---------- section: format ---------- */
+
 const FORMAT_PARTS = [
   { num: 'P1', title: 'Setup and bug reconnaissance', minutes: 30, note: 'Run the app, map the codebase, log first symptoms.' },
   { num: 'P2', title: 'Debugging and root-cause analysis', minutes: 35, note: 'Reproduce failures, trace causes, file structured reports.' },
@@ -164,6 +240,8 @@ function TheFormat() {
     </section>
   )
 }
+
+/* ---------- section: scoring ---------- */
 
 const SCORE_SEGMENTS = [
   { label: 'Functional tests', pct: 50, bg: 'var(--signal)' },
@@ -203,6 +281,8 @@ function Scoring() {
     </section>
   )
 }
+
+/* ---------- section: side quests ---------- */
 
 const SIDE_ITEMS = [
   {
@@ -247,6 +327,8 @@ function SideQuests() {
     </section>
   )
 }
+
+/* ---------- section: conduct ---------- */
 
 const CONDUCT_POINTS = [
   'Attack only the provided challenge application, on your own machine, inside the event window.',
@@ -300,6 +382,8 @@ function Conduct() {
   )
 }
 
+/* ---------- section: faq ---------- */
+
 const FAQ: { q: string; a: string }[] = [
   {
     q: 'Who can participate and how do we register?',
@@ -343,43 +427,55 @@ function Faq() {
   )
 }
 
+/* ---------- landing page ---------- */
+
 export default function Landing() {
   useServerOffset()
 
   return (
     <div className="wrap page stack-lg">
       {/* Hero */}
-      <section aria-labelledby="hero-h" style={{ display: 'grid', gap: 22, paddingTop: 26 }}>
-        <div className="hero-meta">
-          <Chip tone="signal" size="lg">6 December 2026</Chip>
-          <Chip tone="muted" size="lg">VIT Bhopal University</Chip>
-          <Chip tone="muted" size="lg">Asia/Kolkata</Chip>
-          <Chip tone="muted" size="lg">Offline</Chip>
-        </div>
+      <section className="landing-hero" aria-labelledby="hero-h">
         <div>
-          <p className="overline-strong">Case file: Fall Back {'·'} a full-stack debugging challenge</p>
-          <h1 className="display" id="hero-h" style={{ maxWidth: '20ch' }}>
-            The app arrives broken. Your team closes the case.
+          <div className="landing-meta landing-reveal landing-d1">
+            <span>SDC, VIT Bhopal</span>
+            <span className="landing-meta-sep">·</span>
+            <span>6 December 2026</span>
+            <span className="landing-meta-sep">·</span>
+            <span>Offline</span>
+            <span className="landing-meta-sep">·</span>
+            <span>Teams of 4 to 5</span>
+          </div>
+          <h1 className="landing-title landing-reveal landing-d2" id="hero-h">
+            TheFallBack
           </h1>
-          <p style={{ maxWidth: '62ch', fontSize: 16.5 }}>
-            On event day, every team receives the same seeded full-stack application with defects planted across
-            backend routes, database access and front-end logic. Reproduce the failures, trace each one to its root
-            cause, repair the code, and file evidence-backed reports before the server clock runs out. Verified CTF
-            flags along the way pay capped bonus points.
+          <p className="landing-subtitle landing-reveal landing-d3">
+            A broken full-stack app. Your team. A working build.
           </p>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 18 }}>
+          <p className="landing-desc landing-reveal landing-d3">
+            Inspect the codebase, diagnose frontend and backend failures, restore
+            expected functionality, and capture optional CTF flags for bonus points.
+          </p>
+          <div className="landing-ctas landing-reveal landing-d4">
             <Link to="/login" className="btn btn-primary">
               Sign in
             </Link>
-            <Link to="/rules" className="btn btn-ghost">
-              Read the rules
+            <a href="#how-it-works" className="btn btn-ghost">
+              How it works
+            </a>
+            <Link to="/login" className="landing-text-link">
+              Activate invite
             </Link>
           </div>
         </div>
-        <EventStatusStrip />
+        <div className="landing-hero-illustration landing-reveal landing-d4">
+          <FlagIllustration />
+        </div>
       </section>
 
-      <TheBrief />
+      <EventStatusStrip />
+
+      <EventOverview />
       <TheFormat />
       <Scoring />
       <SideQuests />

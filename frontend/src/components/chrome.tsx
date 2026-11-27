@@ -29,6 +29,7 @@ export function PublicLayout() {
         <div className="wrap topbar-inner">
           <Wordmark />
           <nav className="topnav" aria-label="Site">
+            <a href="/#how-it-works">How it works</a>
             <NavLink to="/rules">Rules</NavLink>
             {user ? (
               <NavLink to={homePathFor(user.role)}>Open console</NavLink>
