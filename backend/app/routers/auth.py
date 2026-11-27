@@ -3,8 +3,8 @@
 - POST /auth/login: rate limited, generic error (no account enumeration).
 - POST /auth/refresh: cookie + CSRF headers; rotates the refresh token family;
   reuse outside the grace window revokes the family (AUTH-4).
-- POST /auth/activate: single-use invite token -> set password + accept rules.
-- POST /auth/password/reset-request + /reset.
+- Account onboarding: admins register accounts; first sign-in sets an initial password for registered accounts that do not have one.
+- Password resets are admin-only through the admin router.
 - GET /me, /me/sessions, POST /me/acceptances, POST /auth/step-up.
 """
 
@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from .. import security
 from ..audit import audit_write
@@ -48,7 +49,7 @@ def _clear_refresh_cookie(response: Response) -> None:
 
 class LoginIn(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=1, max_length=200)
+    password: str = Field(min_length=12, max_length=200)
 
 
 @router.post("/auth/login")
@@ -60,7 +61,8 @@ def login(body: LoginIn, request: Request, response: Response):
         user = (
             s.execute(
                 text(
-                    "SELECT id, email, name, role, status, password_hash, token_version FROM app.users WHERE lower(email) = :e"
+                    "SELECT id, email, name, role, status, password_hash, token_version "
+                    "FROM app.users WHERE lower(email) = :e FOR UPDATE"
                 ),
                 {"e": body.email.lower()},
             )
@@ -74,21 +76,40 @@ def login(body: LoginIn, request: Request, response: Response):
         # becomes your password. If you have a password, it is checked.
         # NOTE: this is a risk we are willing to take for this event.
         if user is None:
-            # Unregistered email: reject generically (no account enumeration).
+            # Only admin-registered accounts can sign in. Keep the response generic.
             raise ApiError("AUTH_INVALID_CREDENTIALS")
-        elif not user["password_hash"]:
-            # Registered but no password set yet: the password typed now becomes the password.
+        if user["status"] == "disqualified":
+            raise ApiError("AUTH_FORBIDDEN", message="This account was disqualified. Contact the organizers.")
+        if user["status"] not in ("active", "pending"):
+            raise ApiError("AUTH_NOT_ACTIVATED")
+        if not user["password_hash"]:
+            # Event-specific policy: first sign-in claims the initial password.
+            # Mailbox ownership is deliberately not verified; admins control the
+            # registered-email list and the event accepts this first-claim risk.
             pw_hash = security.hash_password(body.password)
             s.execute(
                 text("UPDATE app.users SET password_hash = :pw, status = 'active' WHERE id = CAST(:uid AS uuid)"),
                 {"pw": pw_hash, "uid": str(user["id"])},
             )
+            audit_write(
+                s,
+                actor_id=str(user["id"]),
+                actor_role=user["role"],
+                action="auth.first_password_claimed",
+                entity_type="user",
+                entity_id=str(user["id"]),
+                request_id=request.state.request_id,
+                details={"email": user["email"]},
+            )
             user = {**user, "password_hash": pw_hash, "status": "active"}
         elif not security.verify_password(body.password, user["password_hash"]):
-            # generic failure: no enumeration (AUTH-1)
             raise ApiError("AUTH_INVALID_CREDENTIALS")
-        if user["status"] == "disqualified":
-            raise ApiError("AUTH_FORBIDDEN", message="This account was disqualified. Contact the organizers.")
+        elif user["status"] == "pending":
+            s.execute(
+                text("UPDATE app.users SET status = 'active' WHERE id = CAST(:uid AS uuid)"),
+                {"uid": str(user["id"])},
+            )
+            user = {**user, "status": "active"}
 
         # Concurrent session limit (AUTH-10), hardened with reclaim + eviction:
         # 1) Reclaim zombie sessions: a session whose refresh tokens are all
@@ -195,56 +216,51 @@ def login(body: LoginIn, request: Request, response: Response):
 class RegisterIn(BaseModel):
     email: EmailStr
     name: str = Field(min_length=2, max_length=160)
-    password: str = Field(min_length=12, max_length=200)
-    role: str = Field(default="participant", pattern="^(participant|reviewer|organizer|admin)$")
+    role: str = Field(default="reviewer", pattern="^(reviewer|organizer|admin)$")
 
 
 @router.post("/auth/register", status_code=201)
 def register(body: RegisterIn, request: Request, p: Principal = Depends(require_admin)):
-    """Admin-only registration. Creates an active account with a password.
-    No JWT is issued here; the new user signs in via POST /auth/login to get tokens.
-    """
-    if body.role not in ("participant", "reviewer", "organizer", "admin"):
-        raise ApiError("VALIDATION_ERROR", details={"role": "participant|reviewer|organizer|admin"})
-    # Only an admin may create admin/organizer accounts.
-    if body.role in ("admin", "organizer") and p.role != "admin":
-        raise ApiError("AUTH_FORBIDDEN", message="Only an admin can create organizer or admin accounts.")
+    """Admin-only staff registration. No password is set until the first sign-in."""
     rate_limit(f"register:{request.client.host if request.client else ''}", limit=10, window_s=60)
-    pw_hash = security.hash_password(body.password)
-    with app_session() as s:
-        tenant = s.execute(text("SELECT id FROM app.tenants ORDER BY created_at LIMIT 1")).first()
-        if tenant is None:
-            raise ApiError("VALIDATION_ERROR", details={"tenant": "No tenant exists. Run the seed script."})
-        try:
+    try:
+        with app_session() as s:
+            tenant = s.execute(text("SELECT id FROM app.tenants ORDER BY created_at LIMIT 1")).first()
+            if tenant is None:
+                raise ApiError("VALIDATION_ERROR", details={"tenant": "No tenant exists. Run the seed script."})
+            user_id = str(uuid7())
             s.execute(
                 text(
                     "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash, status, registration_id) "
-                    "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), :email, :name, :role, :pw, 'active', :reg)"
+                    "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), :email, :name, :role, NULL, 'active', :reg)"
                 ),
                 {
-                    "id": str(uuid7()),
+                    "id": user_id,
                     "t": str(tenant[0]),
                     "email": body.email.lower(),
                     "name": body.name,
                     "role": body.role,
-                    "pw": pw_hash,
                     "reg": str(uuid7())[:8],
                 },
             )
-        except Exception:  # noqa: BLE001 - intentionally broad: never reveal whether email exists (AUTH-1)
-            # Generic outcome: never reveal whether the email already exists (AUTH-1).
-            raise ApiError("VALIDATION_ERROR", details={"email": "Registration failed. Try again."}) from None
-        audit_write(
-            s,
-            actor_id=p.id,
-            actor_role=p.role,
-            action="auth.registered",
-            entity_type="user",
-            entity_id=str(body.email.lower()),
-            request_id=request.state.request_id,
-            details={"email": body.email.lower(), "role": body.role},
-        )
-    return {"ok": True, "email": body.email.lower(), "message": "Account created. The user can now sign in."}
+            audit_write(
+                s,
+                actor_id=p.id,
+                actor_role=p.role,
+                action="auth.registered",
+                entity_type="user",
+                entity_id=user_id,
+                request_id=request.state.request_id,
+                details={"email": body.email.lower(), "role": body.role, "password_setup_required": True},
+            )
+    except IntegrityError:
+        raise ApiError("VALIDATION_ERROR", details={"email": "This email is already registered."}) from None
+    return {
+        "ok": True,
+        "email": body.email.lower(),
+        "message": "Account registered. The user sets their initial password on first sign-in.",
+        "password_setup_required": True,
+    }
 
 
 @router.post("/auth/refresh")
@@ -381,86 +397,7 @@ def logout(request: Request, p: Principal = Depends(get_principal), response: Re
     return resp
 
 
-class ActivateIn(BaseModel):
-    invite_token: str = Field(min_length=20, max_length=200)
-    password: str = Field(min_length=12, max_length=200)
-    accept_rules: bool
-
-
-@router.post("/auth/activate")
-def activate(body: ActivateIn, request: Request):
-    if not body.accept_rules:
-        raise ApiError("RULES_NOT_ACCEPTED")
-    if len(body.password) < settings.password_min_length:
-        raise ApiError("VALIDATION_ERROR", details={"password": f"Minimum {settings.password_min_length} characters."})
-    th = security.token_hash(body.invite_token)
-    with app_session() as s:
-        inv = (
-            s.execute(
-                text(
-                    "SELECT id, email, team_id, role, used_at, expires_at, event_id FROM app.invites WHERE token_hash = :th"
-                ),
-                {"th": th},
-            )
-            .mappings()
-            .first()
-        )
-        if inv is None or inv["used_at"] is not None or inv["expires_at"] < datetime.now(UTC):
-            raise ApiError(
-                "NOT_FOUND", message="This invite is invalid or expired. Request a new invite from the organizers."
-            )
-        user_id = str(uuid7())
-        pw_hash = security.hash_password(body.password)
-        s.execute(
-            text(
-                "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash, status, registration_id) "
-                "SELECT :id, e.tenant_id, :email, split_part(:email, '@', 1), :role, :pw, 'active', :reg "
-                "FROM app.events e WHERE e.id = CAST(:ev AS uuid) "
-                "ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, status = 'active' RETURNING id"
-            ),
-            {
-                "id": user_id,
-                "email": inv["email"],
-                "role": inv["role"],
-                "pw": pw_hash,
-                "reg": str(uuid7())[:8],
-                "ev": str(inv["event_id"]),
-            },
-        )
-        urow = (
-            s.execute(
-                text("SELECT id, tenant_id, role, token_version FROM app.users WHERE email = :e"), {"e": inv["email"]}
-            )
-            .mappings()
-            .first()
-        )
-        s.execute(text("UPDATE app.invites SET used_at = now() WHERE id = CAST(:i AS uuid)"), {"i": str(inv["id"])})
-        if inv["team_id"]:
-            s.execute(
-                text(
-                    "INSERT INTO app.team_members (id, team_id, user_id) VALUES (CAST(:id AS uuid), CAST(:t AS uuid), CAST(:u AS uuid)) "
-                    "ON CONFLICT (team_id, user_id) DO NOTHING"
-                ),
-                {"id": str(uuid7()), "t": str(inv["team_id"]), "u": str(urow["id"])},
-            )
-        s.execute(
-            text(
-                "INSERT INTO app.acceptances (id, user_id, rules_version) "
-                "SELECT CAST(:id AS uuid), CAST(:u AS uuid), rules_version FROM app.events WHERE id = CAST(:ev AS uuid) "
-                "ON CONFLICT (user_id, rules_version) DO NOTHING"
-            ),
-            {"id": str(uuid7()), "u": str(urow["id"]), "ev": str(inv["event_id"])},
-        )
-        audit_write(
-            s,
-            actor_id=str(urow["id"]),
-            actor_role=inv["role"],
-            action="auth.activated",
-            entity_type="user",
-            entity_id=str(urow["id"]),
-            request_id=request.state.request_id,
-        )
-    return {"ok": True, "email": inv["email"]}
+# No activation route is registered for this event. Admin registration plus first sign-in handles onboarding.
 
 
 class StepUpIn(BaseModel):
@@ -493,83 +430,7 @@ def step_up(body: StepUpIn, request: Request, p: Principal = Depends(get_princip
     return {"ok": True, "valid_until": (datetime.now(UTC) + timedelta(minutes=5)).isoformat()}
 
 
-class ResetRequestIn(BaseModel):
-    email: EmailStr
-
-
-@router.post("/auth/password/reset-request")
-def reset_request(body: ResetRequestIn, request: Request):
-    rate_limit(f"reset:{request.client.host if request.client else ''}", limit=3, window_s=600)
-    with app_session() as s:
-        urow = s.execute(text("SELECT id FROM app.users WHERE lower(email) = :e"), {"e": body.email.lower()}).first()
-        if urow:
-            raw = security.new_refresh_token()
-            s.execute(
-                text(
-                    "INSERT INTO app.password_resets (id, user_id, token_hash, expires_at) "
-                    "VALUES (CAST(:id AS uuid), CAST(:u AS uuid), :th, :exp)"
-                ),
-                {
-                    "id": str(uuid7()),
-                    "u": str(urow[0]),
-                    "th": security.token_hash(raw),
-                    "exp": datetime.now(UTC) + timedelta(minutes=30),
-                },
-            )
-            # v1: no email provider configured. The reset link is surfaced through the
-            # organizer console and dev logs only. Documented in DEPLOYMENT_RUNBOOK.md.
-            print(f"[dev-mail] password reset token for {body.email}: {raw}")
-    # generic response regardless of account existence
-    return {"ok": True, "message": "If the address is registered, a reset link has been created."}
-
-
-class ResetIn(BaseModel):
-    token: str
-    password: str = Field(min_length=12, max_length=200)
-
-
-@router.post("/auth/password/reset")
-def reset(body: ResetIn, request: Request):
-    th = security.token_hash(body.token)
-    with app_session() as s:
-        row = (
-            s.execute(
-                text("SELECT id, user_id, used_at, expires_at FROM app.password_resets WHERE token_hash = :th"),
-                {"th": th},
-            )
-            .mappings()
-            .first()
-        )
-        if row is None or row["used_at"] is not None or row["expires_at"] < datetime.now(UTC):
-            raise ApiError("NOT_FOUND", message="This reset link is invalid or expired.")
-        s.execute(
-            text(
-                "UPDATE app.users SET password_hash = :pw, token_version = token_version + 1 WHERE id = CAST(:u AS uuid)"
-            ),
-            {"pw": security.hash_password(body.password), "u": str(row["user_id"])},
-        )
-        s.execute(
-            text("UPDATE app.password_resets SET used_at = now() WHERE id = CAST(:id AS uuid)"), {"id": str(row["id"])}
-        )
-        # revoke all sessions + refresh families (AUTH-3)
-        s.execute(
-            text("UPDATE app.sessions SET revoked_at = now() WHERE user_id = CAST(:u AS uuid) AND revoked_at IS NULL"),
-            {"u": str(row["user_id"])},
-        )
-        s.execute(
-            text("UPDATE app.refresh_tokens SET status='revoked' WHERE user_id = CAST(:u AS uuid)"),
-            {"u": str(row["user_id"])},
-        )
-        audit_write(
-            s,
-            actor_id=str(row["user_id"]),
-            actor_role="user",
-            action="auth.password_reset",
-            entity_type="user",
-            entity_id=str(row["user_id"]),
-            request_id=request.state.request_id,
-        )
-    return {"ok": True}
+# Self-service password-reset routes are disabled; only admin password reset is supported.
 
 
 @router.get("/me")

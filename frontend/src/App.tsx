@@ -22,6 +22,10 @@ import ReviewQueue from './pages/review/Queue'
 import ReviewItem from './pages/review/ItemDetail'
 import AdminDashboard from './pages/admin/Dashboard'
 import AdminChallenges from './pages/admin/Challenges'
+import AdminParticipants from './pages/admin/Participants'
+import AdminSetup from './pages/admin/Setup'
+import GroundTruthFlags from './pages/admin/GroundTruthFlags'
+import GroundTruthBugs from './pages/admin/GroundTruthBugs'
 
 export default function App() {
   return (
@@ -124,6 +128,10 @@ export default function App() {
               <Routes>
                 <Route index element={<AdminDashboard />} />
                 <Route path="challenges" element={<AdminChallenges />} />
+                <Route path="setup" element={<AdminSetup />} />
+                <Route path="participants" element={<AdminParticipants />} />
+                <Route path="ground-truth-flags" element={<GroundTruthFlags />} />
+                <Route path="ground-truth-bugs" element={<GroundTruthBugs />} />
               </Routes>
             </ConsoleShell>
           </RequireRole>

@@ -26,7 +26,7 @@ Steps:
    - Runs as `PGUSER=pgadmin` (the database owner).
    - Creates `app.schema_migrations` and applies `backend/migrations/*.sql` in order.
 3. Seed (dev only, known credentials): `cd backend && python seed.py` (add `--reset` to clear first).
-   - Prints staff/participant credentials (`Dev-only!Passw0rd!`) and the organizer invite token once.
+   - Prints seeded staff/participant credentials (`Dev-only!Passw0rd!`). No invitation tokens are generated.
    - Never run against a live deployment.
    - Shortcut: `bash scripts/run_dev.sh` performs steps 1-4 (add `--no-seed` / `--reset-seed`).
 4. API + worker:
@@ -80,8 +80,17 @@ Procedure:
 8. First-boot checks (before any users):
    - `/health` shows both databases up.
    - Re-run the pytest role tests against the production database to prove the grant boundary.
-   - Organizer pass-through: create event -> readiness items visible -> create challenge, upload the 11 participant files, freeze, publish, enter ground truth via the gt endpoints (step-up required) -> invite one test participant -> submit one report and one flag end to end.
+   - Admin pass-through: create event and teams -> register a participant in Admin > Participants (email, name and team) -> verify the new account has no password -> first sign-in with that registered email sets the initial password -> subsequent sign-in checks that password -> create challenge, upload the participant files, freeze, publish, enter ground truth via the GT endpoints (step-up required) -> submit one report and one flag end to end.
 9. Backups before going live: see BACKUP_AND_RECOVERY.md; the restore drill is a readiness gate (`backup_restore`).
+
+## Event-specific account lifecycle
+
+- Participant accounts are created only by an administrator from Admin > Participants. Registration requires a registered email address, participant name and event team.
+- No invitation token or activation URL is generated. The public `POST /v1/auth/activate` route is not registered for this event.
+- On first sign-in, the server checks the email against registered accounts. An unknown email is rejected with the generic invalid-credentials response. If the account has no password hash, the password submitted on first sign-in becomes its initial password; subsequent sign-ins verify it normally.
+- This event deliberately does not verify mailbox ownership during first password claim. Someone who knows a registered email can claim its initial password. This is an accepted risk; administrators must distribute registered emails through a controlled channel.
+- Password recovery is not self-service. Only an administrator can reset another account's password after fresh step-up confirmation. The reset revokes the target account's sessions and refresh tokens. Deliver the new password privately.
+- The legacy invite and public reset-token tables are dropped by migration `0005_remove_legacy_account_tokens.sql`.
 
 ## 3. Event-day launch sequence
 
@@ -124,7 +133,7 @@ Procedure:
 - A wrong stage start can be adjusted with `extend` (1..3600 s) or per-user `time_adjustments` with reason codes.
   - Pause/resume has the partially-implemented ends_at restoration caveat documented in SYSTEM_ARCHITECTURE.md Section 5.2.
   - Prefer `extend` after an outage rather than relying on `resume` time restoration.
-- A compromised account: revoke the session via the user's own endpoint, or set the user disqualified (every request 403s) and bump token_version via password reset.
+- A compromised account: an administrator can reset the account password from Admin > Participants. The operation requires a fresh step-up check, increments token_version, and revokes all active sessions and refresh tokens. An admin cannot reset their own password through this endpoint.
 - Full host loss (D1): restore per BACKUP_AND_RECOVERY.md on a fresh VM; the SPA on Cloudflare Pages can display a status notice; do not claim automatic failover (master guide: no fake failover claims).
 - Change freeze: no code or config changes during an active round except the documented control actions (OPS-03).
   - If a fix is unavoidable, it goes through rehearsal on D0 first and is announced.
