@@ -76,6 +76,77 @@ def test_l2_multilocation_flag_matches_cross_file_bug(client):
     assert any(lvl["level_no"] == 2 for lvl in score["levels"])
 
 
+def test_team_points_show_completed_level_score_and_cumulative_points(client):
+    """Completed levels show evaluation score over its ceiling; bonuses remain points."""
+    go_live(client)
+    pc = flow_client(client, TEAM1[0])
+
+    levels = pc.get("/v1/levels").json()["levels"]
+    assert len(levels) == 4
+    assert all(level["max_points"] == 275 for level in levels)
+
+    initial = pc.get("/v1/team/score").json()
+    assert initial["points"] == 0
+    assert initial["total"] == 0
+    assert len(initial["levels"]) == 4
+    assert all(level["evaluation_status"] == "not_submitted" for level in initial["levels"])
+
+    lock_repo(pc).raise_for_status()
+    enter_workspace(pc, 1).raise_for_status()
+    submit_empty(pc, 1).raise_for_status()
+
+    pending = pc.get("/v1/team/score").json()["levels"]
+    assert next(level for level in pending if level["level_no"] == 1)["evaluation_status"] == "evaluating"
+
+    worker_drain()
+    completed = pc.get("/v1/team/score").json()["levels"]
+    level_one = next(level for level in completed if level["level_no"] == 1)
+    assert level_one["evaluation_status"] == "complete"
+    assert level_one["score"] == 0
+    assert level_one["max_points"] == 275
+
+    from app.db import app_session
+    from app.scoring import add_ledger_entry
+    from sqlalchemy import text
+
+    with app_session() as s:
+        ids = s.execute(
+            text(
+                "SELECT t.id, t.event_id, e.tenant_id, st.id FROM app.teams t "
+                "JOIN app.events e ON e.id = t.event_id "
+                "JOIN app.team_members tm ON tm.team_id = t.id "
+                "JOIN app.users u ON u.id = tm.user_id "
+                "JOIN app.stages st ON st.event_id = t.event_id "
+                "WHERE u.email = :email AND st.kind = 'level' AND st.ordinal = 1"
+            ),
+            {"email": TEAM1[0]},
+        ).one()
+        for component, kind, points in [
+            ("evidence_report", "award", 10),
+            ("ctf_bonus", "bonus", 30),
+            ("penalty", "penalty", -5),
+        ]:
+            add_ledger_entry(
+                s,
+                tenant_id=str(ids[2]),
+                event_id=str(ids[1]),
+                stage_id=str(ids[3]),
+                team_id=str(ids[0]),
+                component=component,
+                kind=kind,
+                points=points,
+                reason_code="TEST_POINTS",
+            )
+
+    scored = pc.get("/v1/team/score").json()
+    level_one = next(level for level in scored["levels"] if level["level_no"] == 1)
+    assert level_one["score"] == 5
+    assert level_one["points"] == 35
+    assert level_one["total"] == 35
+    assert scored["points"] == 35
+    assert scored["total"] == 35
+
+
 def test_team_dedupe_second_teammate_does_not_double_award(client):
     go_live(client)
     pcs = {e: flow_client(client, e) for e in TEAM2}

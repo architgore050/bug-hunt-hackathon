@@ -2,7 +2,7 @@
 //
 // Replaces the v1 Lobby for the four-level flow. Hierarchy:
 //   1. The single server-derived Continue/Resume action.
-//   2. Level status list, team, score, leaderboard, announcements.
+//   2. Level status list, team, points, leaderboard, announcements.
 // All state comes from the server (GET /v1/progress, /v1/levels, /v1/team,
 // /v1/team/score, /v1/leaderboard/{level_stage_id}); the browser never
 // derives progression, scores or rank locally.
@@ -19,7 +19,7 @@ import {
   useProgressQuery,
   useServerNow,
   useTeamQuery,
-  useTeamScoreQuery,
+  useTeamPointsQuery,
 } from '../../lib/event-session'
 import { EventProgressBar } from '../../components/event/ProgressBar'
 import { EventWarnings } from '../../components/event/Warnings'
@@ -36,7 +36,7 @@ export default function Dashboard() {
   const levelsQ = useLevelsQuery()
   const progressQ = useProgressQuery()
   const teamQ = useTeamQuery()
-  const scoreQ = useTeamScoreQuery()
+  const pointsQ = useTeamPointsQuery()
 
   const resume = deriveResume(progressQ.data, levelsQ.data)
 
@@ -111,7 +111,7 @@ export default function Dashboard() {
             <TeamCard />
           </div>
           <div className="stack">
-            <ScoreCard scoreQ={scoreQ} />
+            <PointsCard levelsQ={levelsQ} pointsQ={pointsQ} />
             <LeaderboardCard levelsQ={levelsQ} />
             <AnnouncementsCard />
           </div>
@@ -228,29 +228,44 @@ function TeamCard() {
   )
 }
 
-/* ---------- score ---------- */
+/* ---------- points ---------- */
 
-function ScoreCard({ scoreQ }: { scoreQ: ReturnType<typeof useTeamScoreQuery> }) {
-  const data = scoreQ.data
+function PointsCard({
+  levelsQ,
+  pointsQ,
+}: {
+  levelsQ: ReturnType<typeof useLevelsQuery>
+  pointsQ: ReturnType<typeof useTeamPointsQuery>
+}) {
+  const data = pointsQ.data
+  const completedLevels = (levelsQ.data?.levels ?? []).filter((level) => isDoneStatus(level.participant_status))
+  const pointsByLevel = new Map(data?.levels.map((level) => [level.level_no, level]) ?? [])
   return (
-    <Panel exhibit="EX-05" title="Team score" actions={data && !data.released ? <Chip tone="info">unreleased</Chip> : undefined}>
-      {!data && !scoreQ.isError && <LoadingShell label="Loading score" />}
-      {scoreQ.isError && <ErrorBanner error={scoreQ.error} />}
+    <Panel exhibit="EX-05" title="Points">
+      {!data && !pointsQ.isError && <LoadingShell label="Loading points" />}
+      {pointsQ.isError && <ErrorBanner error={pointsQ.error} />}
       {data && (
         <div style={{ display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-            <span className="countdown" style={{ fontSize: '2.2rem' }}>{fmtPoints(data.released ? data.released_total : data.total)}</span>
-            <span className="overline">{data.released ? 'released total' : 'current total'}</span>
+            <span className="countdown" style={{ fontSize: '2.2rem' }}>{fmtPoints(data.points)}</span>
+            <span className="overline">Total points</span>
           </div>
-          {data.levels.map((l) => (
-            <div key={l.level_no} className="kv-row">
-              <span className="kv-key">L{l.level_no}</span>
-              <span className="kv-val">{fmtPoints(l.total)}</span>
-            </div>
-          ))}
-          <div className="notice-inline small">
-            Scores are computed on the server from the append-only ledger and update as evaluations finish.
-          </div>
+          {completedLevels.map((level) => {
+            const result = pointsByLevel.get(level.level_no)
+            const maxPoints = result?.max_points ?? level.max_points
+            const value =
+              result?.evaluation_status !== 'complete'
+                ? 'Evaluating'
+                : maxPoints === null
+                  ? fmtPoints(result.score)
+                  : `${fmtPoints(result.score)} / ${fmtPoints(maxPoints)}`
+            return (
+              <div key={level.level_no} className="kv-row">
+                <span className="kv-key">L{level.level_no}</span>
+                <span className="kv-val">{value}</span>
+              </div>
+            )
+          })}
         </div>
       )}
     </Panel>
@@ -314,7 +329,7 @@ function LeaderboardCard({ levelsQ }: { levelsQ: ReturnType<typeof useLevelsQuer
               <tr>
                 <th scope="col">Rank</th>
                 <th scope="col">Team</th>
-                <th scope="col">Score</th>
+                <th scope="col">Points</th>
               </tr>
             </thead>
             <tbody>
