@@ -1,4 +1,4 @@
-Status: describes the implementation as of 2026-11-25 (four-level flow endpoints added by migration 0002 work)
+Status: describes the implementation as of 2026-11-27
 
 # API Reference
 
@@ -164,7 +164,7 @@ admin boundary.
 
 | Endpoint | Method | Role | Notes |
 | --- | --- | --- | --- |
-| GET `/v1/levels` | auth | participant | Level catalog with gate state, per-level participant status, and the pointer |
+| GET `/v1/levels` | auth | participant | Level catalog with gate state, per-level participant status, `max_points` evaluation ceiling (or null), and the pointer |
 | GET `/v1/levels/{n}/gate` | participant | `allowed, reason, waiting_on[]`; authoritative at call time, never cached |
 | GET `/v1/levels/{n}/content` | participant | Explanation-node content plus gate state, repo options and deadlines |
 | GET `/v1/levels/{n}/workspace` | participant | Enters the execution node: gate enforced server-side, pointer explain->exec, file list, editable flag, draft |
@@ -173,7 +173,7 @@ admin boundary.
 | GET `/v1/progress` | participant | Pointer, per-level statuses, teammates, repo choice, live gates |
 | GET `/v1/team` | auth | Team, members with lead badge, per-level statuses, locked option |
 | POST `/v1/team/repo-lock` | participant (lead only) | `{option, confirm:true}` + `Idempotency-Key`; 403 non-lead, 409 `REPO_ALREADY_LOCKED` on conflicting choice, idempotent replay |
-| GET `/v1/team/score` | auth | Per-level ledger totals for the team |
+| GET `/v1/team/score` | auth | Cumulative `points` plus per-level `points`, evaluation `score`, `max_points`, and `evaluation_status` (`not_submitted`, `evaluating`, `complete`). Points include every ledger entry; level score excludes `ctf_bonus`. Legacy `total` remains an alias for points, and `released_total` keeps its existing release-gated meaning |
 | GET `/v1/repo/tree`, GET `/v1/repo/files/{path}` | participant | Read-only delivery of the team's locked option only; path traversal rejected; levels above the pointer are 409 |
 | POST `/v1/uploads` | participant | `.zip/.diff/.patch` staging for the current level; central-directory-only ZIP inspection (no extraction in the API process): absolute paths, `..`, duplicate names, symlink/device entries, entry-count and decompression caps rejected |
 | POST `/v1/runs`, GET `/v1/runs/{id}` | participant | Runner disabled (ADR-010): 503 `RUNNER_UNAVAILABLE`; saving and submission continue |

@@ -1,8 +1,10 @@
-Status: v1 draft for organizer review, 2026-11-22
+Status: v1 draft for organizer review, updated 2026-11-27
 
-Open fields: none. Every number in this document is implemented in
+Open fields: production per-level `max_points` values require organizer approval.
+Every number in this document is implemented in
 `backend/app/scoring.py`, `backend/app/matching.py`, `backend/app/evaluator.py`,
-and `backend/seed.py`.
+`backend/app/evaluator_level.py`, `backend/app/routers/levels.py`, and
+`backend/seed.py`.
 
 # Scoring Model (Fall Back, v1)
 
@@ -82,6 +84,15 @@ Where each number comes from:
   immediately at match time with reason_code MATCH_FULL and the note
   "bug=CODE L=.. C=.. A=.." (location, category, alias scores), using
   evidence_quality = max(alias_evidence, 0.6).
+
+Participant display distinguishes cumulative points from evaluation score.
+Points are the sum of all ledger entries, including CTF bonuses, penalties and
+adjustments. A level's score is the sum of its non-CTF ledger entries and is
+displayed as `score / max_points` only when `evaluation_status` is `complete`.
+`max_points` is a participant-safe ceiling stored in the app stage config; the
+participant API never reads ground truth to obtain it. The development seed
+uses 275 for each level because every fixture bug can be claimed once per
+level. Production values remain an organizer approval item.
 
 ## 3. Decision paths and what they pay
 
@@ -179,10 +190,10 @@ DAT-04):
 Per stage (frozen into rule_set_hash at creation):
 
 - feedback_mode (hidden), leaderboard_mode (hidden) and leaderboard_delay_s
-  (600), max_span (25), max_reports_per_file (12), max_reports_per_round
-  (80), file_cooldown_s (20), location_tolerance_lines (2), ctf_bonus_cap
-  points (100), penalty (fp_factor 0.25, cap_fraction 0.2, applies
-  at_release_only).
+  (600), max_points (participant-safe evaluation ceiling), max_span (25),
+  max_reports_per_file (12), max_reports_per_round (80), file_cooldown_s (20),
+  location_tolerance_lines (2), ctf_bonus_cap points (100), penalty
+  (fp_factor 0.25, cap_fraction 0.2, applies at_release_only).
 
 After publication and stage seal, scoring-relevant values do not change; the
 audit trail records the freeze and any pre-freeze revision with its reason.

@@ -15,15 +15,15 @@ import {
   fetchLevels,
   fetchProgress,
   fetchTeam,
-  fetchTeamScore,
+  fetchTeamPoints,
   isDoneStatus,
 } from './api-levels'
 import type {
   LevelStatus,
   LevelsResponse,
   ProgressResponse,
+  TeamPointsResponse,
   TeamResponse,
-  TeamScoreResponse,
 } from './api-levels'
 import type { Announcement, TimeResponse } from './types'
 import { clockOffset } from './format'
@@ -129,12 +129,12 @@ export function useTeamQuery() {
   })
 }
 
-export function useTeamScoreQuery() {
+export function useTeamPointsQuery() {
   return useQuery({
-    queryKey: ['team-score'],
-    queryFn: fetchTeamScore,
+    queryKey: ['team-points'],
+    queryFn: fetchTeamPoints,
     refetchInterval: (query) => {
-      const data = query.state.data as TeamScoreResponse | undefined
+      const data = query.state.data as TeamPointsResponse | undefined
       return data && !data.released ? 5000 : 30000
     },
     staleTime: 4000,

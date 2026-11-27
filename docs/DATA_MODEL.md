@@ -28,7 +28,7 @@ Readable and writable by `app_api` and `gt_admin`.
 
 - `events`: `slug UNIQUE`, `status DEFAULT 'draft'`, `starts_at/ends_at`, `timezone VARCHAR(60)`, `duration_minutes DEFAULT 180`, `max_participants DEFAULT 50`, `max_teams DEFAULT 12`, `rules_version DEFAULT 1`, `config JSONB` (features, scoring weights, schedule, public_summary), `config_version DEFAULT 1`. Index on tenant.
 - `event_config_revisions`: `event_id FK`, `version` (per-event max+1 on insert), `config JSONB NOT NULL`, `rule_set_hash VARCHAR(80)` (sha256 of canonical JSON), `reason TEXT NOT NULL`, `created_by FK`, `frozen_at` (set when the revision freezes the event config, DAT-04).
-- `stages`: `event_id FK`, `name`, `kind`, `ordinal DEFAULT 1`, `status DEFAULT 'draft'`, `starts_at/ends_at`, `grace_seconds DEFAULT 3`, `config JSONB` (caps, feedback/leaderboard modes, penalty policy), `rule_set_hash`, `started_at/ended_at`. Index on event.
+- `stages`: `event_id FK`, `name`, `kind`, `ordinal DEFAULT 1`, `status DEFAULT 'draft'`, `starts_at/ends_at`, `grace_seconds DEFAULT 3`, `config JSONB` (caps, feedback/leaderboard modes, participant-safe `max_points` evaluation ceiling, penalty policy), `rule_set_hash`, `started_at/ended_at`. Index on event.
 - `stage_transitions`: `stage_id FK`, `from_status`, `to_status` (stores the action name for control actions), `actor_id FK`, `reason_code`. Index on stage.
 - `time_adjustments`: `stage_id FK`, `user_id FK nullable` (null = whole stage), `delta_seconds INTEGER NOT NULL`, `reason_code VARCHAR(40)`, `created_by FK`. Deadline math sums global + per-user rows. Indexes: stage, user.
 

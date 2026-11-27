@@ -53,6 +53,7 @@ export interface LevelSummary {
   starts_at: string | null
   ends_at: string | null
   grace_seconds: number
+  max_points: number | null
   gate_allowed: boolean
   gate_reason: string
   participant_status: LevelStatus
@@ -207,17 +208,26 @@ export interface RepoLockResult {
   replay: boolean
 }
 
-export interface TeamScoreLevel {
+export type LevelEvaluationStatus = 'not_submitted' | 'evaluating' | 'complete'
+
+export interface TeamPointsLevel {
   level_no: number
   name: string
   components: Record<string, number>
+  /** Legacy alias for points. */
   total: number
+  points: number
+  score: number
+  max_points: number | null
+  evaluation_status: LevelEvaluationStatus
 }
 
-export interface TeamScoreResponse {
+export interface TeamPointsResponse {
   team_id: string
-  levels: TeamScoreLevel[]
+  levels: TeamPointsLevel[]
+  /** Legacy alias for points. */
   total: number
+  points: number
   released: boolean
   released_total: number | null
 }
@@ -283,8 +293,8 @@ export function fetchTeam(): Promise<TeamResponse> {
   return api<TeamResponse>('/v1/team')
 }
 
-export function fetchTeamScore(): Promise<TeamScoreResponse> {
-  return api<TeamScoreResponse>('/v1/team/score')
+export function fetchTeamPoints(): Promise<TeamPointsResponse> {
+  return api<TeamPointsResponse>('/v1/team/score')
 }
 
 export function lockRepo(option: string): Promise<RepoLockResult> {
