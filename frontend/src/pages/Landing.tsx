@@ -71,34 +71,58 @@ function FlagIllustration() {
       />
       {/* Pole cap */}
       <circle cx="72" cy="28" r="3.5" fill="var(--signal)" />
-      {/* Flag body */}
+
+      {/* Flag body with continuous, fluid wave motion */}
       <path
-        d="M72 35 L172 42 Q168 65 172 90 L72 83 Z"
+        className="flag-cloth-path"
+        d="M72 35 C102 30, 136 44, 172 38 Q165 62, 172 86 C136 92, 102 78, 72 83 Z"
         fill="var(--signal)"
-      />
-      {/* Code symbol on flag */}
-      <text
-        x="117"
-        y="70"
-        fontFamily="'IBM Plex Mono', ui-monospace, monospace"
-        fontSize="22"
-        fill="var(--ink)"
-        textAnchor="middle"
-        fontWeight="600"
       >
-        {'< / >'}
-      </text>
-      {/* Trailing wisps */}
-      <path d="M172 50 Q182 48 186 52" stroke="var(--signal)" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-      <path d="M172 65 Q180 63 184 67" stroke="var(--signal)" strokeWidth="1.3" fill="none" strokeLinecap="round" />
-      <path d="M172 80 Q178 78 182 82" stroke="var(--signal)" strokeWidth="1.1" fill="none" strokeLinecap="round" />
-      {/* Decorative crosses */}
-      <text x="190" y="38" fontFamily="'IBM Plex Mono', monospace" fontSize="15" fill="var(--line-strong)">+</text>
-      <text x="198" y="78" fontFamily="'IBM Plex Mono', monospace" fontSize="11" fill="var(--line-strong)">+</text>
-      <text x="190" y="108" fontFamily="'IBM Plex Mono', monospace" fontSize="14" fill="var(--line-strong)">+</text>
-      {/* Decorative dots */}
-      <circle cx="52" cy="100" r="1.8" fill="var(--line-strong)" />
-      <circle cx="202" cy="95" r="1.5" fill="var(--line-strong)" />
+        <animate
+          attributeName="d"
+          dur="2.4s"
+          repeatCount="indefinite"
+          values="
+            M72 35 C102 30, 136 44, 172 38 Q165 62, 172 86 C136 92, 102 78, 72 83 Z;
+            M72 35 C108 38, 142 32, 172 44 Q168 68, 172 92 C142 80, 108 86, 72 83 Z;
+            M72 35 C102 42, 136 28, 172 36 Q164 60, 172 84 C136 76, 102 90, 72 83 Z;
+            M72 35 C106 33, 140 43, 172 40 Q167 65, 172 88 C140 91, 106 81, 72 83 Z;
+            M72 35 C102 30, 136 44, 172 38 Q165 62, 172 86 C136 92, 102 78, 72 83 Z
+          "
+          calcMode="spline"
+          keySplines="0.4 0 0.2 1; 0.4 0 0.2 1; 0.4 0 0.2 1; 0.4 0 0.2 1"
+          keyTimes="0; 0.25; 0.5; 0.75; 1"
+        />
+      </path>
+
+      {/* Code symbol on flag (gently undulating in sync) */}
+      <g className="flag-glyph-wave">
+        <text
+          x="117"
+          y="69"
+          fontFamily="'IBM Plex Mono', ui-monospace, monospace"
+          fontSize="22"
+          fill="var(--ink)"
+          textAnchor="middle"
+          fontWeight="600"
+        >
+          {'< / >'}
+        </text>
+      </g>
+
+      {/* Trailing wisps fluttering in wind */}
+      <path className="flag-wisp-1" d="M172 50 Q182 48 186 52" stroke="var(--signal)" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+      <path className="flag-wisp-2" d="M172 65 Q180 63 184 67" stroke="var(--signal)" strokeWidth="1.3" fill="none" strokeLinecap="round" />
+      <path className="flag-wisp-3" d="M172 80 Q178 78 182 82" stroke="var(--signal)" strokeWidth="1.1" fill="none" strokeLinecap="round" />
+
+      {/* Decorative crosses and dots floating subtly */}
+      <g className="flag-sparkle">
+        <text x="190" y="38" fontFamily="'IBM Plex Mono', monospace" fontSize="15" fill="var(--line-strong)">+</text>
+        <text x="198" y="78" fontFamily="'IBM Plex Mono', monospace" fontSize="11" fill="var(--line-strong)">+</text>
+        <text x="190" y="108" fontFamily="'IBM Plex Mono', monospace" fontSize="14" fill="var(--line-strong)">+</text>
+        <circle cx="52" cy="100" r="1.8" fill="var(--line-strong)" />
+        <circle cx="202" cy="95" r="1.5" fill="var(--line-strong)" />
+      </g>
     </svg>
   )
 }
@@ -483,13 +507,13 @@ export default function Landing() {
           </p>
           <div className="landing-ctas landing-reveal landing-d4">
             <Link to="/login" className="btn btn-primary">
-              Sign in
+              Enter Competition
             </Link>
             <a href="#how-it-works" className="btn btn-ghost">
               How it works
             </a>
-            <Link to="/login" className="landing-text-link">
-              Activate invite
+            <Link to="/rules" className="landing-text-link">
+              Competition rules →
             </Link>
           </div>
         </div>
@@ -518,7 +542,8 @@ export default function Landing() {
                 over: round state, announcements and your assignment.
               </p>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 14 }}>
-                <Link to="/login" className="btn btn-primary">Sign in</Link>
+                <Link to="/login" className="btn btn-primary">Enter Competition Lobby</Link>
+                <Link to="/rules" className="btn btn-ghost">Read Full Rules</Link>
               </div>
             </div>
             <div className="ruled panel-2" style={{ padding: '6px 16px' }}>

@@ -1569,6 +1569,93 @@ html {
   transform: translateY(0);
 }
 
+/* ---------- flag waving & wind animations ---------- */
+
+.flag-cloth-path {
+  will-change: d;
+}
+
+.flag-glyph-wave {
+  transform-origin: 117px 70px;
+  animation: glyphWave 2.4s ease-in-out infinite;
+}
+
+.flag-wisp-1 {
+  transform-origin: 172px 50px;
+  animation: wispFlutter1 2.2s ease-in-out infinite;
+}
+
+.flag-wisp-2 {
+  transform-origin: 172px 65px;
+  animation: wispFlutter2 2.6s ease-in-out infinite 0.3s;
+}
+
+.flag-wisp-3 {
+  transform-origin: 172px 80px;
+  animation: wispFlutter3 2.4s ease-in-out infinite 0.6s;
+}
+
+.flag-sparkle {
+  animation: breezeFloat 3.2s ease-in-out infinite;
+}
+
+@keyframes glyphWave {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  25% {
+    transform: translateY(1.2px) rotate(1deg);
+  }
+  50% {
+    transform: translateY(-1px) rotate(-0.8deg);
+  }
+  75% {
+    transform: translateY(1px) rotate(0.6deg);
+  }
+}
+
+@keyframes wispFlutter1 {
+  0%, 100% {
+    opacity: 0.85;
+    transform: translateX(0px) scaleX(1);
+  }
+  50% {
+    opacity: 0.3;
+    transform: translateX(5px) scaleX(1.15);
+  }
+}
+
+@keyframes wispFlutter2 {
+  0%, 100% {
+    opacity: 0.4;
+    transform: translateX(4px) scaleX(1.1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: translateX(-1px) scaleX(0.95);
+  }
+}
+
+@keyframes wispFlutter3 {
+  0%, 100% {
+    opacity: 0.75;
+    transform: translateX(-2px) scaleX(0.9);
+  }
+  50% {
+    opacity: 0.3;
+    transform: translateX(4px) scaleX(1.18);
+  }
+}
+
+@keyframes breezeFloat {
+  0%, 100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(1.5px, -2px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .page-transition {
     animation: none !important;
@@ -1577,6 +1664,13 @@ html {
     opacity: 1 !important;
     transform: none !important;
     transition: none !important;
+  }
+  .flag-glyph-wave,
+  .flag-wisp-1,
+  .flag-wisp-2,
+  .flag-wisp-3,
+  .flag-sparkle {
+    animation: none !important;
   }
 }
 
