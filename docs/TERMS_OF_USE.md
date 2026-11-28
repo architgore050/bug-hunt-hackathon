@@ -24,9 +24,10 @@ any feature that is not needed to run the event.
 
 ## 2. Accounts and eligibility
 
-1. Access requires an account activated through an organizer-issued invite.
-   Invites are single use and expire; the account remains tied to the email
-   the organizers registered.
+1. Access requires an account registered by an organizer: staff accounts are
+   created by an admin with a password, and participants are added to a team
+   by an organizer and claim a password at first sign-in. No invite links,
+   activation tokens, or self-service reset tokens are issued.
 2. Accounts are personal: one person per account, no sharing, no transfer.
    You are responsible for all activity performed with your credentials.
    Password reset revokes all sessions for the account.
