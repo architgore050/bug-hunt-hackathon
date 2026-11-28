@@ -79,7 +79,9 @@ STAFF_PW = "Dev-only!Passw0rd!"
 
 def organizer_client(client: TestClient) -> TestClient:
     """An organizer-authenticated TestClient reusing the given client's app."""
-    org = client.post("/v1/auth/login", json={"email": "organizer@example.com", "password": STAFF_PW}).json()
+    resp = client.post("/v1/auth/login", json={"email": "organizer@example.com", "password": STAFF_PW})
+    assert resp.status_code == 200, resp.text
+    org = resp.json()
     oc = TestClient(client.app)
     oc.headers.update({"Authorization": f"Bearer {org['access_token']}"})
     return oc
