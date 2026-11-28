@@ -374,11 +374,7 @@ def my_submissions(p: Principal = Depends(get_principal)):
             item["matched_bug_code"] = r["matched_bug_code"]
             item["points_visible"] = float(r["points_visible"] or 0)
         else:
-            item["status"] = (
-                "received"
-                if r["status"] in ("received", "matched_auto", "needs_review", "in_review", "decided", "ledgered")
-                else r["status"]
-            )
+            item["status"] = "received"
         out.append(item)
     return {"submissions": out}
 

@@ -17,7 +17,7 @@ is UNRUN.
 | Path | What it is |
 | --- | --- |
 | `backend/` | FastAPI API (participant/staff), durable PostgreSQL job queue, worker, seed |
-| `backend/tests/` | 75 pytest tests (36 v1 plus 39 four-level flow: idempotency, IDOR, ground-truth isolation, scoring, auth, gates, repo lock, uploads, auto-submit) |
+| `backend/tests/` | Pytest coverage for idempotency, IDOR, ground-truth isolation, scoring, auth, admin operations, and event flows |
 | `backend/migrations/` | Ordered SQL migrations applied by `scripts/migrate.sh` |
 | `frontend/` | React 19 + Vite + TypeScript + Tailwind 4 SPA ("Case File" design system) |
 | `challenge-app/` | "Papyrus", the Node/Express challenge app with 10 planted bugs + 2 flags |
@@ -61,9 +61,9 @@ cd frontend && npm install && npm run dev   # proxies /v1 to :8100
 ```
 
 Verification: `scripts/e2e_journey.py` runs 46 checks against a running stack.
-`backend$ pytest` runs 75 tests (36 v1 plus 39 four-level flow). Passing status
-must come from the CI run for the exact commit; no local pass receipt is stored
-in this repository.
+`cd backend && pytest` must pass in full. Use the current CI run for exact
+results rather than relying on historical counts; no local pass receipt is
+stored in this repository.
 
 Demo accounts (dev only, password `Dev-only!Passw0rd!`): `organizer@`,
 `reviewer1@`, `p1.team1@` ... `example.com`. The Papyrus challenge app runs
@@ -101,7 +101,7 @@ privacy notice and terms. Engineering: `docs/API_REFERENCE.md`,
   with readiness gate, challenge publishing, idempotent submissions, hidden
   feedback, deterministic matching, reviewer queue, scoring ledger, CTF flag
   verification with caps, leaderboard snapshots, disputes, audit chain, CSV
-  exports, 46-check E2E + 75-test pytest gate, frontend build clean.
+  exports, the 46-check E2E journey, the full pytest suite, and a clean frontend build. Current results are recorded by CI.
 - Deliberately not in v1: participant code execution (no isolated runner;
   ADR-010 fallback), AI scoring (disabled by default, DEC-13), email delivery
   (invite/reset tokens surface in the organizer console), SSE (5 s polling),

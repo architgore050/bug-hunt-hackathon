@@ -115,7 +115,7 @@ def my_results(stage_id: str, p: Principal = Depends(get_principal)):
                     "received_at": r["received_at"].isoformat() if r["received_at"] else None,
                 }
             )
-        total = sum(by_component.values()) + penalties
+        total = sum(by_component.values())
     return {
         "released": True,
         "total": round(total, 2),

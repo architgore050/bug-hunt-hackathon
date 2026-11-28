@@ -37,9 +37,9 @@ Steps:
 2. PostgreSQL 17 service container on `127.0.0.1:5433` with trust auth and a health check.
 3. Create `bughunt_test`, the three schemas and the `app_api` / `gt_admin` / `scheduler` roles plus grants directly on the service.
 4. Apply `backend/migrations/` in order with `scripts/migrate.sh`.
-5. Run `python -m pytest tests/ -q --cov=app --cov-fail-under=65 --timeout=120` from `backend/`.
+5. Run `python -m pytest tests/ -q --cov=app --cov-branch --cov-fail-under=65 --timeout=120` from `backend/`.
    - `tests/conftest.py` sets a test-only `JWT_SECRET` and dev role passwords for the throwaway database, so no repository secrets are needed for this job.
-   - The current inventory is 75 tests (36 v1 plus 39 four-level flow).
+   - The job passes only when the full suite meets the coverage threshold; use the current CI run for exact counts.
 
 ### Job 4: backend-e2e
 

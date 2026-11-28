@@ -1,14 +1,14 @@
-Status: describes the implementation as of 2026-11-28 (all three migrations applied)
+Status: describes the implementation as of 2026-11-28 (migrations 0001 through 0005 included)
 
 # Data Model
 
-Source of truth: `backend/migrations/0001_init.sql` (652 lines), `backend/migrations/0002_score_ledger_immutable.sql` and `backend/migrations/0003_four_level_flow.sql`, applied in filename order by `scripts/migrate.sh` as the database owner (`pgadmin`). ORM mirrors live in `backend/app/models_app.py` and `models_gt.py`; handlers mostly use raw SQL through `sqlalchemy.text`. Column notes below list only constraints/defaults that matter for behavior; every table also has standard `created_at TIMESTAMPTZ DEFAULT now()` unless stated.
+Source of truth: the ordered SQL files in `backend/migrations/`, applied by `scripts/migrate.sh` as the database owner (`pgadmin`). ORM mirrors live in `backend/app/models_app.py` and `models_gt.py`; handlers mostly use raw SQL through `sqlalchemy.text`. Column notes below list only constraints/defaults that matter for behavior; every table also has standard `created_at TIMESTAMPTZ DEFAULT now()` unless stated.
 
 ## 1. Migration approach
 
 - Versioned plain SQL files in `backend/migrations/`, applied in filename order by `scripts/migrate.sh`. `app.schema_migrations (filename PRIMARY KEY, applied_at)` records what ran; applied files are skipped, `ON_ERROR_STOP=1` aborts on failure. Rationale recorded in `scripts/gen_initial_migration.py` (ADR-018): transparent, reviewable SQL over an ORM-autogenerate black box, expand/contract style.
 - Migrations always run as `PGUSER=pgadmin` (database owner). Runtime roles (`app_api`, `gt_admin`) never migrate; DDL grants are established by `scripts/dev_db.sh` plus migration ownership.
-- There are three migrations today: `0001_init.sql` (base schema), `0002_score_ledger_immutable.sql` (database trigger, no tables) and `0003_four_level_flow.sql` (four-level flow tables). The seed script (`backend/seed.py`) is data, not DDL, and is dev/test-only.
+- Five migrations are present: `0001_init.sql` (base schema), `0002_score_ledger_immutable.sql` (database trigger, no tables), `0003_four_level_flow.sql` (four-level flow tables), `0004_stage_ordinal_unique.sql` (unique stage ordinals) and `0005_ledger_award_unique.sql` (one effective award per unit). The seed script (`backend/seed.py`) is data, not DDL, and is dev/test-only.
 
 ## 2. Schema `app` (38 tables: 32 from `0001` plus 6 from `0003`, participant/admin domain)
 
@@ -28,8 +28,8 @@ Readable and writable by `app_api` and `gt_admin`.
 
 - `events`: `slug UNIQUE`, `status DEFAULT 'draft'`, `starts_at/ends_at`, `timezone VARCHAR(60)`, `duration_minutes DEFAULT 180`, `max_participants DEFAULT 50`, `max_teams DEFAULT 12`, `rules_version DEFAULT 1`, `config JSONB` (features, scoring weights, schedule, public_summary), `config_version DEFAULT 1`. Index on tenant.
 - `event_config_revisions`: `event_id FK`, `version` (per-event max+1 on insert), `config JSONB NOT NULL`, `rule_set_hash VARCHAR(80)` (sha256 of canonical JSON), `reason TEXT NOT NULL`, `created_by FK`, `frozen_at` (set when the revision freezes the event config, DAT-04).
-- `stages`: `event_id FK`, `name`, `kind`, `ordinal DEFAULT 1`, `status DEFAULT 'draft'`, `starts_at/ends_at`, `grace_seconds DEFAULT 3`, `config JSONB` (caps, feedback/leaderboard modes, participant-safe `max_points` evaluation ceiling, penalty policy), `rule_set_hash`, `started_at/ended_at`. Index on event.
-- `stage_transitions`: `stage_id FK`, `from_status`, `to_status` (stores the action name for control actions), `actor_id FK`, `reason_code`. Index on stage.
+- `stages`: `event_id FK`, `name`, `kind`, `ordinal DEFAULT 1`, `status DEFAULT 'draft'`, `starts_at/ends_at`, `grace_seconds DEFAULT 3`, `config JSONB` (caps, feedback/leaderboard modes, participant-safe `max_points` evaluation ceiling, penalty policy), `rule_set_hash`, `started_at/ended_at`. `UNIQUE (event_id, kind, ordinal)` is enforced by migration 0004. Index on event.
+- `stage_transitions`: `stage_id FK`, `from_status`, `to_status` (stores the resulting status; legacy pause rows may contain `pause`), `actor_id FK`, `reason_code`. Index on stage.
 - `time_adjustments`: `stage_id FK`, `user_id FK nullable` (null = whole stage), `delta_seconds INTEGER NOT NULL`, `reason_code VARCHAR(40)`, `created_by FK`. Deadline math sums global + per-user rows. Indexes: stage, user.
 
 ### Challenge content (participant-visible)

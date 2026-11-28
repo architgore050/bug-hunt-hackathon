@@ -120,7 +120,7 @@ def receipt_code(submission_id: str, received_at: datetime) -> str:
     material = f"{submission_id}|{received_at.isoformat()}"
     digest = hmac.new(settings.jwt_secret.encode(), material.encode(), hashlib.sha256).hexdigest().upper()
     alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
-    take = "".join(alphabet[int(digest[i : i + 2], 16) % len(alphabet)] for i in range(0, 8, 2))
+    take = "".join(alphabet[int(digest[i : i + 2], 16) % len(alphabet)] for i in range(0, 16, 2))
     return f"{take[:4]}-{take[4:]}"
 
 
