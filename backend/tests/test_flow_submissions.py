@@ -331,63 +331,92 @@ def test_negative_flag_rejections(client):
     enter_workspace(pc, 1).raise_for_status()
 
     # L1: 0 locations - fails exactly-1 requirement
-    r = submit_flags(pc, 1, [
-        {"title": "No locations L1",
-         "category": "injection",
-         "description": "User submitted flag with no locations",
-         "evidence": "GET /api/notes?q=test",
-         "locations": []},
-    ])
+    r = submit_flags(
+        pc,
+        1,
+        [
+            {
+                "title": "No locations L1",
+                "category": "injection",
+                "description": "User submitted flag with no locations",
+                "evidence": "GET /api/notes?q=test",
+                "locations": [],
+            },
+        ],
+    )
     assert r.status_code != 200, r.text
 
     # L1: 2 locations - also fails exactly-1 requirement
-    r2 = submit_flags(pc, 1, [
-        {"title": "Two locations L1",
-         "category": "injection",
-         "description": "User submitted flag with two locations",
-         "evidence": "GET /api/notes?q=test",
-         "locations": [{"file_path": "routes/notes.js", "line_start": 1, "line_end": 2},
-                       {"file_path": "routes/notes.js", "line_start": 3, "line_end": 4}]},
-    ])
+    r2 = submit_flags(
+        pc,
+        1,
+        [
+            {
+                "title": "Two locations L1",
+                "category": "injection",
+                "description": "User submitted flag with two locations",
+                "evidence": "GET /api/notes?q=test",
+                "locations": [
+                    {"file_path": "routes/notes.js", "line_start": 1, "line_end": 2},
+                    {"file_path": "routes/notes.js", "line_start": 3, "line_end": 4},
+                ],
+            },
+        ],
+    )
     assert r2.status_code != 200, r2.text  # LOCATION_INVALID: exactly 1 required
 
     # L2 exceeds max locations (cap is 5) - 6 locations should fail
-    try:
-        open_level_window(2)
-        ws = enter_workspace(pc, 2)
-    except Exception:
-        pass  # level may already be in a state from L1 tests
-    else:
-        r3 = submit_flags(pc, 2, [
-            {"title": "Too many locations L2",
-             "category": "injection",
-             "description": "User submitted too many ordered locations",
-             "evidence": "test evidence",
-             "locations": [{"file_path": "routes/notes.js", "line_start": 1, "line_end": 2},
-                           {"file_path": "routes/notes.js", "line_start": 3, "line_end": 4},
-                           {"file_path": "routes/notes.js", "line_start": 5, "line_end": 6},
-                           {"file_path": "routes/notes.js", "line_start": 7, "line_end": 8},
-                           {"file_path": "routes/notes.js", "line_start": 9, "line_end": 10},
-                           {"file_path": "routes/notes.js", "line_start": 11, "line_end": 12}]},
-        ])
-        assert r3.status_code != 200, r3.text
+    open_level_window(2)
+    r3 = submit_flags(
+        pc,
+        2,
+        [
+            {
+                "title": "Too many locations L2",
+                "category": "injection",
+                "description": "User submitted too many ordered locations",
+                "evidence": "test evidence",
+                "locations": [
+                    {"file_path": "routes/notes.js", "line_start": 1, "line_end": 2},
+                    {"file_path": "routes/notes.js", "line_start": 3, "line_end": 4},
+                    {"file_path": "routes/notes.js", "line_start": 5, "line_end": 6},
+                    {"file_path": "routes/notes.js", "line_start": 7, "line_end": 8},
+                    {"file_path": "routes/notes.js", "line_start": 9, "line_end": 10},
+                    {"file_path": "routes/notes.js", "line_start": 11, "line_end": 12},
+                ],
+            },
+        ],
+    )
+    assert r3.status_code != 200, r3.text
 
     # File outside repo (../ traversal) - L1
-    r4 = submit_flags(pc, 1, [
-        {"title": "Traversal attack",
-         "category": "injection",
-         "description": "User attempted path traversal outside the sandboxed repo",
-         "evidence": "test",
-         "locations": [{"file_path": "../etc/passwd", "line_start": 1, "line_end": 2}]},
-    ])
+    r4 = submit_flags(
+        pc,
+        1,
+        [
+            {
+                "title": "Traversal attack",
+                "category": "injection",
+                "description": "User attempted path traversal outside the sandboxed repo",
+                "evidence": "test",
+                "locations": [{"file_path": "../etc/passwd", "line_start": 1, "line_end": 2}],
+            },
+        ],
+    )
     assert r4.status_code != 200, r4.text
 
     # Line range beyond file - L1
-    r5 = submit_flags(pc, 1, [
-        {"title": "Beyond file range",
-         "category": "injection",
-         "description": "User reported line range extending beyond file end",
-         "evidence": "test",
-         "locations": [{"file_path": "routes/notes.js", "line_start": 1, "line_end": 999}]},
-    ])
+    r5 = submit_flags(
+        pc,
+        1,
+        [
+            {
+                "title": "Beyond file range",
+                "category": "injection",
+                "description": "User reported line range extending beyond file end",
+                "evidence": "test",
+                "locations": [{"file_path": "routes/notes.js", "line_start": 1, "line_end": 999}],
+            },
+        ],
+    )
     assert r5.status_code != 200, r5.text
