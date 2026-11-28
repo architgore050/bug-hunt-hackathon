@@ -21,7 +21,7 @@ own limits honestly.
 | `challenge-app/` | "Papyrus", the Node/Express challenge app with 10 planted bugs + 2 flags |
 | `docs/` | The full documentation set (27+ documents, see below) |
 | `scripts/` | Dev bootstrap, migrations, seed reset, E2E journey, load test |
-| `.github/workflows/` | CI: backend tests + frontend build |
+| `.github/workflows/` | CI: secret scan, backend quality, PostgreSQL-backed tests, backend E2E, frontend quality, source hygiene |
 | `.opencode/skills/` | Project-local OpenCode skills: eight-lens code review suite and `be-ambitious` |
 
 ## Quick start (D0 local profile)

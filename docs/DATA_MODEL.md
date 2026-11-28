@@ -1,4 +1,4 @@
-Status: describes the implementation as of 2026-11-28 (migrations 0001 through 0004 included)
+Status: describes the implementation as of 2026-11-28 (migrations 0001 through 0008 included)
 
 # Data Model
 
@@ -8,7 +8,7 @@ Source of truth: the ordered SQL files in `backend/migrations/`, applied by `scr
 
 - Versioned plain SQL files in `backend/migrations/`, applied in filename order by `scripts/migrate.sh`. `app.schema_migrations (filename PRIMARY KEY, applied_at)` records what ran; applied files are skipped, `ON_ERROR_STOP=1` aborts on failure. Rationale recorded in `scripts/gen_initial_migration.py` (ADR-018): transparent, reviewable SQL over an ORM-autogenerate black box, expand/contract style.
 - Migrations always run as `PGUSER=pgadmin` (database owner). Runtime roles (`app_api`, `gt_admin`) never migrate; DDL grants are established by `scripts/dev_db.sh` plus migration ownership.
-- Four migrations are present: `0001_init.sql`, `0002_score_ledger_immutable.sql`, `0003_four_level_flow.sql`, and `0004_stage_ordinal_unique.sql`. The seed script (`backend/seed.py`) is data, not DDL, and is dev/test-only.
+- The migration sequence is `0001_init.sql`, `0002_score_ledger_immutable.sql`, `0003_four_level_flow.sql`, `0004_stage_ordinal_unique.sql`, `0005_ground_truth_flag_keys.sql`, `0005_ledger_award_unique.sql`, `0006_remove_legacy_account_tokens.sql`, `0007_remove_account_status.sql`, and `0008_drop_team_status.sql`. The two `0005_*` files are separate, filename-tracked migrations and run in lexicographic filename order. The seed script (`backend/seed.py`) is data, not DDL, and is dev/test-only.
 
 ## 2. Schema `app` (32 tables, participant/admin domain)
 
@@ -16,11 +16,10 @@ Readable and writable by `app_api` and `gt_admin`.
 
 ### Identity and access
 
-- `users`: `id UUID PK`, `tenant_id FK`, `email VARCHAR(320)` UNIQUE index (`ix_app_users_email`), `name`, `role VARCHAR(20)` (participant | reviewer | organizer | admin), `password_hash VARCHAR(256)` nullable (pre-activation), `status VARCHAR(20) DEFAULT 'pending'` (pending | active | disqualified), `token_version INTEGER DEFAULT 1` (bumped on password reset to kill all access tokens, AUTH-01), `registration_id`, `accommodation_note`. Indexes: role, tenant.
+- `users`: `id UUID PK`, `tenant_id FK`, `email VARCHAR(320)` UNIQUE index (`ix_app_users_email`), `name`, `role VARCHAR(20)` (participant | reviewer | organizer | admin), `password_hash VARCHAR(256)` nullable (registered participants may claim an initial password on first sign-in), `token_version INTEGER DEFAULT 1` (bumped on password reset to kill all access tokens, AUTH-01), `registration_id`, `accommodation_note`. Indexes: role, tenant.
 - `sessions`: `id UUID PK`, `user_id FK`, `last_seen_at`, `ip_hash VARCHAR(64)` (HMAC-SHA256, first 32 hex, keyed by JWT_SECRET; raw IPs never stored), `user_agent VARCHAR(300)`, `revoked_at`, `step_up_at` (5-minute elevated window, AUTH-09). Index on user_id.
 - `refresh_tokens`: `id UUID PK`, `session_id FK`, `user_id FK`, `token_hash VARCHAR(64)` UNIQUE (SHA-256 of the opaque token; raw tokens never at rest), `status VARCHAR(12) DEFAULT 'active'` (active | rotated | revoked), `successor_encrypted TEXT` (Fernet-encrypted successor for the 10 s race grace, AUTH-04), `rotated_at`, `replaces_id`, `expires_at`. Indexes: user_id, session_id.
-- `invites`: `event_id FK`, `email`, `token_hash UNIQUE` (single-use activation), `team_id FK nullable`, `role DEFAULT 'participant'`, `used_at`, `expires_at`. Indexes: event, email.
-- `password_resets`: `user_id FK`, `token_hash UNIQUE`, `used_at`, `expires_at`.
+- Legacy `invites` and `password_resets` tables are removed by migration `0006_remove_legacy_account_tokens.sql`; public activation and self-service reset are not part of the account model.
 - `acceptances`: `user_id FK`, `rules_version INTEGER`, `ip_hash`, `UNIQUE (user_id, rules_version)`; the rules gate in `deps.require_rules_accepted` reads it.
 - `tenants`: `slug UNIQUE`. One tenant row is created by seed (`sdc-vitb`); multi-tenancy is modeled but v1 runs one club.
 
@@ -31,6 +30,7 @@ Readable and writable by `app_api` and `gt_admin`.
 - `stages`: `event_id FK`, `name`, `kind`, `ordinal DEFAULT 1`, `status DEFAULT 'draft'`, `starts_at/ends_at`, `grace_seconds DEFAULT 3`, `config JSONB` (caps, feedback/leaderboard modes, participant-safe `max_points` evaluation ceiling, penalty policy), `rule_set_hash`, `started_at/ended_at`. `UNIQUE (event_id, kind, ordinal)` is enforced by migration 0004. Index on event.
 - `stage_transitions`: `stage_id FK`, `from_status`, `to_status` (stores the resulting status; legacy pause rows may contain `pause`), `actor_id FK`, `reason_code`. Index on stage.
 - `time_adjustments`: `stage_id FK`, `user_id FK nullable` (null = whole stage), `delta_seconds INTEGER NOT NULL`, `reason_code VARCHAR(40)`, `created_by FK`. Deadline math sums global + per-user rows. Indexes: stage, user.
+- `teams`: `event_id FK`, `name`, `join_code UNIQUE`, optional `seat_label`; there is no team status column. `team_members` links users to teams with a unique `(team_id, user_id)` pair and `is_lead` marker. Removing a member/team is the supported disqualification lifecycle.
 
 ### Challenge content (participant-visible)
 
@@ -49,7 +49,7 @@ Readable and writable by `app_api` and `gt_admin`.
 
 ### Scoring
 
-- `award_claims`: `event_id`, `stage_id`, `team_id`, `award_unit_id VARCHAR(80)` (gt bug code or flag_key), `submission_id FK`, `UNIQUE (stage_id, team_id, award_unit_id)`. This constraint is the exactly-once guarantee for scoring under at-least-once job delivery (DAT-01). Indexes: stage, team, event.
+- `award_claims`: `event_id`, `stage_id`, `team_id`, `award_unit_id VARCHAR(80)` (ground-truth bug code or the UUID of the corresponding `gt.gt_flags` row), `submission_id FK`, `UNIQUE (stage_id, team_id, award_unit_id)`. This constraint is the exactly-once guarantee for scoring under at-least-once job delivery (DAT-01). Indexes: stage, team, event.
 - `score_ledger_entries`: append-only by convention (no UPDATE/DELETE code paths; `test_scoring.py` asserts the convention). `tenant_id`, `event_id`, `stage_id`, `team_id` FKs; `submission_id` nullable FK; `award_unit_id VARCHAR(80)`; `component VARCHAR(30)` (functional_test | code_review | evidence_report | ctf_bonus | penalty | adjustment); `kind VARCHAR(20)` (award | bonus | penalty | adjustment); `points NUMERIC(10,2)` (negative for penalty); `reason_code VARCHAR(60)` (MATCH_FULL, ACCEPT_FULL, ACCEPT_PARTIAL, TEST_RESULTS, RELEASE_DEFAULT, FLAG_VERIFIED, INVALID_REPORT_PENALTY, DISPUTE_UPHELD, MANUAL); `actor_id` nullable; `reverses_entry_id` self-FK for corrections; `note TEXT` (match features L/C/A recorded here for replay, DAT-05). Indexes: stage, reverses, tenant, award_unit, event, team, submission.
 - `leaderboard_snapshots`: `event_id`, `stage_id`, `version` (per-stage increment), `payload JSONB` (ranked rows with tie-break inputs), `visibility DEFAULT 'hidden'` (restricted | public). Indexes: stage, event. Tie-break order baked into `build_leaderboard`: total desc, fewer invalid, earlier last accepted (INT-12).
 
@@ -100,7 +100,7 @@ No `app_api` grants at all; written/read only via the `gt_admin` engine (`db.gt_
 - `gt_bugs`: `challenge_version_id`, `code VARCHAR(40)`, `title`, `severity` (low|medium|high|critical), `category`, `points NUMERIC(8,2)`, `root_cause_group VARCHAR(80)`, `explanation TEXT`, `fix_guidance`, `UNIQUE (challenge_version_id, code)`. One row = one award unit (ADR-014).
 - `gt_locations`: `bug_id FK`, `file_path`, `line_start`, `line_end`, `is_primary BOOLEAN NOT NULL`, `anchor_hash VARCHAR(64)` (SHA-256 of a 3-line window around the anchored line, computed at seed time from the actual challenge file; DAT-06 drift defense). Index on bug_id.
 - `gt_aliases`: `bug_id FK`, `keyword VARCHAR(120)`, `weight NUMERIC(3,2)`; the deterministic matcher's alias-evidence input.
-- `gt_flags`: `challenge_version_id`, `flag_key VARCHAR(40)`, `code_hash VARCHAR(64)` (HMAC of the plaintext flag), `points`, `max_awards INTEGER NOT NULL`, `position_label`, `UNIQUE (challenge_version_id, code_hash)`.
+- `gt_flags`: `challenge_version_id`, `flag_key VARCHAR(40)`, `code_hash VARCHAR(64)` (HMAC of the plaintext flag), `points`, `max_awards INTEGER NOT NULL`, `position_label`, `UNIQUE (challenge_version_id, code_hash)` plus the `0005_ground_truth_flag_keys.sql` unique index on `(challenge_version_id, flag_key)`.
 - `gt_test_cases`: `bug_id FK`, `name`, `description`, `expected_result`, `comparison`. Reserved for the hidden functional-test suite; organizer-recorded results arrive via the admin API in v1 (ADR-019), the table is not yet read by any code path.
 - `gt_revisions`: `challenge_version_id`, `revision_no`, `reason`, `payload JSONB` (the seeded bug/flag codes). Corrections are new revisions, never in-place edits (DAT-04).
 

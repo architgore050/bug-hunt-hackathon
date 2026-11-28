@@ -103,11 +103,11 @@ Procedure:
 
 ## Upgrade ordering for the account-policy migrations
 
-For releases that apply migrations 0005 or 0006, do not run the old application against the new schema:
+For releases that apply migrations `0006_remove_legacy_account_tokens.sql`, `0007_remove_account_status.sql` or `0008_drop_team_status.sql`, do not run the old application against the new schema:
 
 1. Stop the old API and worker processes.
 2. Apply database migrations with `scripts/migrate.sh`.
-3. Start the application build that no longer references invite/password-reset tables or `app.users.status`.
+3. Start the application build that no longer references invite/password-reset tables, `app.users.status` or `app.teams.status`.
 4. Verify `/health`, sign in with one participant and one staff test account, and run the PostgreSQL-backed test suite before reopening the event.
 
 ## Event-specific account lifecycle
@@ -117,7 +117,7 @@ For releases that apply migrations 0005 or 0006, do not run the old application 
 - On first sign-in, the server checks the email against registered accounts. Only a passwordless participant who already belongs to a team may set an initial password. Staff accounts must have an administrator-assigned password. Unknown emails, passwordless staff and participants without team membership receive the generic invalid-credentials response.
 - This event deliberately does not verify mailbox ownership during participant first-password claim. Someone who knows a registered participant email can claim its initial password. This is an accepted risk; administrators must distribute registered participant emails through a controlled channel.
 - Password recovery is not self-service. Only an administrator can reset another account's password after fresh step-up confirmation. The reset revokes the target account's sessions and refresh tokens. Deliver the password in person or through an organization-approved authenticated one-to-one channel; never use email, public/team chat, event chat, tickets, or logs.
-- Legacy invite and public reset-token tables are dropped by migration `0006_remove_legacy_account_tokens.sql`. Account lifecycle status is removed by migration `0007_remove_account_status.sql`; disabled/disqualified legacy users have memberships detached, password hashes cleared and sessions revoked before the column is dropped. User rows remain for scoring/audit foreign-key history.
+- Legacy invite and public reset-token tables are dropped by migration `0006_remove_legacy_account_tokens.sql`. Account lifecycle status is removed by migration `0007_remove_account_status.sql`; disabled/disqualified legacy users have memberships detached, password hashes cleared and sessions revoked before the column is dropped. Migration `0008_drop_team_status.sql` removes the obsolete team status column; disqualification is represented by removing the member/team. User rows remain for scoring/audit foreign-key history.
 
 ## 3. Event-day launch sequence
 

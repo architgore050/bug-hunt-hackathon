@@ -8,7 +8,7 @@ Reviewed: auth flows (login, refresh rotation, step-up, admin registration, firs
 
 ## Method
 
-1. `pytest --collect-only`: collection completed with no errors. The full pytest suite was not executed in the review environment because PostgreSQL binaries/service were unavailable; do not interpret collection as test success.
+1. `pytest --collect-only`: the earlier snapshot collected tests without collection errors. The current branch has additional regression tests; neither the full pytest suite nor E2E has been executed locally in this environment because PostgreSQL and a working local clone are unavailable. Do not interpret collection as test success. The exact PR commit must pass the six-job CI workflow.
 2. E2E journey: `scripts/e2e_journey.py`, covering organizer lifecycle, participant and reviewer loops, release, flags, audit verify.
 3. Code reading of `backend/app/security.py`, `deps.py`, `routers/submissions.py`, `db.py`, `audit.py`, and frontend rendering paths.
 4. Hostile-payload test in the backend suite: oversized bodies, malformed ids, path traversal strings on file reads.
@@ -53,7 +53,7 @@ grep -rn "dangerouslySetInnerHTML" frontend/src/ || echo "clean"
 
 ### Event account-policy exception
 
-Only pre-registered participants with a team membership and no password may claim an initial password. Mailbox ownership is not verified, so anyone who knows a registered participant email could make the first claim; administrators must distribute those addresses through a controlled channel. Staff accounts require an administrator-assigned password. Staff registration, participant registration, team creation, participant team changes/removal and password resets are admin-only and require step-up. Account lifecycle status is not stored; removing the final team membership revokes sessions and prevents future sign-in. Public activation and self-service reset routes are absent; migration `0006_remove_legacy_account_tokens.sql` retires the legacy token stores.
+Only pre-registered participants with a team membership and no password may claim an initial password. Mailbox ownership is not verified, so anyone who knows a registered participant email could make the first claim; administrators must distribute those addresses through a controlled channel. Staff accounts require an administrator-assigned password. Staff registration, participant registration, team creation, participant team changes/removal and password resets are admin-only and require step-up. Account lifecycle status is not stored; removing the final team membership revokes sessions and prevents future sign-in. Public activation and self-service reset routes are absent; migrations `0006_remove_legacy_account_tokens.sql`, `0007_remove_account_status.sql`, and `0008_drop_team_status.sql` retire legacy account/token and team-status schema elements. Unknown-email login performs a dummy Argon2 verification, and passwordless step-up returns the same generic credential failure.
 
 ## Limits of this review
 

@@ -1,4 +1,4 @@
-Status: describes the implementation as of 2026-11-28
+Status: describes the implementation as of 2026-11-28; exact-commit CI result remains pending for this branch
 
 # Testing Strategy
 
@@ -133,9 +133,13 @@ Re-run the role tests against PRODUCTION after any database grant change; this i
 
 See `CI_CD_PIPELINE.md`. Contract:
 
-- Backend job runs the pytest suite against a PostgreSQL 17 service container (conftest is already service-compatible: it calls `dev_db.sh`/`migrate.sh`, which need `psql` on PATH and `PGPORT=5433`).
-- Frontend job runs `npm ci`, `npm audit`, `npm run lint`, `npm test`, and `npm run build`.
-- The first real CI run must be verified on GitHub after push and the green run recorded as readiness evidence (OPS-02: never let the live event be the first full run).
+- `secret-scan`: gitleaks over the full pull-request commit range.
+- `backend-quality`: Ruff lint/format, Bandit and pip-audit.
+- `backend-tests`: pytest with coverage against PostgreSQL 17 after applying the ordered migrations.
+- `backend-e2e`: seeded PostgreSQL 17, API and worker, then the 46-check journey.
+- `frontend-quality`: npm audit, lint, rendering tests and production build on Node 22.
+- `source-hygiene`: frontend em-dash and platform placeholder gates.
+- Check the exact pull-request head commit on GitHub; the successful upstream `main` run is not evidence that this branch passes. Record the branch's successful six-job run as readiness evidence only after it completes (OPS-02: never let the live event be the first full run).
 
 ## 7. Pre-event test gate list
 
