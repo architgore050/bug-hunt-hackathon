@@ -83,6 +83,20 @@ def _db_now() -> object:
         return conn.execute(text("SELECT now()")).scalar_one()
 
 
+def _backdate_latest_pause(stage_id: str, seconds: int) -> None:
+    with app_engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE app.stage_transitions SET created_at = clock_timestamp() - make_interval(secs => :seconds) "
+                "WHERE id = ("
+                "SELECT id FROM app.stage_transitions WHERE stage_id = CAST(:s AS uuid) "
+                "AND from_status = 'active' AND to_status IN ('paused', 'pause') "
+                "ORDER BY created_at DESC, id DESC LIMIT 1)"
+            ),
+            {"s": stage_id, "seconds": seconds},
+        )
+
+
 # --- 1. active -> paused --------------------------------------------------------
 
 
@@ -140,20 +154,47 @@ def test_resume_extends_deadline_by_paused_duration(client):
     ends_before_pause = _stage_row(stage_id)["ends_at"]
     assert ends_before_pause is not None
 
-    import time
-
     oc.post(f"/v1/admin/stages/{stage_id}/control", json={"action": "pause", "reason": "F-C-01 drill"})
-    paused_for = 1.1
-    time.sleep(paused_for)
+    _backdate_latest_pause(stage_id, 120)
     r = oc.post(f"/v1/admin/stages/{stage_id}/control", json={"action": "resume", "reason": "F-C-01 drill"})
     assert r.status_code == 200, r.text
 
     ends_after = _stage_row(stage_id)["ends_at"]
     gained = (ends_after - ends_before_pause).total_seconds()
-    # the pause window (>= paused_for) is added exactly once, truncated to whole
-    # seconds by the existing ::int cast, and capped at 7200 s
-    assert paused_for - 1.0 - 0.05 <= gained <= paused_for + 1.0, gained
-    assert gained <= 7200 + 5, gained
+    assert gained == 120, gained
+
+
+def test_resume_uses_pause_window_even_after_extend(client):
+    _, stage_id, oc = _active_main_stage(client)
+    ends_before = _stage_row(stage_id)["ends_at"]
+    oc.post(f"/v1/admin/stages/{stage_id}/control", json={"action": "pause", "reason": "setup"})
+    _backdate_latest_pause(stage_id, 120)
+    extended = oc.post(
+        f"/v1/admin/stages/{stage_id}/control",
+        json={"action": "extend", "seconds": 30, "reason": "paused extension"},
+    )
+    assert extended.status_code == 200, extended.text
+    resumed = oc.post(f"/v1/admin/stages/{stage_id}/control", json={"action": "resume", "reason": "resume"})
+    assert resumed.status_code == 200, resumed.text
+    assert (_stage_row(stage_id)["ends_at"] - ends_before).total_seconds() == 150
+
+
+def test_resume_compensates_legacy_pause_status(client):
+    _, stage_id, oc = _active_main_stage(client)
+    ends_before = _stage_row(stage_id)["ends_at"]
+    with app_engine.begin() as conn:
+        conn.execute(text("UPDATE app.stages SET status='paused' WHERE id = CAST(:s AS uuid)"), {"s": stage_id})
+        conn.execute(
+            text(
+                "INSERT INTO app.stage_transitions (id, stage_id, from_status, to_status, actor_id, reason_code, created_at) "
+                "VALUES (CAST(:id AS uuid), CAST(:s AS uuid), 'active', 'pause', NULL, 'legacy', "
+                "clock_timestamp() - make_interval(secs => 90))"
+            ),
+            {"id": "00000000-0000-0000-0000-000000000001", "s": stage_id},
+        )
+    r = oc.post(f"/v1/admin/stages/{stage_id}/control", json={"action": "resume", "reason": "legacy"})
+    assert r.status_code == 200, r.text
+    assert (_stage_row(stage_id)["ends_at"] - ends_before).total_seconds() == 90
 
 
 def test_resume_without_pause_record_falls_back_cleanly(client):
@@ -178,23 +219,18 @@ def test_repeated_pause_resume_cycles_compensate_each_window(client):
     _, stage_id, oc = _active_main_stage(client)
     ends_original = _stage_row(stage_id)["ends_at"]
 
-    import time
-
     for cycle in range(3):
         r = oc.post(f"/v1/admin/stages/{stage_id}/control", json={"action": "pause", "reason": f"cycle {cycle}"})
         assert r.status_code == 200, r.text
         assert _stage_row(stage_id)["status"] == "paused"
-        time.sleep(1.2)
+        _backdate_latest_pause(stage_id, 120 - cycle * 30)
         r = oc.post(f"/v1/admin/stages/{stage_id}/control", json={"action": "resume", "reason": f"cycle {cycle}"})
         assert r.status_code == 200, r.text
         assert _stage_row(stage_id)["status"] == "active"
 
     ends_final = _stage_row(stage_id)["ends_at"]
     gained = (ends_final - ends_original).total_seconds()
-    # three pause windows of >= 1.2 s each, each compensated exactly once
-    # (whole-second truncation applies per window)
-    assert 3 * (1.2 - 1.0) - 0.05 <= gained <= 3 * 1.2 + 3, gained
-    assert gained <= 3 * 7200, gained
+    assert gained == 120 + 90 + 60, gained
     assert len([t for t in _transitions(stage_id) if t["to_status"] == "paused"]) == 3
 
 

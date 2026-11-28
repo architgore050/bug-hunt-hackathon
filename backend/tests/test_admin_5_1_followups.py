@@ -216,6 +216,85 @@ class TestF_C_05_InviteRoles:
         assert row["role"] == "reviewer"  # the invite role is honored, no escalation
         assert row["status"] == "active"
 
+    def test_invite_activation_is_single_use_under_concurrency(self, client):
+        oc = _organizer(client)
+        ev = _q("SELECT id FROM app.events ORDER BY created_at LIMIT 1", one=True)["id"]
+        invite = oc.post(
+            f"/v1/admin/events/{ev}/invites",
+            json={"email": "activate-race@example.com", "role": "participant"},
+        )
+        assert invite.status_code == 201, invite.text
+        token = invite.json()["invite_token"]
+        start = threading.Barrier(2)
+        statuses: list[int] = []
+        lock = threading.Lock()
+
+        def activate():
+            c = TestClient(client.app)
+            start.wait(timeout=10)
+            response = c.post(
+                "/v1/auth/activate",
+                json={"invite_token": token, "password": "Activation-Passw0rd!", "accept_rules": True},
+            )
+            with lock:
+                statuses.append(response.status_code)
+
+        threads = [threading.Thread(target=activate) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=30)
+        assert sorted(statuses) == [200, 404], statuses
+        assert len(_q("SELECT id FROM app.users WHERE email = 'activate-race@example.com'")) == 1
+
+    def test_invite_cannot_take_over_an_existing_privileged_account(self, client):
+        oc = _organizer(client)
+        ev = _q("SELECT id FROM app.events ORDER BY created_at LIMIT 1", one=True)["id"]
+        invite = oc.post(
+            f"/v1/admin/events/{ev}/invites",
+            json={"email": ADMIN_EMAIL, "role": "participant"},
+        )
+        assert invite.status_code == 201, invite.text
+        activation = TestClient(client.app).post(
+            "/v1/auth/activate",
+            json={
+                "invite_token": invite.json()["invite_token"],
+                "password": "Attacker-Passw0rd!",
+                "accept_rules": True,
+            },
+        )
+        assert activation.status_code == 403, activation.text
+        assert _q("SELECT role FROM app.users WHERE email = :e", {"e": ADMIN_EMAIL}, one=True)["role"] == "admin"
+        assert client.post("/v1/auth/login", json={"email": ADMIN_EMAIL, "password": STAFF_PW}).status_code == 200
+
+    def test_existing_account_invite_does_not_reset_its_password(self, client):
+        oc = _organizer(client)
+        ev = _q("SELECT id FROM app.events ORDER BY created_at LIMIT 1", one=True)["id"]
+        invite = oc.post(
+            f"/v1/admin/events/{ev}/invites",
+            json={"email": "reviewer1@example.com", "role": "reviewer"},
+        )
+        assert invite.status_code == 201, invite.text
+        activation = TestClient(client.app).post(
+            "/v1/auth/activate",
+            json={
+                "invite_token": invite.json()["invite_token"],
+                "password": "Ignored-Passw0rd!",
+                "accept_rules": True,
+            },
+        )
+        assert activation.status_code == 200, activation.text
+        assert (
+            client.post("/v1/auth/login", json={"email": "reviewer1@example.com", "password": STAFF_PW}).status_code
+            == 200
+        )
+        assert (
+            client.post(
+                "/v1/auth/login", json={"email": "reviewer1@example.com", "password": "Ignored-Passw0rd!"}
+            ).status_code
+            == 401
+        )
+
 
 # =============================================================================
 # F-C-06: manual/dispute adjustments accept NaN and unbounded values
@@ -298,6 +377,39 @@ class TestF_C_06_ManualAdjustmentValidation:
         body, _ = _adjustment_body(5)
         r = oc.post("/v1/admin/adjustments", json=body)
         assert r.status_code == 403
+
+    def test_stage_and_team_must_belong_to_the_same_event(self, client):
+        ac = _admin(client)
+        seed_stage = str(_seed_ids()["stage_id"])
+        other = ac.post(
+            "/v1/admin/events",
+            json={"name": "Ledger Event", "slug": f"ledger-{uuid_lib.uuid4().hex[:8]}"},
+        ).json()["event_id"]
+        other_stage = ac.post(f"/v1/admin/events/{other}/stages", json={"name": "Other stage", "kind": "main"}).json()[
+            "stage_id"
+        ]
+        other_team = str(uuid_lib.uuid4())
+        _exec(
+            "INSERT INTO app.teams (id, event_id, name, join_code) VALUES (CAST(:id AS uuid), CAST(:e AS uuid), 'Other', 'JOINXX2')",
+            {"id": other_team, "e": other},
+        )
+        before = _q("SELECT count(*) AS n FROM app.score_ledger_entries", one=True)["n"]
+        r = ac.post(
+            "/v1/admin/adjustments",
+            json={"stage_id": other_stage, "team_id": other_team, "points": 10, "reason": "wrong scope"},
+        )
+        assert r.status_code == 200, r.text
+        r = ac.post(
+            "/v1/admin/adjustments",
+            json={
+                "stage_id": seed_stage,
+                "team_id": other_team,
+                "points": 10,
+                "reason": "cross event",
+            },
+        )
+        assert r.status_code == 422, r.text
+        assert _q("SELECT count(*) AS n FROM app.score_ledger_entries", one=True)["n"] == before + 1
 
     def test_ledger_reconciliation_stays_consistent(self, client):
         ac = _admin(client)
@@ -400,6 +512,37 @@ def _draft_challenge(oc: TestClient) -> str:
 
 
 class TestF_C_07_FlagStatusLock:
+    def test_bug_and_file_mutations_after_sealing_are_rejected(self, client):
+        oc = _stepped_up(client)
+        cid = _draft_challenge(oc)
+        uploaded = oc.post(f"/v1/admin/challenges/{cid}/files", files={"file": ("a.js", b"console.log('ok')\n")})
+        assert uploaded.status_code == 200, uploaded.text
+        assert oc.post(f"/v1/admin/challenges/{cid}/freeze").status_code == 200
+        bug = oc.post(
+            f"/v1/admin/challenges/{cid}/ground-truth/bugs",
+            json={
+                "code": "BUG-SEALED",
+                "title": "Too late",
+                "severity": "low",
+                "category": "logic",
+                "points": 10,
+                "root_cause_group": "fixture",
+                "explanation": "fixture",
+            },
+        )
+        assert bug.status_code == 409, bug.text
+        assert bug.json()["error"]["code"] == "GROUND_TRUTH_LOCKED"
+        late_file = oc.post(f"/v1/admin/challenges/{cid}/files", files={"file": ("late.js", b"late\n")})
+        assert late_file.status_code == 409, late_file.text
+        with psycopg.connect(GT_DSN) as conn:
+            assert (
+                conn.execute("SELECT count(*) FROM gt.gt_bugs WHERE challenge_version_id = %s", (cid,)).fetchone()[0]
+                == 0
+            )
+        assert not _q(
+            "SELECT 1 FROM app.challenge_files WHERE challenge_version_id = :c AND path = 'late.js'", {"c": cid}
+        )
+
     def test_flag_creation_while_challenge_is_editable(self, client):
         oc = _stepped_up(client)
         cid = _draft_challenge(oc)
@@ -628,13 +771,44 @@ class TestF_C_12_TestResultsReferences:
             .json()["event_id"]
         )
         oc2 = _stepped_up(client)
-        ch2 = _draft_challenge(oc2)
-        forged = _make_submission(event_id=ev2, challenge_id=ch2)
+        forged = _make_submission(event_id=ev2, challenge_id=seed["challenge_id"])
+        before_jobs = _q("SELECT count(*) AS n FROM app.jobs", one=True)["n"]
         r = oc2.post(
             f"/v1/admin/challenges/{seed['challenge_id']!s}/ground-truth/test-results",
             json={"submission_id": forged, "tests_passed": 1, "tests_total": 2},
         )
         assert r.status_code == 422, r.text
+        assert "does not belong" in r.json()["error"]["details"]["submission_id"]
+        assert _q("SELECT count(*) AS n FROM app.jobs", one=True)["n"] == before_jobs
+
+    def test_submission_stage_and_team_must_match_its_event(self, client):
+        oc = _stepped_up(client)
+        seed = _seed_ids()
+        other = oc.post(
+            "/v1/admin/events",
+            json={"name": "Reference Event", "slug": f"reference-{uuid_lib.uuid4().hex[:8]}"},
+        ).json()["event_id"]
+        other_stage = oc.post(f"/v1/admin/events/{other}/stages", json={"name": "Other stage", "kind": "main"}).json()[
+            "stage_id"
+        ]
+        other_team = str(uuid_lib.uuid4())
+        _exec(
+            "INSERT INTO app.teams (id, event_id, name, join_code) VALUES (CAST(:id AS uuid), CAST(:e AS uuid), 'Other', 'JOINXX3')",
+            {"id": other_team, "e": other},
+        )
+        for kwargs, expected in (
+            ({"stage_id": other_stage}, "stage does not belong"),
+            ({"team": other_team}, "team does not belong"),
+        ):
+            forged = _make_submission(challenge_id=seed["challenge_id"], **kwargs)
+            before = _q("SELECT count(*) AS n FROM app.jobs", one=True)["n"]
+            r = oc.post(
+                f"/v1/admin/challenges/{seed['challenge_id']!s}/ground-truth/test-results",
+                json={"submission_id": forged, "tests_passed": 1, "tests_total": 2},
+            )
+            assert r.status_code == 422, r.text
+            assert expected in r.json()["error"]["details"]["submission_id"]
+            assert _q("SELECT count(*) AS n FROM app.jobs", one=True)["n"] == before
 
     def test_unsupported_submission_kind_is_rejected(self, client):
         oc = _stepped_up(client)
@@ -732,6 +906,22 @@ class TestF_C_13_ConfigFreeze:
                 json={"config": _config(weights), "reason": "bad sum", "freeze": True},
             )
             assert r.status_code == 422, r.text
+
+    def test_unknown_weight_component_is_rejected(self, client):
+        oc = _organizer(client)
+        ev = _seed_ids()["event_id"]
+        r = oc.post(
+            f"/v1/admin/events/{ev}/config",
+            json={
+                "config": _config(
+                    {"functional_test": 0.5, "code_review": 0.3, "evidence_report": 0.1, "code_reveiw": 0.1}
+                ),
+                "reason": "unknown component",
+                "freeze": True,
+            },
+        )
+        assert r.status_code == 422, r.text
+        assert "Unknown weight component" in r.json()["error"]["details"]["weights"]
 
     def test_malformed_weight_is_a_clean_422_not_a_500(self, client):
         oc = _organizer(client)
@@ -1005,7 +1195,14 @@ class TestF_C_16_Readiness:
 
 
 class TestF_C_16_StageOrdinals:
-    def test_database_enforces_uniqueness(self):
+    def test_stage_creation_rejects_non_main_kinds(self, client):
+        oc = _organizer(client)
+        ev = _seed_ids()["event_id"]
+        for kind in ("level", "custom"):
+            r = oc.post(f"/v1/admin/events/{ev}/stages", json={"name": "Invalid kind", "kind": kind})
+            assert r.status_code == 422, (kind, r.text)
+
+    def test_database_enforces_uniqueness(self, seeded_db):
         ids = _seed_ids()
         with psycopg.connect(PGADMIN_DSN) as conn:
             conn.execute(
@@ -1021,7 +1218,7 @@ class TestF_C_16_StageOrdinals:
                 )
             conn.rollback()
 
-    def test_migration_refuses_to_run_over_duplicates(self):
+    def test_migration_refuses_to_run_over_duplicates(self, seeded_db):
         """The 0004 guard must fail loudly when duplicates already exist,
         instead of silently reordering or deleting stages."""
         from pathlib import Path
@@ -1047,16 +1244,31 @@ class TestF_C_16_StageOrdinals:
             cur = conn.execute("SELECT conname FROM pg_constraint WHERE conname = 'ux_stages_event_kind_ordinal'")
             assert cur.fetchone()[0] == "ux_stages_event_kind_ordinal"
 
+    def test_migration_preserves_existing_stages_and_adds_constraint(self, seeded_db):
+        from pathlib import Path
+
+        sql = (Path(__file__).resolve().parent.parent / "migrations" / "0004_stage_ordinal_unique.sql").read_text()
+        with psycopg.connect(PGADMIN_DSN) as conn:
+            before = conn.execute("SELECT id, event_id, name, kind, ordinal FROM app.stages ORDER BY id").fetchall()
+            with conn.transaction():
+                conn.execute("ALTER TABLE app.stages DROP CONSTRAINT ux_stages_event_kind_ordinal")
+                conn.execute(sql)
+            after = conn.execute("SELECT id, event_id, name, kind, ordinal FROM app.stages ORDER BY id").fetchall()
+            assert after == before
+            assert conn.execute("SELECT 1 FROM pg_constraint WHERE conname = 'ux_stages_event_kind_ordinal'").fetchone()
+
     def test_concurrent_stage_creation_yields_distinct_ordinals(self, client):
         oc = _organizer(client)
         ev = _seed_ids()["event_id"]
         token = oc.headers["Authorization"]
         results: list = []
         lock = threading.Lock()
+        start = threading.Barrier(5)
 
         def worker():
             c = TestClient(client.app)
             c.headers.update({"Authorization": token})
+            start.wait(timeout=10)
             r = c.post(f"/v1/admin/events/{ev}/stages", json={"name": "Race stage", "kind": "main"})
             with lock:
                 results.append((r.status_code, r.json().get("stage_id")))
@@ -1086,21 +1298,30 @@ class TestF_C_16_StageOrdinals:
 
     def test_concurrent_level_bootstrap_stays_idempotent(self, client):
         oc = _organizer(client)
-        ev = _seed_ids()["event_id"]
+        created = oc.post(
+            "/v1/admin/events",
+            json={"name": "Bootstrap Race", "slug": f"bootstrap-{uuid_lib.uuid4().hex[:8]}"},
+        )
+        assert created.status_code == 201, created.text
+        ev = created.json()["event_id"]
         token = oc.headers["Authorization"]
-        results: list[int] = []
+        start = threading.Barrier(2)
+        results: list[tuple[int, int]] = []
 
         def worker():
             c = TestClient(client.app)
             c.headers.update({"Authorization": token})
-            results.append(c.post(f"/v1/admin/events/{ev}/levels/bootstrap").status_code)
+            start.wait(timeout=10)
+            response = c.post(f"/v1/admin/events/{ev}/levels/bootstrap")
+            results.append((response.status_code, response.json().get("created", -1)))
 
         threads = [threading.Thread(target=worker) for _ in range(2)]
         for t in threads:
             t.start()
         for t in threads:
             t.join(timeout=60)
-        assert results == [200, 200], results
+        assert sorted(code for code, _ in results) == [200, 200], results
+        assert sum(count for _, count in results) == 4, results
         levels = _q(
             "SELECT ordinal FROM app.stages WHERE event_id = CAST(:e AS uuid) AND kind = 'level' ORDER BY ordinal",
             {"e": str(ev)},
@@ -1124,6 +1345,20 @@ class TestF_C_18_InputValidation:
             assert r.status_code == 422, (bad, r.text)
         r = oc.post("/v1/admin/events", json={"name": "Good Event", "slug": "good-dur", "duration_minutes": 240})
         assert r.status_code == 201, r.text
+
+    def test_event_timezone_is_persisted(self, client):
+        oc = _organizer(client)
+        r = oc.post(
+            "/v1/admin/events",
+            json={"name": "UTC Event", "slug": "utc-event", "timezone": "UTC"},
+        )
+        assert r.status_code == 201, r.text
+        stored = _q(
+            "SELECT timezone FROM app.events WHERE id = CAST(:e AS uuid)",
+            {"e": r.json()["event_id"]},
+            one=True,
+        )
+        assert stored["timezone"] == "UTC"
 
     def test_title_length_must_fit_varchar_200(self, client):
         oc = _stepped_up(client)
@@ -1239,6 +1474,41 @@ class TestF_C_18_InputValidation:
             {"s": str(stage)},
         )
         assert [int(x["delta_seconds"]) for x in stored] == [60, -60, 3600, -3600, 90]
+
+    def test_stage_and_user_must_belong_to_the_path_event(self, client):
+        oc = _organizer(client)
+        ev = _seed_ids()["event_id"]
+        stage = _q("SELECT id FROM app.stages WHERE kind = 'main' LIMIT 1", one=True)["id"]
+        other = oc.post(
+            "/v1/admin/events",
+            json={"name": "Adjustment Event", "slug": f"adjustment-{uuid_lib.uuid4().hex[:8]}"},
+        ).json()["event_id"]
+        other_stage = oc.post(f"/v1/admin/events/{other}/stages", json={"name": "Other stage", "kind": "main"}).json()[
+            "stage_id"
+        ]
+        before = _q("SELECT count(*) AS n FROM app.time_adjustments", one=True)["n"]
+        r = oc.post(
+            f"/v1/admin/events/{ev}/time-adjustment",
+            json={"stage_id": other_stage, "delta_seconds": 60, "reason_code": "OUTAGE"},
+        )
+        assert r.status_code == 404, r.text
+        r = oc.post(
+            f"/v1/admin/events/{ev}/time-adjustment",
+            json={"stage_id": "not-a-uuid", "delta_seconds": 60, "reason_code": "OUTAGE"},
+        )
+        assert r.status_code == 422, r.text
+        staff = _q("SELECT id FROM app.users WHERE role = 'admin' LIMIT 1", one=True)["id"]
+        r = oc.post(
+            f"/v1/admin/events/{ev}/time-adjustment",
+            json={
+                "stage_id": str(stage),
+                "user_id": str(staff),
+                "delta_seconds": 60,
+                "reason_code": "ACCOMMODATION",
+            },
+        )
+        assert r.status_code == 422, r.text
+        assert _q("SELECT count(*) AS n FROM app.time_adjustments", one=True)["n"] == before
 
 
 # =============================================================================

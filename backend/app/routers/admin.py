@@ -249,6 +249,8 @@ def _validated_weights(config: dict, *, require_complete: bool) -> None:
             raise ApiError("VALIDATION_ERROR", details={"weights": f"Missing weight components: {', '.join(missing)}."})
     parsed: dict[str, float] = {}
     for key, raw in weights.items():
+        if key not in REQUIRED_WEIGHT_COMPONENTS:
+            raise ApiError("VALIDATION_ERROR", details={"weights": f"Unknown weight component: '{key}'."})
         if isinstance(raw, bool):
             raise ApiError("VALIDATION_ERROR", details={"weights": f"Weight '{key}' must be numeric."})
         try:
@@ -384,6 +386,10 @@ DEFAULT_STAGE_CONFIG = {
 
 @router.post("/admin/events/{event_id}/stages", status_code=201)
 def create_stage(event_id: str, body: StageIn, request: Request, p: Principal = Depends(require_organizer)):
+    if body.kind != "main":
+        raise ApiError(
+            "VALIDATION_ERROR", details={"kind": "Only main stages can be created here; use level bootstrap."}
+        )
     cfg = {**DEFAULT_STAGE_CONFIG, **body.config}
     canonical = json.dumps(cfg, sort_keys=True, separators=(",", ":"))
     rsh = "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
@@ -515,23 +521,24 @@ def control_stage(stage_id: str, body: dict, request: Request, p: Principal = De
         elif action == "resume":
             if st["status"] != "paused":
                 raise ApiError("VALIDATION_ERROR", details={"transition": "Only a paused stage can resume."})
-            # TIM-05: shift ends_at by the pause duration measured from the pause
-            # transition (not stage start), so the promised working time is kept.
-            # F-C-01: the pause transition now records to_status='paused', so this
-            # lookup finds it; scalar_one_or_none() keeps a legacy paused stage
-            # (paused before the fix) resumable instead of 500ing forever.
+            # TIM-05: shift ends_at by the pause duration measured from the real
+            # active -> paused transition, not stage start or an extend action's
+            # paused -> paused audit row. Legacy builds recorded 'pause' as the
+            # resulting status, so accept that spelling as well.
             paused_at = s.execute(
                 text(
-                    "SELECT created_at FROM app.stage_transitions WHERE stage_id = CAST(:s AS uuid) AND to_status = 'paused' ORDER BY created_at DESC LIMIT 1"
+                    "SELECT created_at FROM app.stage_transitions WHERE stage_id = CAST(:s AS uuid) "
+                    "AND from_status = 'active' AND to_status IN ('paused', 'pause') "
+                    "ORDER BY created_at DESC LIMIT 1"
                 ),
                 {"s": stage_id},
             ).scalar_one_or_none()
             if paused_at is not None:
                 s.execute(
                     text(
-                        "UPDATE app.stages SET status='active', ends_at = ends_at + make_interval(secs => LEAST(7200, GREATEST(0, EXTRACT(epoch FROM (clock_timestamp() - CAST(:p AS timestamptz)))::int))) WHERE id = CAST(:s AS uuid)"
+                        "UPDATE app.stages SET status='active', ends_at = ends_at + make_interval(secs => LEAST(7200, GREATEST(0, EXTRACT(epoch FROM (CAST(:now AS timestamptz) - CAST(:p AS timestamptz)))::int))) WHERE id = CAST(:s AS uuid)"
                     ),
-                    {"s": stage_id, "p": paused_at},
+                    {"s": stage_id, "p": paused_at, "now": now},
                 )
             else:
                 s.execute(text("UPDATE app.stages SET status='active' WHERE id = CAST(:s AS uuid)"), {"s": stage_id})
@@ -789,7 +796,8 @@ async def upload_files(
     line_count = text_content.count("\n") + 1
     with app_session() as s:
         cv = s.execute(
-            text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid)"), {"c": challenge_id}
+            text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid) FOR UPDATE"),
+            {"c": challenge_id},
         ).first()
         if cv is None:
             raise ApiError("NOT_FOUND")
@@ -973,15 +981,15 @@ class BugIn(BaseModel):
 @router.post("/admin/challenges/{challenge_id}/ground-truth/bugs", status_code=201)
 def add_bug(challenge_id: str, body: BugIn, request: Request, p: Principal = Depends(step_up_verified)):
     """Writes ground truth via the gt_admin role only (DAT-03)."""
-    with app_session() as s:
-        cv = s.execute(
-            text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid)"), {"c": challenge_id}
+    with gt_session() as gts:
+        cv = gts.execute(
+            text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid) FOR UPDATE"),
+            {"c": challenge_id},
         ).first()
         if cv is None:
             raise ApiError("NOT_FOUND")
         if cv[0] not in ("draft", "reviewed"):
             raise ApiError("GROUND_TRUTH_LOCKED")
-    with gt_session() as gts:
         bug_id = str(uuid7())
         gts.execute(
             text(
@@ -1144,6 +1152,21 @@ def record_test_results(challenge_id: str, body: dict, request: Request, p: Prin
             raise ApiError(
                 "VALIDATION_ERROR", details={"submission_id": "Submission does not belong to this challenge."}
             )
+        stage_event = s.execute(
+            text("SELECT event_id FROM app.stages WHERE id = CAST(:s AS uuid)"), {"s": str(sub["stage_id"])}
+        ).scalar_one()
+        if str(stage_event) != str(sub["event_id"]):
+            raise ApiError(
+                "VALIDATION_ERROR", details={"submission_id": "Submission stage does not belong to this event."}
+            )
+        if sub["team_id"] is not None:
+            team_event = s.execute(
+                text("SELECT event_id FROM app.teams WHERE id = CAST(:t AS uuid)"), {"t": str(sub["team_id"])}
+            ).scalar_one()
+            if str(team_event) != str(sub["event_id"]):
+                raise ApiError(
+                    "VALIDATION_ERROR", details={"submission_id": "Submission team does not belong to this event."}
+                )
         if sub["kind"] not in ("bug_report", "level_report"):
             raise ApiError(
                 "VALIDATION_ERROR",
@@ -1217,7 +1240,25 @@ def time_adjustment(event_id: str, body: dict, request: Request, p: Principal = 
         raise ApiError("VALIDATION_ERROR", details={"adjustment": "stage_id and nonzero delta_seconds required."})
     if reason_code not in ("ACCOMMODATION", "OUTAGE", "DEVICE_FAILURE", "OTHER"):
         raise ApiError("VALIDATION_ERROR", details={"reason_code": "ACCOMMODATION|OUTAGE|DEVICE_FAILURE|OTHER"})
+    if not _is_uuid(event_id) or not _is_uuid(stage_id) or (user_id is not None and not _is_uuid(user_id)):
+        raise ApiError("VALIDATION_ERROR", details={"adjustment": "event_id, stage_id and user_id must be UUIDs."})
     with app_session() as s:
+        stage = s.execute(
+            text("SELECT id FROM app.stages WHERE id = CAST(:s AS uuid) AND event_id = CAST(:e AS uuid) FOR UPDATE"),
+            {"s": stage_id, "e": event_id},
+        ).first()
+        if stage is None:
+            raise ApiError("NOT_FOUND", details={"stage_id": "No such stage for this event."})
+        if user_id is not None:
+            member = s.execute(
+                text(
+                    "SELECT 1 FROM app.team_members tm JOIN app.teams t ON t.id = tm.team_id "
+                    "WHERE tm.user_id = CAST(:u AS uuid) AND t.event_id = CAST(:e AS uuid)"
+                ),
+                {"u": user_id, "e": event_id},
+            ).first()
+            if member is None:
+                raise ApiError("VALIDATION_ERROR", details={"user_id": "User is not a member of this event."})
         s.execute(
             text(
                 "INSERT INTO app.time_adjustments (id, stage_id, user_id, delta_seconds, reason_code, created_by) VALUES (CAST(:id AS uuid), CAST(:s AS uuid), CAST(:u AS uuid), :d, :r, CAST(:by AS uuid))"
@@ -1617,13 +1658,19 @@ def manual_adjustment(body: dict, request: Request, p: Principal = Depends(requi
     points = _validated_points(raw_points, field="points")
     if points == 0:
         raise ApiError("VALIDATION_ERROR", details={"adjustment": "stage_id, team_id, points, reason required."})
+    if not _is_uuid(stage_id) or not _is_uuid(team_id):
+        raise ApiError("VALIDATION_ERROR", details={"adjustment": "stage_id and team_id must be UUIDs."})
     with app_session() as s:
-        event_id = s.execute(
-            text("SELECT event_id FROM app.stages WHERE id = CAST(:s AS uuid)"), {"s": stage_id}
-        ).scalar_one()
-        tenant_id = s.execute(
-            text("SELECT tenant_id FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": str(event_id)}
-        ).scalar_one()
+        scope = s.execute(
+            text(
+                "SELECT e.id, e.tenant_id FROM app.stages st JOIN app.events e ON e.id = st.event_id "
+                "JOIN app.teams t ON t.event_id = e.id WHERE st.id = CAST(:s AS uuid) AND t.id = CAST(:t AS uuid)"
+            ),
+            {"s": stage_id, "t": team_id},
+        ).first()
+        if scope is None:
+            raise ApiError("VALIDATION_ERROR", details={"adjustment": "Stage and team must belong to the same event."})
+        event_id, tenant_id = str(scope[0]), str(scope[1])
         add_ledger_entry(
             s,
             tenant_id=str(tenant_id),

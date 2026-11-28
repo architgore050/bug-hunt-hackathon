@@ -263,6 +263,18 @@ def verify_flag(payload: dict) -> None:
                 {"sid": submission_id},
             )
             return
+        # Serialize the cap read and ledger write for this team. Without this
+        # lock, concurrent workers can each award against the same stale total.
+        session.execute(
+            text("SELECT id FROM app.teams WHERE id = CAST(:team AS uuid) FOR UPDATE"),
+            {"team": str(sub["team_id"])},
+        ).scalar_one()
+        # max_awards is shared by every team claiming this public flag key.
+        # The transaction-scoped lock serializes the count and claim across workers.
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended('ctf_flag:' || :flag_key, 0))"),
+            {"flag_key": flag["flag_key"]},
+        ).scalar_one()
         # max_awards per flag
         claimed = session.execute(
             text("SELECT count(*) FROM app.award_claims WHERE award_unit_id = :u"),

@@ -1,10 +1,10 @@
-Status: describes the implementation as of 2026-11-26
+Status: describes the implementation as of 2026-11-28
 
 # Testing Strategy
 
 The pyramid as actually implemented:
 
-- A pytest integration-heavy suite against real PostgreSQL (38 tests).
+- A pytest integration-heavy suite against real PostgreSQL.
 - Pure-function unit tests for the deterministic matcher and scoring math.
 - One end-to-end journey script against a running stack (46 checks).
 - Frontend type-check, build, lint, and server-rendered security regression tests.
@@ -12,7 +12,7 @@ The pyramid as actually implemented:
 
 The committed workflow is `.github/workflows/ci.yml`.
 
-## 1. Backend pytest suite (38 tests)
+## 1. Backend pytest suite
 
 Layout: `backend/tests/`, driven by `pytest.ini` (`testpaths = tests`, 120 s timeout).
 
@@ -34,7 +34,9 @@ Per-file coverage:
 | `test_gt_isolation.py` (5) | Real `app_api` role denied on `gt.gt_bugs` / `gt.gt_flags` / gt INSERT. `gt_admin` positive control. The platform never lists or serves `ORGANIZER_ANSWER_KEY.md` (DAT-03, AT-08) |
 | `test_idempotency.py` (4) | Same key five times -> one receipt (DAT-02). Same key different payload -> 409 `IDEMPOTENCY_CONFLICT`. Committed-key replay returns the ORIGINAL receipt even after the deadline. Cooldown races on the same file rejected with 429 (INT-05) |
 | `test_matching.py` (8) | Deterministic matcher units: exact overlap auto-accept; near location plus alias evidence accepts; wrong file needs review; thin unmatched report structurally rejected; span over cap rejected; already-awarded unit -> duplicate; `location_score` bounds; weighted alias fraction |
-| `test_scoring.py` (5) | Weight split math; database-enforced ledger immutability and reversal linkage; two independent transactions racing for an award unit produce one claim; four distinct CTF flags exercise the 100-point cap; leaderboard tie-break ordering |
+| `test_scoring.py` (7) | Weight split math; database-enforced ledger immutability and reversal linkage; two independent transactions racing for an award unit produce one claim; seed-independent CTF flags exercise the 100-point cap; concurrent verification cannot exceed the team cap or a flag's max_awards; leaderboard tie-break ordering |
+| `test_root.py` (1) | Root endpoint returns 200 JSON with the app name and `ok` status |
+| `test_flow_*.py` (39) | Four-level gates, repository locks, submissions, uploads, and deadline auto-submit against real PostgreSQL |
 
 Run:
 
@@ -43,7 +45,7 @@ bash scripts/dev_db.sh     # once; conftest creates bughunt_test itself
 cd backend && python -m pytest -v
 ```
 
-The current inventory contains 38 pytest test functions. Passing status must be taken from the CI run for the exact commit, not inferred from the inventory.
+Passing status must be taken from the CI run for the exact commit, not inferred from this inventory.
 
 ## 2. Deterministic matcher tests
 
