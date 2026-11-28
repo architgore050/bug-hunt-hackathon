@@ -13,8 +13,8 @@ FROM app.users u
 WHERE rt.user_id = u.id
   AND u.status IN ('disabled', 'disqualified');
 
--- Staff accounts do not need a team membership to sign in. Clearing their
--- password hash is what prevents an old disabled staff account from returning.
+-- Clearing the password hash for every legacy disabled/disqualified account
+-- prevents an old credential from being reactivated if an administrator later reassigns a team.
 UPDATE app.users
 SET password_hash = NULL
 WHERE status IN ('disabled', 'disqualified');

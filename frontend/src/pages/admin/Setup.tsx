@@ -128,6 +128,8 @@ export default function AdminSetup() {
     setFreezeConfig(false)
     setTimeForm({ delta: '300', reason: 'OUTAGE', user_id: '' })
     setScoreForm({ team_id: '', points: '', reason: '', confirmed: false })
+    setNewTeamJoinCode(null)
+    setShowTeamJoinCode(false)
     setNotice(null)
     setError(null)
   }, [eventId])
