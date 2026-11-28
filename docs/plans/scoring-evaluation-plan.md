@@ -113,7 +113,7 @@ Ordered so each task is independently mergeable and `main` stays working: ledger
 
 | ID | Title | Files Touched | Depends On | Size | Status | Tests Required | Gating Checks |
 |---|---|---|---|---|---|---|---|
-| T-01 | Mask `rejected_auto`/`duplicate` before release (INT-01) | `backend/app/routers/submissions.py` | None | S | NOT STARTED | `test_gt_isolation.py` or `test_submissions.py` pre-release masking test | CHK-SEC-02 |
+| T-01 | Mask `rejected_auto`/`duplicate` before release (INT-01) | `backend/app/routers/submissions.py` | None | S | PARTIAL | `test_gt_isolation.py` pre-release masking test (code+test added; ruff/pytest CANNOT RUN locally) | CHK-SEC-02 |
 | T-02 | Add `?since=<version>` and `304 Not Modified` to leaderboard | `backend/app/routers/leaderboard.py` | None | S | NOT STARTED | `test_scoring.py` leaderboard `304` and version bump tests | CHK-RES-03 |
 | T-03 | Expand schema: `evaluation_state`, `submission_flag_results`, `submission_scores`, `runner_evaluations` | `backend/migrations/0005_scoring_pipeline.sql`, `backend/app/models_app.py` | None | M | NOT STARTED | Migration idempotency & schema grant tests (`app_api`, `gt_admin`) | CHK-COR-01, CHK-RES-02 |
 | T-04 | Crash-resumable L1/L2 evaluation + `matched_bug_code` + `release_feedback` for `level_report` | `backend/app/evaluator_level.py`, `backend/app/evaluator.py` | T-03 | M | NOT STARTED | Mid-run crash/retry test, L1/L2 `release_feedback` default & penalty tests | CHK-COR-01, CHK-COR-03, CHK-RES-02 |
