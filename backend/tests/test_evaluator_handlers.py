@@ -615,3 +615,46 @@ def test_release_scores_once_keeps_feedback_hidden_until_release_and_populates_p
         )
     assert penalties == 1
     assert {str(row["id"]): float(row["points_visible"]) for row in points} == {accepted: 44.0, rejected: 0.0}
+
+
+def test_leaderboard_refresh_finalizes_release_before_taking_snapshot(evaluation_case):
+    _insert_bug(evaluation_case, points=100)
+    accepted = _insert_submission(
+        evaluation_case,
+        "level_report",
+        {"level_no": 1, "flags": [_level_flag()]},
+    )
+    evaluator_level.evaluate_level_submission({"submission_id": accepted, "level_no": 1})
+    rejected = _insert_submission(evaluation_case, "bug_report", {})
+    with app_session() as session:
+        session.execute(
+            text("UPDATE app.submissions SET status = 'rejected_auto' WHERE id = CAST(:id AS uuid)"),
+            {"id": rejected},
+        )
+        session.execute(
+            text("UPDATE app.stages SET status = 'released' WHERE id = CAST(:id AS uuid)"),
+            {"id": evaluation_case["stage_id"]},
+        )
+
+    evaluator.refresh_leaderboard({"stage_id": evaluation_case["stage_id"], "visibility": "public"})
+
+    assert _submission_row(accepted)["feedback_released"] is True
+    assert len([row for row in _ledger(accepted) if row["component"] == "code_review"]) == 1
+    with app_session() as session:
+        snapshot = session.execute(
+            text(
+                "SELECT payload FROM app.leaderboard_snapshots WHERE stage_id = CAST(:stage AS uuid) "
+                "ORDER BY version DESC LIMIT 1"
+            ),
+            {"stage": evaluation_case["stage_id"]},
+        ).scalar_one()
+        penalty_count = session.execute(
+            text(
+                "SELECT count(*) FROM app.score_ledger_entries WHERE stage_id = CAST(:stage AS uuid) "
+                "AND reason_code = 'INVALID_REPORT_PENALTY'"
+            ),
+            {"stage": evaluation_case["stage_id"]},
+        ).scalar_one()
+    row = next(row for row in snapshot["rows"] if row["team_id"] == evaluation_case["team_id"])
+    assert row["score"] == 41.5
+    assert penalty_count == 1

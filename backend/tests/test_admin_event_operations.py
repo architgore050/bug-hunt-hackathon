@@ -496,10 +496,11 @@ def test_release_from_ended_enqueues_feedback_and_public_leaderboard_jobs(client
             session.execute(text("SELECT kind, payload, status FROM app.jobs ORDER BY created_at, id")).mappings().all()
         )
     assert status == "released"
-    assert [job["kind"] for job in jobs] == ["release_feedback", "refresh_leaderboard"]
+    jobs_by_kind = {job["kind"]: job for job in jobs}
+    assert set(jobs_by_kind) == {"release_feedback", "refresh_leaderboard"}
     assert {job["status"] for job in jobs} == {"queued"}
-    assert jobs[0]["payload"] == {"stage_id": stage_id}
-    assert jobs[1]["payload"] == {"stage_id": stage_id, "visibility": "public"}
+    assert jobs_by_kind["release_feedback"]["payload"] == {"stage_id": stage_id}
+    assert jobs_by_kind["refresh_leaderboard"]["payload"] == {"stage_id": stage_id, "visibility": "public"}
     assert _audit_count("stage.release", stage_id) == 1
 
     response = organizer.post(f"/v1/admin/stages/{stage_id}/release", json={"action": "release"})

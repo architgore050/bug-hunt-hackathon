@@ -645,13 +645,16 @@ def refresh_leaderboard(payload: dict) -> None:
     with app_session() as session:
         stage = (
             session.execute(
-                text("SELECT id, config, event_id FROM app.stages WHERE id = CAST(:s AS uuid)"), {"s": stage_id}
+                text("SELECT id, status, config, event_id FROM app.stages WHERE id = CAST(:s AS uuid)"),
+                {"s": stage_id},
             )
             .mappings()
             .first()
         )
         if stage is None:
             return
+        if stage["status"] in ("released", "final"):
+            release_feedback({"stage_id": stage_id})
         cfg = stage["config"] or {}
         if visibility is None:
             mode = cfg.get("leaderboard_mode", "hidden")
