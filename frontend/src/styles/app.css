@@ -849,8 +849,9 @@ table.table {
     padding-bottom: 4px;
   }
 
-  /* Keep the nav on one row next to the wordmark on narrow phones. */
-  .wordmark {
+  /* Keep the nav on one row next to the wordmark on narrow phones.
+     Scoped to the topbar so the footer wordmark keeps its full size. */
+  .topbar .wordmark {
     font-size: 15px;
   }
 
