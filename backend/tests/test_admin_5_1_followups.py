@@ -639,11 +639,16 @@ class TestF_C_12_TestResultsReferences:
             "INSERT INTO app.teams (id, event_id, name, join_code) VALUES (CAST(:id AS uuid), CAST(:e AS uuid), 'Other', 'JOINXX3')",
             {"id": other_team, "e": other},
         )
+        # Keep the seeded stage fixed for both cases. The stage created above
+        # shares ordinal 1 with it, so re-deriving the default inside
+        # _make_submission() can pick the wrong row after earlier tests have
+        # changed the physical row order. Only the field under test changes.
+        base = {"challenge_id": seed["challenge_id"], "stage_id": seed["stage_id"]}
         for kwargs, expected in (
             ({"stage_id": other_stage}, "stage does not belong"),
             ({"team": other_team}, "team does not belong"),
         ):
-            forged = _make_submission(challenge_id=seed["challenge_id"], **kwargs)
+            forged = _make_submission(**{**base, **kwargs})
             before = _q("SELECT count(*) AS n FROM app.jobs", one=True)["n"]
             r = oc.post(
                 f"/v1/admin/challenges/{seed['challenge_id']!s}/ground-truth/test-results",
