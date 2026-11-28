@@ -38,7 +38,6 @@ function buildSeed(): AdminWorkspace {
   const teams = TEAM_NAMES.map((name, ti) => ({
     id: `team-${String(ti + 1).padStart(2, '0')}`,
     name,
-    status: (ti === 11 ? 'inactive' : 'active') as 'active' | 'inactive',
     capacity: 5,
     createdAt: T(`09:0${ti % 10}`),
     joinCode: `FB${String(1000 + ti * 7).slice(0, 4)}`,
@@ -51,18 +50,19 @@ function buildSeed(): AdminWorkspace {
   const participants: AdminWorkspace['participants'] = []
   let pi = 0
   for (const team of teams) {
-    const count = team.status === 'inactive' ? 3 : 4 + (pi % 2)
+    const count = team.id === 'team-12' ? 3 : 4 + (pi % 2)
     for (let m = 0; m < count; m++) {
       const idx = pi++
+      const isActive = idx % 11 !== 0
       participants.push({
         id: `P-${String(idx + 1).padStart(4, '0')}`,
         name: memberName(idx),
         email: `${memberName(idx).toLowerCase().replace(' ', '.')}@vitbhopal.ac.in`,
         teamId: team.id,
         registrationStatus: 'registered',
-        participationStatus: team.status === 'inactive' ? 'inactive' : 'active',
+        participationStatus: isActive ? 'active' : 'inactive',
         registeredAt: T(`08:${String(10 + (idx % 45)).padStart(2, '0')}`),
-        lastActiveAt: team.status === 'inactive' ? null : T(`10:${String(5 + (idx % 50)).padStart(2, '0')}`),
+        lastActiveAt: isActive ? T(`10:${String(5 + (idx % 50)).padStart(2, '0')}`) : null,
       })
     }
   }

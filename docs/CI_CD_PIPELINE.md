@@ -1,4 +1,4 @@
-Status: describes the committed workflow as of 2026-11-28; first green run on GitHub is UNVERIFIED from this repository
+Status: six-job workflow and upstream `main` run verified on 2026-11-28; this branch's pull-request run is pending
 
 # CI/CD Pipeline
 
@@ -7,7 +7,7 @@ Ownership note: the CI workflow is owned by the orchestrator track. This documen
 Deployment reality (verified 2026-11-28 from the repository only):
 
 - The workflow file exists and defines six jobs.
-- Whether any run has completed on GitHub cannot be verified from the repository; the first green run must be observed on GitHub and recorded as readiness evidence.
+- Upstream `main` run [#95](https://github.com/architgore050/bug-hunt-hackathon/actions/runs/46141529709) completed successfully on commit `05796da64df844e8156dea4ad2b740397dd4e4b8` across all six jobs. This is not evidence that the feature branch is green; its PR checks must pass on the exact PR head.
 - The job list below matches the committed file. A remote run is not implied by the job definitions.
 
 ## 1. Workflow contract: `.github/workflows/ci.yml`

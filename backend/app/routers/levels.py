@@ -53,7 +53,7 @@ def _member(s, p: Principal) -> dict:
     row = (
         s.execute(
             text(
-                "SELECT tm.team_id, t.name AS team_name, t.event_id, t.status AS team_status, "
+                "SELECT tm.team_id, t.name AS team_name, t.event_id, "
                 "e.tenant_id, e.status AS event_status, e.config AS event_config "
                 "FROM app.team_members tm JOIN app.teams t ON t.id = tm.team_id "
                 "JOIN app.events e ON e.id = t.event_id WHERE tm.user_id = CAST(:u AS uuid) LIMIT 1"
@@ -952,8 +952,6 @@ def submit_level(
     with app_session() as s:
         member = _member(s, p)
         _require_live_event(member)
-        if member["team_status"] != "active":
-            raise ApiError("AUTH_FORBIDDEN", message="This team cannot submit.")
         event_id = str(member["event_id"])
         team_id = str(member["team_id"])
         flow.init_participant_flow(s, event_id, p.id)

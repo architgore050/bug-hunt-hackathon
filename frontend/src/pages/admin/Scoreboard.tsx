@@ -24,8 +24,7 @@ export default function Scoreboard() {
   const [adjustTeam, setAdjustTeam] = useState<string | null>(params.get('adjust') === '1' ? (state.teams[0]?.id ?? null) : null)
 
   const ranked = useMemo(() => {
-    const active = state.teams.filter((t) => t.status !== 'disqualified')
-    return [...active].sort((a, b) => teamTotal(b, state.adjustments) - teamTotal(a, state.adjustments))
+    return [...state.teams].sort((a, b) => teamTotal(b, state.adjustments) - teamTotal(a, state.adjustments))
   }, [state])
 
   return (
@@ -59,7 +58,7 @@ export default function Scoreboard() {
                     return (
                       <tr key={t.id}>
                         <td className="num mono" style={{ fontWeight: 600 }}>{i + 1}</td>
-                        <td style={{ fontWeight: 600 }}>{t.name}<div className="muted small">{t.status}</div></td>
+                        <td style={{ fontWeight: 600 }}>{t.name}</td>
                         <td className="small">{members.length}</td>
                         <td className="num mono" style={{ fontSize: 16, fontWeight: 600, color: 'var(--paper)' }}>{fmtPoints(t.functionalScore)}</td>
                         <td className="num mono">{fmtPoints(t.evaluationScore)}</td>

@@ -14,7 +14,7 @@ import {
   KVRow,
 } from '../../ui/components'
 import { FileIcon } from '../../ui/icons'
-import { StepUpGateHint, StepUpPanel } from '../../components/StepUp'
+import { needsStepUp, StepUpGateHint, StepUpPanel, useStepUpWindow } from '../../components/StepUp'
 
 const KNOWN_KEY = 'bhctf.admin.challenge_ids'
 
@@ -58,7 +58,7 @@ export default function AdminChallenges() {
   })
 
   const [stepUpUntil, setStepUpUntil] = useState<number | null>(null)
-  const elevated = stepUpUntil !== null && stepUpUntil > Date.now()
+  const { nowMs, elevated } = useStepUpWindow(stepUpUntil)
 
   const [known, setKnown] = useState<string[]>(loadKnown)
   const [challengeId, setChallengeId] = useState('')
@@ -77,6 +77,7 @@ export default function AdminChallenges() {
     try {
       return await fn()
     } catch (err) {
+      if (needsStepUp(err)) setStepUpUntil(null)
       if (err instanceof ApiRequestError) {
         setError(err)
       } else {
@@ -199,7 +200,7 @@ export default function AdminChallenges() {
         </div>
       </header>
 
-      <StepUpPanel stepUpUntil={stepUpUntil} onStepUp={(t) => setStepUpUntil(t)} />
+      <StepUpPanel stepUpUntil={stepUpUntil} onStepUp={setStepUpUntil} nowMs={nowMs} />
 
       {error && <ErrorBanner error={error} title="Challenge operation failed" />}
       {eventsQ.isError && <ErrorBanner error={eventsQ.error} onRetry={() => void eventsQ.refetch()} />}
