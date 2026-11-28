@@ -18,7 +18,6 @@ import { adminErrorText, needsStepUp, StepUpGateHint, StepUpPanel, useStepUpWind
 interface Team {
   id: string
   name: string
-  status: string
   member_count: number
 }
 

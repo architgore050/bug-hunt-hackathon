@@ -19,7 +19,6 @@ import { fmtDateTime } from '../../lib/format'
 interface Team {
   id: string
   name: string
-  status: string
   member_count: number
 }
 

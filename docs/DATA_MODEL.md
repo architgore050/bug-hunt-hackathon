@@ -8,7 +8,7 @@ Source of truth: `backend/migrations/0001_init.sql` (652 lines), applied by `scr
 
 - Versioned plain SQL files in `backend/migrations/`, applied in filename order by `scripts/migrate.sh`. `app.schema_migrations (filename PRIMARY KEY, applied_at)` records what ran; applied files are skipped, `ON_ERROR_STOP=1` aborts on failure. Rationale recorded in `scripts/gen_initial_migration.py` (ADR-018): transparent, reviewable SQL over an ORM-autogenerate black box, expand/contract style.
 - Migrations always run as `PGUSER=pgadmin` (database owner). Runtime roles (`app_api`, `gt_admin`) never migrate; DDL grants are established by `scripts/dev_db.sh` plus migration ownership.
-- There is exactly one migration today (`0001_init.sql`). The seed script (`backend/seed.py`) is data, not DDL, and is dev/test-only.
+- The migrations are the numbered SQL files in `backend/migrations/` (currently `0001_init.sql` through `0007_drop_team_status.sql`); that directory, not a count restated here, is the authoritative list. The seed script (`backend/seed.py`) is data, not DDL, and is dev/test-only.
 
 ## 2. Schema `app` (32 tables, participant/admin domain)
 
@@ -16,11 +16,10 @@ Readable and writable by `app_api` and `gt_admin`.
 
 ### Identity and access
 
-- `users`: `id UUID PK`, `tenant_id FK`, `email VARCHAR(320)` UNIQUE index (`ix_app_users_email`), `name`, `role VARCHAR(20)` (participant | reviewer | organizer | admin), `password_hash VARCHAR(256)` nullable (pre-activation), `status VARCHAR(20) DEFAULT 'pending'` (pending | active | disqualified), `token_version INTEGER DEFAULT 1` (bumped on password reset to kill all access tokens, AUTH-01), `registration_id`, `accommodation_note`. Indexes: role, tenant.
+- `users`: `id UUID PK`, `tenant_id FK`, `email VARCHAR(320)` UNIQUE index (`ix_app_users_email`), `name`, `role VARCHAR(20)` (participant | reviewer | organizer | admin), `password_hash VARCHAR(256)` nullable (pre-activation), `token_version INTEGER DEFAULT 1` (bumped on password reset to kill all access tokens, AUTH-01), `registration_id`, `accommodation_note`. Indexes: role, tenant. No account `status` column: migration `0006_remove_account_status.sql` dropped it; access ends when the team membership is removed (sessions and refresh tokens revoked, token version bumped) or the password hash is cleared, not via a status flag.
 - `sessions`: `id UUID PK`, `user_id FK`, `last_seen_at`, `ip_hash VARCHAR(64)` (HMAC-SHA256, first 32 hex, keyed by JWT_SECRET; raw IPs never stored), `user_agent VARCHAR(300)`, `revoked_at`, `step_up_at` (5-minute elevated window, AUTH-09). Index on user_id.
 - `refresh_tokens`: `id UUID PK`, `session_id FK`, `user_id FK`, `token_hash VARCHAR(64)` UNIQUE (SHA-256 of the opaque token; raw tokens never at rest), `status VARCHAR(12) DEFAULT 'active'` (active | rotated | revoked), `successor_encrypted TEXT` (Fernet-encrypted successor for the 10 s race grace, AUTH-04), `rotated_at`, `replaces_id`, `expires_at`. Indexes: user_id, session_id.
-- `invites`: `event_id FK`, `email`, `token_hash UNIQUE` (single-use activation), `team_id FK nullable`, `role DEFAULT 'participant'`, `used_at`, `expires_at`. Indexes: event, email.
-- `password_resets`: `user_id FK`, `token_hash UNIQUE`, `used_at`, `expires_at`.
+- Migration `0005_remove_legacy_account_tokens.sql` dropped the former `invites` and `password_resets` tables; the legacy invite/password-reset token flows were removed with them.
 - `acceptances`: `user_id FK`, `rules_version INTEGER`, `ip_hash`, `UNIQUE (user_id, rules_version)`; the rules gate in `deps.require_rules_accepted` reads it.
 - `tenants`: `slug UNIQUE`. One tenant row is created by seed (`sdc-vitb`); multi-tenancy is modeled but v1 runs one club.
 

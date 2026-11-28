@@ -36,11 +36,11 @@ Per-file coverage:
 | `test_gt_isolation.py` (5) | Real `app_api` role denied on `gt.gt_bugs` / `gt.gt_flags` / gt INSERT. `gt_admin` positive control. The platform never lists or serves `ORGANIZER_ANSWER_KEY.md` (DAT-03, AT-08) |
 | `test_idempotency.py` (4) | Same key five times -> one receipt (DAT-02). Same key different payload -> 409 `IDEMPOTENCY_CONFLICT`. Committed-key replay returns the ORIGINAL receipt even after the deadline. Cooldown races on the same file rejected with 429 (INT-05) |
 | `test_matching.py` (8) | Deterministic matcher units: exact overlap auto-accept; near location plus alias evidence accepts; wrong file needs review; thin unmatched report structurally rejected; span over cap rejected; already-awarded unit -> duplicate; `location_score` bounds; weighted alias fraction |
-| `test_scoring.py` (7) | Weight split math; database-enforced ledger immutability and reversal linkage; two independent transactions racing for an award unit produce one claim; seed-independent CTF flags exercise the 100-point cap; concurrent verification cannot exceed the team cap or a flag's max_awards; leaderboard tie-break ordering |
+| `test_scoring.py` (8) | Weight split math; database-enforced ledger immutability and reversal linkage; two independent transactions racing for an award unit produce one claim; seed-independent CTF flags exercise the 100-point cap; concurrent verification cannot exceed the team cap or a flag's max_awards; leaderboard tie-break ordering |
 | `test_root.py` (1) | Root endpoint returns 200 JSON with the app name and `ok` status |
 | `test_flow_*.py` (39) | Four-level gates, repository locks, submissions, uploads, and deadline auto-submit against real PostgreSQL |
 
-Total at the 2026-11-28 snapshot: `pytest --collect-only -q` collects 83 tests with 0 collection errors. Collection is not a passing test run.
+Total at the 2026-11-28 snapshot: `pytest --collect-only -q` collects 84 tests with 0 collection errors. Collection is not a passing test run.
 
 Run:
 
@@ -152,7 +152,7 @@ All of these must be green before the event goes live. They map to the seeded `a
 
 Per-suite gates for every code change:
 
-- pytest suite green against PostgreSQL (83 tests collected at the 2026-11-28 snapshot; collection is not a passing test run).
+- pytest suite green against PostgreSQL (84 tests collected at the 2026-11-28 snapshot; collection is not a passing test run).
 - e2e journey 46/46.
 - frontend build clean.
 - frontend SSR rendering regression test clean.

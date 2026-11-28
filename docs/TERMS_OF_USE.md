@@ -31,8 +31,11 @@ any feature that is not needed to run the event.
    You are responsible for all activity performed with your credentials.
    Password reset revokes all sessions for the account.
 3. The organizers may suspend or disqualify accounts that break these terms
-   or the competition rules. A disqualified account is refused at sign-in
-   with a contact-the-organizers message.
+   or the competition rules. Disqualification is enforced administratively:
+   the organizers remove the member from the team or delete the team. A
+   removed member cannot sign in, because participant sign-in requires an
+   existing team membership, and removal revokes the account's sessions and
+   refresh tokens.
 
 ## 3. Acceptable use
 

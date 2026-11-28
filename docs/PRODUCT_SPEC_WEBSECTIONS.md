@@ -252,8 +252,8 @@ report desk (EX-R).
   draft conflict notice telling the user the other tab's version won. Draft
   failures never block the workspace; the next tick retries.
 - Submission: `POST /v1/submissions` with an Idempotency-Key generated per
-  attempt. Server checks run in order: team membership and team status, rules
-  acceptance, idempotency (same key plus same payload replays the original
+  attempt. Server checks run in order: rules acceptance, team membership,
+  idempotency (same key plus same payload replays the original
   receipt even after the round ends; same key plus different payload is
   `IDEMPOTENCY_CONFLICT`), round state (`ROUND_PAUSED`, `ROUND_ENDED`,
   `ROUND_NOT_ACTIVE`) including the grace window, field validation
@@ -455,7 +455,8 @@ AUTH_SESSION_REVOKED, RULES_NOT_ACCEPTED, VALIDATION_ERROR, NOT_FOUND,
 PATH_INVALID, ROUND_NOT_ACTIVE, ROUND_PAUSED, ROUND_ENDED,
 SUBMISSION_INVALID, SUBMISSION_CAP_REACHED, SUBMISSION_COOLDOWN,
 FILE_NOT_FOUND, IDEMPOTENCY_CONFLICT, DRAFT_VERSION_CONFLICT,
-GROUND_TRUTH_LOCKED, ADMIN_STEP_UP_REQUIRED, NETWORK (client classified).
+GROUND_TRUTH_LOCKED, ADMIN_STEP_UP_REQUIRED, TEAM_FULL, NETWORK (client
+classified).
 Every one renders with the code and request id so the desk can trace it.
 There is no account-status code: sign-in failures of every kind surface as
 the generic `AUTH_INVALID_CREDENTIALS`.

@@ -38,7 +38,7 @@ Steps:
 6. Verify:
    - `curl http://127.0.0.1:8100/health` must show `database_app: up` and `database_gt: up`.
    - `python scripts/e2e_journey.py` must exit 0 (46 checks).
-   - `cd backend && python -m pytest` must complete successfully against PostgreSQL. At the 2026-11-28 review snapshot, 83 tests were collected; collection is not a passing test run.
+   - `cd backend && python -m pytest` must complete successfully against PostgreSQL. At the 2026-11-28 review snapshot, 84 tests were collected; collection is not a passing test run.
 
 Environment variables (all optional in dev, see `backend/app/config.py`):
 

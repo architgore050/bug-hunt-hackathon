@@ -94,12 +94,12 @@ def _already_awarded(session, stage_id: str, team_id: str) -> set[str]:
     return {r[0] for r in rows}
 
 
-def _has_component(session, submission_id: str, component: str) -> bool:
+def _has_component(session, submission_id: str, component: str, kind: str = "award") -> bool:
     row = session.execute(
         text(
-            "SELECT 1 FROM app.score_ledger_entries WHERE submission_id = CAST(:sid AS uuid) AND component = :c AND kind = 'award'"
+            "SELECT 1 FROM app.score_ledger_entries WHERE submission_id = CAST(:sid AS uuid) AND component = :c AND kind = :k"
         ),
-        {"sid": submission_id, "c": component},
+        {"sid": submission_id, "c": component, "k": kind},
     ).first()
     return row is not None
 
@@ -238,8 +238,10 @@ def verify_flag(payload: dict) -> None:
     from .security import flag_code_hash
 
     with app_session() as s:
-        if _has_component(s, submission_id, "ctf_bonus"):
-            return  # idempotent: this submission was already paid; keep its status/matched_bug_code
+        if _has_component(s, submission_id, "ctf_bonus", kind="bonus"):
+            # Idempotent: an existing ctf_bonus ledger entry for this submission means the
+            # flag was already paid on an earlier delivery; keep its status/matched_bug_code.
+            return
         sub = _submission(s, submission_id)
         if sub is None:
             raise ValueError("submission missing")
