@@ -47,7 +47,7 @@ Major capability area, where it is implemented, and where it is verified.
 | Audit chain (append-only, per event, verify endpoint) | `backend/app/audit.py`, verify route in `backend/app/routers/admin.py` | E2E audit verify check; unit coverage in test_scoring/test_auth |
 | Frontend (React 19 + Vite + TS + Tailwind 4) | `frontend/src/` pages under `pages/participant`, `pages/admin`, `pages/review`, lib in `frontend/src/lib/` | `npm run build` clean; E2E journey drives the UI paths |
 | Seed preset (Fall Back) | `backend/seed.py` | E2E journey resets seed; `scripts/dev_db.sh` |
-| E2E journey (46 checks) | `scripts/e2e_journey.py` | Reported passing in the one-shot run; re-run locally to confirm |
+| E2E journey | `scripts/e2e_journey.py` | Reported passing in the one-shot run; re-run locally to confirm |
 | Load test (UNRUN at cap) | `scripts/load_test.py` | `LOAD_TEST_REPORT.md`, all result cells UNRUN |
 
 ## 4. Documentation set

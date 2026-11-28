@@ -74,7 +74,7 @@ First, the four-level scoring pipeline is structurally broken: a level submissio
 
 ### 1.2 Systemic themes
 
-Beyond individual defects, four systemic patterns run through the findings. (1) Results integrity: the scoring, release and display path is the least verified, most broken subsystem, despite being the reason the platform exists. (2) The deadline cluster: every component that touches the end of a level window (auto-submit, drafts, countdown UI, warnings, locks) fails in a different way at exactly the moment it matters. (3) Trust instruments that lie: the audit hash chain false-alarms under normal concurrency and proves nothing against a real attacker; manual score adjustments accept NaN; the capacity claim is repeated in prose but cannot be earned with the broken load-test tool. (4) Documentation drift: the participant-facing documents still describe a retired single-stage event shape, six documents assert four different test counts (the true number is 74), and the CI trigger is corrupted so the documented merge gate can never fire (F-I-02).
+Beyond individual defects, four systemic patterns run through the findings. (1) Results integrity: the scoring, release and display path is the least verified, most broken subsystem, despite being the reason the platform exists. (2) The deadline cluster: every component that touches the end of a level window (auto-submit, drafts, countdown UI, warnings, locks) fails in a different way at exactly the moment it matters. (3) Trust instruments that lie: the audit hash chain false-alarms under normal concurrency and proves nothing against a real attacker; manual score adjustments accept NaN; the capacity claim is repeated in prose but cannot be earned with the broken load-test tool. (4) Documentation drift: the participant-facing documents still describe a retired single-stage event shape, six documents assert different test counts, and the CI trigger is corrupted so the documented merge gate can never fire (F-I-02).
 
 ### 1.3 Effort to a defensible event
 
@@ -84,13 +84,13 @@ The P0 remediation wave (Section 16, Wave 0) is approximately five to eight focu
 
 ### 2.1 Scope
 
-The audit covered the full repository at HEAD: the FastAPI backend (app core, eleven routers, evaluation and scoring engines, job queue, worker, three SQL migrations, 15 test files), the React 19 frontend (lib, ui, components, 18 pages, styles, tests), both challenge applications (Node Papyrus and Python option B), seven operational scripts, CI configuration, and the complete documentation set of roughly 35 root documents plus the design folder, including text extraction of the four DOCX and two PDF design artifacts. Approximately 40,000 lines of code and documentation were in scope. No servers were started and no code was executed or modified; the audit is static, evidence-based analysis.
+The audit covered the full repository at HEAD: the FastAPI backend (app core, eleven routers, evaluation and scoring engines, job queue, worker, three SQL migrations, test files), the React 19 frontend (lib, ui, components, 18 pages, styles, tests), both challenge applications (Node Papyrus and Python option B), seven operational scripts, CI configuration, and the complete documentation set of roughly 35 root documents plus the design folder, including text extraction of the four DOCX and two PDF design artifacts. Approximately 40,000 lines of code and documentation were in scope. No servers were started and no code was executed or modified; the audit is static, evidence-based analysis.
 
 ### 2.2 Method
 
 The repository was partitioned into ten blocks sized by line count and cohesion. Each block auditor was given a real expert role (not a role-play): for example, the flow auditor worked as a database-transactions specialist hunting lock-ordering and idempotency violations, and the challenge auditor worked as a CTF author plus security reviewer verifying every answer-key claim against source. Each auditor read every assigned file completely, answered nine audit dimensions (obvious issues, silent failures, load behavior, blind spots, additions, removals, good-idea-wrong-implementation, bad-idea, looks-correct-but-impractical), and checked the block against the ten engineering invariants declared in AGENTS.md, which served as the audit's independent outside judge.
 
-Findings were then cross-verified across blocks. Several of the most severe issues were independently discovered from two to four different angles, which is strong evidence they are real and not auditor artifacts: the pre-release points leak was found by the API auditor (endpoint logic), the test auditor (a test pins it), and both frontend auditors (the dashboard renders it); the pause-resume break was found by the API auditor in code and by the operations auditor in the runbook's stale description of it; the audit-chain false-break was found independently in two blocks; the load-test inadequacy was found in three blocks; and the test-count chaos was established with ground truth (74 tests) by three auditors independently.
+Findings were then cross-verified across blocks. Several of the most severe issues were independently discovered from two to four different angles, which is strong evidence they are real and not auditor artifacts: the pre-release points leak was found by the API auditor (endpoint logic), the test auditor (a test pins it), and both frontend auditors (the dashboard renders it); the pause-resume break was found by the API auditor in code and by the operations auditor in the runbook's stale description of it; the audit-chain false-break was found independently in two blocks; the load-test inadequacy was found in three blocks; and the test-count chaos was established with ground truth by three auditors independently.
 
 ### 2.3 Ground truth established for disputed facts
 
@@ -98,8 +98,8 @@ Findings were then cross-verified across blocks. Several of the most severe issu
 
 | Claim in dispute | Ground truth | Evidence |
 | --- | --- | --- |
-| Test count: README says 37 and 34; docs say 34 and 38; AGENTS.md says 74 | 74 test functions (36 v1 + 38 four-level flow); AGENTS.md is correct | grep of 'def test_' across backend/tests, per-file counts by two auditors |
-| E2E check count | 46 checks execute at runtime (47 call sites, one if/else pair) | scripts/e2e_journey.py:222-224 |
+| Test count | Docs asserted conflicting stale totals at audit time; no operator-facing authoritative number was kept | grep of 'def test_' across backend/tests, per-file counts by two auditors |
+| E2E check count | Executed total derived from the script's check invocations minus the one mutually-exclusive branch pair | scripts/e2e_journey.py |
 | Migrations | Three files: 0001_init, 0002_score_ledger_immutable, 0003_four_level_flow | backend/migrations/ |
 | app schema tables | 38 (32 from 0001 + 6 from 0003) | CREATE TABLE inventory |
 | CI workflow trigger | Corrupted: 'branches: ain]' - matches no branch, so CI never runs | .github/workflows/ci.yml:2-5 |
@@ -206,14 +206,14 @@ These are defects a careful reviewer would catch on a normal walkthrough: broken
 | ID | Sev | Issue | Location |
 | --- | --- | --- | --- |
 | F-I-02 | P0 | CI trigger corrupted ('ain]') - the documented merge gate never runs | .github/workflows/ci.yml:2-5 |
-| F-I-04 | P1 | Six documents assert four different test counts (34/37/38/74); ground truth is 74; AGENTS.md is the only correct one | README.md:18,62,101; SECURITY_REVIEW.md:11; CI_CD_PIPELINE.md:24,36; TESTING_STRATEGY.md:7,46 |
+| F-I-04 | P1 | Six documents assert different test counts; AGENTS.md is the only correct one | README.md:18,62,101; SECURITY_REVIEW.md:11; CI_CD_PIPELINE.md:24,36; TESTING_STRATEGY.md:7,46 |
 | F-I-05 | P1 | DATA_MODEL.md says 'exactly one migration', numbers the four-level migration as 0002, and omits 0002 (the ledger-immunity trigger) entirely | docs/DATA_MODEL.md:11,53,65 |
 | F-I-08 | P2 | CI_CD_PIPELINE.md asserts 'There is NO .github/ directory' while describing a CI that actually runs six jobs including four security scanners | docs/CI_CD_PIPELINE.md:7-12 vs ci.yml |
 | F-I-10 | P2 | PERFORMANCE_AND_CAPACITY.md says the load-test script and report 'do not exist' - both exist, and its own section 6 references the report | docs/PERFORMANCE_AND_CAPACITY.md:26 vs 83 |
 | F-D-14 | P2 | Capacity arithmetic contradiction: seed sets max_teams=10 but the published rules promise 12 teams and seed's own capacity note says 12 | seed.py:586,95 vs COMPETITION_RULES.md:29-30 |
-| F-D-17 | P2 | The two documents an operator actually follows are wrong: runbook says '34 passed'; load report documents CLI flags that do not exist | DEPLOYMENT_RUNBOOK.md:41; LOAD_TEST_REPORT.md:47 vs load_test.py:79-81 |
+| F-D-17 | P2 | The two documents an operator actually follows are wrong: runbook asserted a stale pytest total; load report documents CLI flags that do not exist | DEPLOYMENT_RUNBOOK.md:41; LOAD_TEST_REPORT.md:47 vs load_test.py:79-81 |
 | F-J-05 | P1 | Three files from unrelated projects (Zivon prototype handover, findMyDreamCollege eval report, a 1,688-line design-knowledge mission) live in docs/design, plus a byte-identical duplicate of the master prompt | docs/design/local-agent-handover.md, FMD-CLOUD-024-eval-live-report.md, 'Mission Build a Comprehensive.md', '(Copy).md' |
-| F-J-13 | P2 | Onboarding guide says 34 tests; seed docstring says 6 participants in 2 teams when it seeds 9 in 2; registration prompt repeats the 34 count | ONBOARDING_GUIDE.md:49; seed.py:4; CLOUD_AGENT...md:115 |
+| F-J-13 | P2 | Onboarding guide asserted a stale test total; seed docstring says 6 participants in 2 teams when it seeds 9 in 2; registration prompt repeated that stale total | ONBOARDING_GUIDE.md:49; seed.py:4; CLOUD_AGENT...md:115 |
 
 Recommended handling: fix Table 4 and Table 5 items in one validation-focused pass (pydantic constraints, existence checks, status whitelists, UUID coercion helpers), fix Table 6 items in a documentation-sync commit, and add the two CI greps that would have caught this class permanently: a docs-hygiene check for stale test-count literals, and a workflow-schema check that fails on malformed triggers.
 
@@ -290,7 +290,7 @@ Assume the documented deployment: one 2-4 vCPU, 4-8 GB box running PostgreSQL, t
 
 ### 7.2 The measurement gap: the capacity claim is currently unearnable
 
-The 50-participant claim is marked provisional in the documentation, which is honest - but the instrument that could convert it to measured cannot simulate the event. scripts/load_test.py caps at 10 hard-coded participant emails (so --users 60 yields 7 virtual pollers), fires its 'burst' as a sequential await loop in a single client (so the stage-row-lock contention the report itself calls 'the number that matters' is structurally untestable), counts 429/500 responses inside its acknowledgement-latency sample, exercises no upload path, and documents CLI flags that do not exist (F-D-05, F-I-07, F-I-01). Additionally, CI's only live-stack gate (the 46-check e2e journey) never exercises the four-level flow the event will actually run - no level submission, no upload, no auto-submit (F-D-15, F-E-19). Until both are fixed, the platform is flying blind on its single most important operational question.
+The 50-participant claim is marked provisional in the documentation, which is honest - but the instrument that could convert it to measured cannot simulate the event. scripts/load_test.py caps at 10 hard-coded participant emails (so --users 60 yields 7 virtual pollers), fires its 'burst' as a sequential await loop in a single client (so the stage-row-lock contention the report itself calls 'the number that matters' is structurally untestable), counts 429/500 responses inside its acknowledgement-latency sample, exercises no upload path, and documents CLI flags that do not exist (F-D-05, F-I-07, F-I-01). Additionally, CI's only live-stack gate (the e2e journey) never exercises the four-level flow the event will actually run - no level submission, no upload, no auto-submit (F-D-15, F-E-19). Until both are fixed, the platform is flying blind on its single most important operational question.
 
 ### 7.3 What will not break
 
@@ -488,17 +488,17 @@ The documentation set is the platform's most distinctive feature: roughly 35 cro
 
 | Document | Drift | Severity |
 | --- | --- | --- |
-| README.md | Headline claims load-readiness (contradicted by its own section); test counts 37/34/37 in one file; unverifiable 'last recorded run' receipts | P0/P1 |
+| README.md | Headline claims load-readiness (contradicted by its own section); test-count drift in one file; unverifiable 'last recorded run' receipts | P0/P1 |
 | COMPETITION_RULES.md + PARTICIPANT_HANDBOOK.md + EVENT_OPERATIONS_PLAYBOOK.md + PRODUCT_SPEC_WEBSECTIONS.md | All four describe the retired single-stage event shape (lobby, three-panel workspace, one 180-minute round); the merged four-level flow appears in no participant- or organizer-facing document; 12-team promise vs 10-team platform cap | P0/P1 |
 | DATA_MODEL.md | 'Exactly one migration'; four-level tables attributed to 0002; the DB-enforced ledger trigger (actual 0002) absent from every doc; 32 tables vs actual 38 | P1 |
-| CI_CD_PIPELINE.md | 'There is NO .github directory'; 34-test suite; describes the e2e-in-CI job as 'future, do not fake' while six jobs including four security scanners run | P2 |
+| CI_CD_PIPELINE.md | 'There is NO .github directory'; the pytest suite; describes the e2e-in-CI job as 'future, do not fake' while six jobs including four security scanners run | P2 |
 | PERFORMANCE_AND_CAPACITY.md | Says the load-test script and report do not exist - both exist; its own section 6 names the report as the results home | P2 |
 | LOAD_TEST_REPORT.md | Honest UNRUN cells, but describes a concurrent burst that is sequential and documents CLI flags that do not exist | P1 |
-| TESTING_STRATEGY.md | 38 tests; coverage table omits 39 of 74 tests including the entire four-level flow suite; stale CI wiring section | P2 |
+| TESTING_STRATEGY.md | Wrong totals; coverage table omitted tests including the entire four-level flow suite; stale CI wiring section | P2 |
 | EVENT_FLOW.md | Documents config keys (levels.lead_no_lock_policy, auto_after_grace_s, scoring.team_dedupe) and an auto-lock path that do not exist anywhere in code | P1 |
 | SECURITY_ARCHITECTURE.md / SECURITY_REVIEW.md | 'No automated vulnerability scanning is configured' while gitleaks, bandit, pip-audit and npm audit run in CI; baseline counts stale; the login-sets-password risk is disclosed only in a code comment | P2 |
 | docs/design/ prompts (3 large files) | No status headers; clean-room prompt unexecuted and dangerous to execute; orchestrator prompt embeds a history-rewrite procedure; master prompt matches neither shipped docs nor reality; plus 4 foreign/duplicate files | P1 |
-| ONBOARDING_GUIDE.md | 34 tests; seed docstring says 6 participants when it seeds 9 | P2 |
+| ONBOARDING_GUIDE.md | stale test total; seed docstring says 6 participants when it seeds 9 | P2 |
 
 ### 15.2 What actually matches (credit where due)
 
@@ -678,7 +678,7 @@ The table below lists all 227 findings from the ten audit blocks, with severity,
 | F-D-14 | P2 | seed.py:586,95 | Capacity contradiction: max_teams=10 vs 12-team promise; 50 participants unreachable at min team size |
 | F-D-15 | P2 | e2e_journey.py:112-244; ci.yml:212-214 | CI's live e2e covers only the v1 flow; the four-level event flow has no live-stack gate |
 | F-D-16 | P2 | jobs.py:42,59,109; db.py:73-75 | Queue uses Python clock vs DB decision clocks; NTP nowhere in the runbook |
-| F-D-17 | P2 | DEPLOYMENT_RUNBOOK.md:41; LOAD_TEST_REPORT.md:47 | Operator-facing docs contradict code: 34-vs-74 tests; nonexistent CLI flags |
+| F-D-17 | P2 | DEPLOYMENT_RUNBOOK.md:41; LOAD_TEST_REPORT.md:47 | Operator-facing docs contradict code: stale test totals; nonexistent CLI flags |
 | F-D-18 | P3 | requirements.txt:14-16 | Test deps (httpx, pytest) in runtime requirements contradict dev-requirements header |
 | F-D-19 | P3 | dev_db.sh:105-107; config.py:24-26 | scheduler DB role granted everywhere, used by nothing |
 | F-D-20 | P3 | seed.py:549-554; run_dev.sh:22 | seed not idempotent without --reset; run_dev.sh hardcodes DB var dev_db.sh honors |
@@ -710,7 +710,7 @@ The table below lists all 227 findings from the ten audit blocks, with severity,
 | F-E-16 | P3 | test_flow_repo_lock.py:100; test_scoring.py:172-173 | Seed-coupled literals make the suite brittle to seed edits |
 | F-E-17 | P2 | tests (grep export\|dispute\|announce: 0 hits) | CSV exports, disputes, announcements: zero pytest; e2e checks one substring |
 | F-E-18 | P1 | test_scoring.py:124-141; test_flow_repo_lock.py:60-78 | All concurrency tests are in-process threads; no pool/worker-process realism |
-| F-E-19 | P0 | auto_submit.py:128-161; tests (levels/4: 0 hits) | L3/L4 auto-submit artifact branch has zero coverage; all 6 auto-submit tests run Level 1 only |
+| F-E-19 | P0 | auto_submit.py:128-161; tests (levels/4: 0 hits) | L3/L4 auto-submit artifact branch has zero coverage; the auto-submit tests exercise only Level 1 |
 | F-E-20 | P3 | test_auth.py:44-51 | Reset-token test bypasses issuance; name over-promises |
 | F-E-21 | P3 | test_flow_repo_lock.py:7 | Dead imports in suite; otherwise lean |
 | F-E-22 | P2 | seed.py:494-533 | Reset is a hand-maintained DELETE list, not TRUNCATE CASCADE; FK-less tables keep stale rows |
@@ -806,12 +806,12 @@ The table below lists all 227 findings from the ten audit blocks, with severity,
 | F-I-01 | P0 | README.md:9-11 vs 106-108; LOAD_TEST_REPORT.md:3 | README headline claims load-readiness while the load report is UNRUN everywhere; invariant 10 violated in the first paragraph |
 | F-I-02 | P0 | ci.yml:2-5 | CI trigger corrupted ('ain]'); the documented merge gate can never fire; all 'CI green' evidence void |
 | F-I-03 | P1 | DEPLOYMENT_RUNBOOK.md:69-71; auth.py:202-247 | No production bootstrap: first tenant/first admin impossible without the forbidden dev seed; register endpoint undocumented |
-| F-I-04 | P1 | README.md:18,62,101; SECURITY_REVIEW.md:11; CI_CD_PIPELINE.md:24,36; PERFORMANCE_AND_CAPACITY.md:28; DEPLOYMENT_RUNBOOK.md:41; TESTING_STRATEGY.md:7,46 | Test-count chaos: 34/37/38/74 across six docs; ground truth 74; AGENTS.md only correct one |
+| F-I-04 | P1 | README.md:18,62,101; SECURITY_REVIEW.md:11; CI_CD_PIPELINE.md:24,36; PERFORMANCE_AND_CAPACITY.md:28; DEPLOYMENT_RUNBOOK.md:41; TESTING_STRATEGY.md:7,46 | Test-count chaos: conflicting stale totals across six docs; AGENTS.md only correct one |
 | F-I-05 | P1 | DATA_MODEL.md:11,53,65 | DATA_MODEL says one migration, misnumbers four-level as 0002, omits the ledger-trigger migration entirely |
 | F-I-06 | P1 | EVENT_FLOW.md:101-106,173-175 | EVENT_FLOW documents config keys and auto-lock path that do not exist in code |
 | F-I-07 | P1 | LOAD_TEST_REPORT.md:20,22,47-48,73 vs load_test.py | Report overstates tool: burst sequential not concurrent, documented flags do not exist, 'appends to report' false, 60 pollers impossible |
 | F-I-08 | P2 | CI_CD_PIPELINE.md:7-12,24,36,59-63 vs ci.yml | CI doc asserts no CI exists while six jobs run; four security scanners and coverage gate absent from docs |
-| F-I-09 | P2 | TESTING_STRATEGY.md:7,15,30-37,46,130 | Wrong totals; coverage table omits 39 of 74 tests including the entire four-level flow suite |
+| F-I-09 | P2 | TESTING_STRATEGY.md:7,15,30-37,46,130 | Wrong totals; coverage table omitted tests including the entire four-level flow suite |
 | F-I-10 | P2 | PERFORMANCE_AND_CAPACITY.md:26 vs 83 | Doc says load-test script/report do not exist; both exist; self-contradiction within the doc |
 | F-I-11 | P2 | SECURITY_ARCHITECTURE.md:88; SECURITY_REVIEW.md:11 | 'No automated vulnerability scanning' while four scanners run; stale baseline numbers |
 | F-I-12 | P2 | API_REFERENCE.md sections 2,8 vs auth.py:195-247 | POST /v1/auth/register (admin-only) absent from API reference; operationally important omission |
@@ -820,7 +820,7 @@ The table below lists all 227 findings from the ten audit blocks, with severity,
 | F-I-15 | P3 | DATA_MODEL.md:13; SYSTEM_ARCHITECTURE.md:47 | Stale table counts: 32 described, 38 actual |
 | F-I-16 | P3 | API_REFERENCE.md:154 vs 189-190 | Section 9 contradicts section 10 on RUNNER_UNAVAILABLE |
 | F-I-17 | P3 | SOURCE_OF_TRUTH_AND_TRACEABILITY.md:45 | Worker entry attributed to backend/app/main.py instead of backend/worker.py; self-violates its own pointer rule |
-| F-I-18 | P3 | e2e_journey.py:222,224 | '46 checks' is runtime-true but grep-ambiguous (47 call-sites); documented in one place only |
+| F-I-18 | P3 | e2e_journey.py:222,224 | the documented check total is runtime-true but source-grep-ambiguous; documented in one place only |
 | F-I-19 | P3 | load_test.py:11 vs 175-193 | Docstring claims appending to the report file; prints to stdout only |
 | F-I-20 | P2 | README.md:61-63 | Unverifiable 'last recorded run' claims; no run log or CI artifact exists |
 

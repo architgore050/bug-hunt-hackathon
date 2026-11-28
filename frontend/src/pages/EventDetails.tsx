@@ -188,8 +188,8 @@ export default function EventDetails() {
                 <div className="ed-step">
                   <span className="ed-step-num">1</span>
                   <span className="ed-step-body">
-                    Accounts are organizer-issued: the club creates each account through the admin panel and you
-                    activate it from your invite. Accounts are personal and sharing one is prohibited.
+                    Accounts are created by administrators, who assign each participant to a team. At first sign-in,
+                    participants set their initial password. Accounts are personal and sharing one is prohibited.
                   </span>
                 </div>
                 <div className="ed-step">

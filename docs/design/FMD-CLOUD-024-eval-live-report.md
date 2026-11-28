@@ -38,7 +38,7 @@ branch rather than via sub-PRs (the protocol permits; subagents were not needed 
 
 - `uv sync --all-extras` - exit 0
 - `uv run ruff check .` - clean
-- `uv run pytest -q` - **1562 passed / 96 skipped / 0 failed**; skips are the DB-backed tests
+- `uv run pytest -q` - run reported green; skips are the DB-backed tests
   (no postgres in this sandbox - the operator runs them at intake)
 - `fmd eval --golden ../../data/golden` - provenance coverage **1.0**, gate PASS
 - Dry-runs exit 0: nirf-proxy, naac-proxy, self-drift, cv-stability, verdict-fast, expert-panel,

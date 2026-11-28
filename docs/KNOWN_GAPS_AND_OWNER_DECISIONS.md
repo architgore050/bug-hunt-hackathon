@@ -11,35 +11,38 @@ enforce the blocking ones).
 
 1. Production schedule. The seed ships synthetic level windows (minutes) that
    are clearly labeled. The real 6 December 2026, 180-minute schedule must be
-   configured per level (stage windows) and rehearsed. Owner decision:
-   enter the schedule; blocks READY.
+   configured per level (stage windows) and rehearsed. 
+   Owner decision: Add ability to schedule and plan the event ; during the even admin must have the ability to reduce or increase the timing of each level . the full even must be planned out by the admin along with questions, solutions, marks, scores, etc .  
 2. Final per-level score weights, tie-break and penalty policy. Dev defaults
    are provisional and labeled; the baseline forbids inventing production
-   weights. Owner decision: approve the policy; blocks score finalization
+   weights. 
+   Owner decision: approve the policy; blocks score finalization; Admin must have the ability to alter the ability to alter the scores .
    and publication.
 3. Final A/B challenge repositories with equivalent ground truth and hidden
    tests. The shipped Option A (Papyrus) and Option B (Marina) are
    development fixtures. Two independent reviewers must certify equivalence
-   (difficulty, bug count, severity distribution) before READY. Owner
-   decision: supply or approve final packages; blocks READY.
+   (difficulty, bug count, severity distribution) before READY. 
+   Owner decision: supply or approve final packages; blocks READY.
 4. Level 3 side-quest definition. The level is wired end to end but the side
-   quest content is organizer input. Owner decision: provide content; blocks
+   quest content is organizer input. 
+   Owner decision: allow the admin or organizers to add the side quest , side quests are implanted in both Papyrus, Marina they will be part of repo ; blocks
    READY.
 5. Level 4 test/documentation rubric and reviewer allocation. The review
    flow exists; the rubric weights are configuration. Owner decision:
    approve rubric; blocks READY.
 6. Lead-no-lock policy. `levels.lead_no_lock_policy` supports `manual`
-   (dev default) and `auto_after_grace_s`. Owner decision: choose the
+   (dev default) and `auto_after_grace_s`. 
+   Owner decision: choose the
    production policy and default option; blocks READY.
 7. Load test at the expected headcount. The platform caps (50 participants /
    12 teams) are provisional (ADR-011); the four-level endpoints add polling
-   surfaces that should be included in the next load-test run. Owner
-   decision: confirm expected teams x participants and run the profile;
+   surfaces that should be included in the next load-test run. 
+   Owner decision: confirm expected teams x participants and run the profile;
    blocks READY.
 8. Runner approval. Run stays disabled (ADR-010). If Run is wanted for
    Levels 3-4, an isolated runner design and capacity review must pass.
-   Owner decision: approve or keep disabled; blocks READY only if Run is
-   expected on event day.
+   Owner decision: approve ; blocks READY Run is
+   expected on event day for level 3 and levle 4.
 
 ## Non-blocking (tracked, with owners)
 

@@ -534,7 +534,7 @@ def test_release_rejects_unended_stage_without_jobs_or_audit(client):
 
 
 def test_team_creation_enforces_event_cap_and_audits_only_created_teams(client):
-    organizer = _staff(client)
+    organizer = _staff(client, "admin@example.com", step_up=True)
     event_id = _create_event(organizer, max_teams=2)
     created = []
     for name in ("Cap Team One", "Cap Team Two"):
@@ -565,142 +565,74 @@ def test_team_creation_enforces_event_cap_and_audits_only_created_teams(client):
     assert all(_audit_count("team.created", body["team_id"]) == 1 for body in created)
 
 
-def test_participant_and_reviewer_invites_activate_once_and_appear_in_roster(client):
-    admin = _staff(client, "admin@example.com")
-    event_id = _create_event(admin)
-    team_response = admin.post(f"/v1/admin/events/{event_id}/teams", json={"name": "Invited Team"})
-    assert team_response.status_code == 201, team_response.text
-    team_id = team_response.json()["team_id"]
-    participant_email = f"Invited.Participant.{uuid.uuid4().hex[:8]}@Example.com"
-    reviewer_email = f"invited.reviewer.{uuid.uuid4().hex[:8]}@example.com"
-
-    participant_response = admin.post(
-        f"/v1/admin/events/{event_id}/invites",
-        json={"email": participant_email, "team_id": team_id, "role": "participant"},
-    )
-    reviewer_response = admin.post(
-        f"/v1/admin/events/{event_id}/invites",
-        json={"email": reviewer_email, "role": "reviewer"},
-    )
-    assert participant_response.status_code == 201, participant_response.text
-    assert reviewer_response.status_code == 201, reviewer_response.text
-    participant_token = participant_response.json()["invite_token"]
-    reviewer_token = reviewer_response.json()["invite_token"]
-    assert participant_response.json()["activation_url"] == f"/activate?invite={participant_token}"
-    assert reviewer_response.json()["activation_url"] == f"/activate?invite={reviewer_token}"
-
+def test_admin_managed_participant_registration_replaces_invites(client):
     from app.db import app_session
 
-    with app_session() as session:
-        invites = (
-            session.execute(
-                text(
-                    "SELECT email, role, team_id, token_hash, used_at, expires_at FROM app.invites "
-                    "WHERE event_id = CAST(:event AS uuid) ORDER BY role"
-                ),
-                {"event": event_id},
-            )
-            .mappings()
-            .all()
-        )
-    assert {row["role"] for row in invites} == {"participant", "reviewer"}
-    for row in invites:
-        assert row["used_at"] is None
-        assert row["token_hash"] not in (participant_token, reviewer_token)
-    participant_invite = next(row for row in invites if row["role"] == "participant")
-    reviewer_invite = next(row for row in invites if row["role"] == "reviewer")
-    assert participant_invite["email"] == participant_email.lower()
-    assert str(participant_invite["team_id"]) == team_id
-    assert participant_invite["token_hash"] == hashlib.sha256(participant_token.encode()).hexdigest()
-    assert reviewer_invite["email"] == reviewer_email
-    assert reviewer_invite["team_id"] is None
-    assert reviewer_invite["token_hash"] == hashlib.sha256(reviewer_token.encode()).hexdigest()
+    admin = _staff(client, "admin@example.com", step_up=True)
+    event_id = _create_event(admin)
+    team_response = admin.post(f"/v1/admin/events/{event_id}/teams", json={"name": "Registered Team"})
+    assert team_response.status_code == 201, team_response.text
+    team_id = team_response.json()["team_id"]
+    email = f"registered.{uuid.uuid4().hex[:8]}@example.com"
 
-    password = "Invited-Coverage-Password-123!"
-    activation = {"invite_token": participant_token, "password": password, "accept_rules": True}
-    response = client.post("/v1/auth/activate", json=activation)
-    assert response.status_code == 200, response.text
-    assert response.json()["email"] == participant_email.lower()
-    response = client.post(
-        "/v1/auth/activate", json={"invite_token": reviewer_token, "password": password, "accept_rules": True}
+    registration = admin.post(
+        f"/v1/admin/events/{event_id}/participants",
+        json={"email": email, "name": "Registered Participant", "team_id": team_id},
     )
-    assert response.status_code == 200, response.text
+    assert registration.status_code == 201, registration.text
+    assert registration.json()["password_setup_required"] is True
+
+    legacy_invite = admin.post(
+        f"/v1/admin/events/{event_id}/invites",
+        json={"email": email, "team_id": team_id, "role": "participant"},
+    )
+    assert legacy_invite.status_code == 404
 
     with app_session() as session:
-        users = (
+        user = (
             session.execute(
-                text("SELECT id, email, role, status FROM app.users WHERE lower(email) IN (:participant, :reviewer)"),
-                {"participant": participant_email.lower(), "reviewer": reviewer_email},
+                text("SELECT id, role, password_hash FROM app.users WHERE lower(email) = :email"),
+                {"email": email},
             )
             .mappings()
-            .all()
+            .one()
         )
-        membership_count = session.execute(
-            text(
-                "SELECT count(*) FROM app.team_members tm JOIN app.users u ON u.id = tm.user_id "
-                "WHERE tm.team_id = CAST(:team AS uuid) AND lower(u.email) = :email"
-            ),
-            {"team": team_id, "email": participant_email.lower()},
+        membership = session.execute(
+            text("SELECT team_id FROM app.team_members WHERE user_id = CAST(:user AS uuid)"),
+            {"user": str(user["id"])},
         ).scalar_one()
-        used_at = session.execute(
-            text("SELECT used_at FROM app.invites WHERE token_hash = :hash"),
-            {"hash": participant_invite["token_hash"]},
-        ).scalar_one()
-    assert {row["role"] for row in users} == {"participant", "reviewer"}
-    assert {row["status"] for row in users} == {"active"}
-    assert int(membership_count) == 1
-    assert used_at is not None
+    assert user["role"] == "participant"
+    assert user["password_hash"] is None
+    assert str(membership) == team_id
 
-    response = client.post("/v1/auth/activate", json=activation)
-    assert response.status_code == 404, response.text
-    with app_session() as session:
-        repeated_memberships = session.execute(
-            text(
-                "SELECT count(*) FROM app.team_members tm JOIN app.users u ON u.id = tm.user_id "
-                "WHERE tm.team_id = CAST(:team AS uuid) AND lower(u.email) = :email"
-            ),
-            {"team": team_id, "email": participant_email.lower()},
-        ).scalar_one()
-    assert int(repeated_memberships) == 1
-
-    roster = admin.get(f"/v1/admin/events/{event_id}/participants")
-    assert roster.status_code == 200, roster.text
-    participants = {row["email"]: row for row in roster.json()["participants"]}
-    assert participants[participant_email.lower()]["role"] == "participant"
-    assert participants[participant_email.lower()]["team_name"] == "Invited Team"
-    assert participants[participant_email.lower()]["activated"] is True
-    assert participants[reviewer_email]["role"] == "reviewer"
-    assert participants[reviewer_email]["team_name"] is None
-    assert participants[reviewer_email]["activated"] is True
-    assert _audit_count("invite.created", event_id) == 2
+    password = "First-Claim-Password-123!"
+    first_login = client.post("/v1/auth/login", json={"email": email, "password": password})
+    assert first_login.status_code == 200, first_login.text
+    profile = client.get(
+        "/v1/me",
+        headers={"Authorization": f"Bearer {first_login.json()['access_token']}"},
+    )
+    assert profile.status_code == 200, profile.text
+    assert profile.json()["team"]["id"] == team_id
 
 
-def test_organizer_cannot_invite_an_admin_without_side_effects(client):
-    organizer = _staff(client)
-    event_id = _create_event(organizer)
+def test_organizer_cannot_register_an_admin_without_side_effects(client):
+    from app.db import app_session
+
+    organizer = _staff(client, step_up=True)
     email = f"privilege-escalation-{uuid.uuid4().hex[:8]}@example.com"
 
     response = organizer.post(
-        f"/v1/admin/events/{event_id}/invites",
-        json={"email": email, "role": "admin"},
+        "/v1/auth/register",
+        json={"email": email, "name": "Unauthorized Admin", "role": "admin", "password": "Assigned-Password-123!"},
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 403, response.text
     assert response.json()["error"]["code"] == "AUTH_FORBIDDEN"
-    from app.db import app_session
-
     with app_session() as session:
         assert (
             session.execute(
-                text("SELECT count(*) FROM app.invites WHERE lower(email) = :email"), {"email": email}
-            ).scalar_one()
-            == 0
-        )
-        assert (
-            session.execute(
-                text(
-                    "SELECT count(*) FROM audit.entries WHERE action = 'invite.created' AND details ->> 'email' = :email"
-                ),
+                text("SELECT count(*) FROM app.users WHERE lower(email) = :email"),
                 {"email": email},
             ).scalar_one()
             == 0
@@ -1055,7 +987,7 @@ def test_non_organizers_cannot_read_or_mutate_admin_event_operations(client, ema
         )
         counts = {
             table: int(session.execute(text(f"SELECT count(*) FROM app.{table}")).scalar_one())
-            for table in ("events", "stages", "teams", "invites", "announcements", "jobs")
+            for table in ("events", "stages", "teams", "announcements", "jobs")
         }
         audit_count = int(session.execute(text("SELECT count(*) FROM audit.entries")).scalar_one())
 

@@ -46,10 +46,10 @@ Login with a seeded organizer account to reach admin views; seeded participant a
 
 ## How to run the quality gates
 
-- Backend: `cd backend && python -m pytest tests/ -q` (75 tests: 36 v1 covering auth, authorization, gt isolation, idempotency, matching and scoring, plus 39 four-level flow tests for gates, repo lock, uploads and auto-submit).
-- E2E: `python scripts/e2e_journey.py` (46 checks across organizer, participant, reviewer, release, flags, audit).
+- Backend: `cd backend && python -m pytest tests/ -q` (auth, authorization, gt isolation, idempotency, matching, scoring).
+- E2E: `python scripts/e2e_journey.py` (across organizer, participant, reviewer, release, flags, audit).
 - Frontend: `cd frontend && npm run build` (must stay clean; CI also greps for TODO/Lorem/XXX).
-- CI parity: `.github/workflows/ci.yml` has six jobs (secret scan, backend quality, backend tests, backend e2e, frontend quality, source hygiene). First green run on GitHub is UNVERIFIED from this repository (L-15).
+- CI parity: `.github/workflows/ci.yml` has seven logical jobs (secret scan, backend quality, six backend test shards, the backend coverage gate, backend e2e, frontend quality, source hygiene). Upstream `main` had a verified six-job run, but this branch's run is UNVERIFIED (L-15).
 
 ## How to make a safe change
 
@@ -62,7 +62,7 @@ Login with a seeded organizer account to reach admin views; seeded participant a
 
 ## Seed reset workflow
 
-`cd backend && python seed.py --reset` rebuilds the demo event (Fall Back preset: 6 Dec 2026, 180 min, teams 4-5, schedule 15/10/30/35/60/25/5, 9 demo participants in 2 teams of 4 and 5) and prints dev credentials. Use it between test runs; never run seed against anything resembling production (L-20).
+`cd backend && python seed.py --reset` rebuilds the demo event (Fall Back preset: 6 Dec 2026, 180 min, teams 4-5, schedule 15/10/30/35/60/25/5, 10 teams x 5 participants) and prints dev credentials. Use it between test runs; never run seed against anything resembling production (L-20).
 
 ## Common pitfalls
 

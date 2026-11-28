@@ -22,31 +22,20 @@ described here.
 
 ## 1. Before the event
 
-### 1.1 Activate your account
+### 1.1 Sign in to your account
 
-1. After your team registers, the club sends you an invite link
-   (/activate?invite=...). The link is single use and expires after 48 hours;
-   if it expires, ask the organizers for a fresh one at
-   [TO BE FILLED: club contact email].
-2. On the activation page, paste or keep the invite token, choose a password,
-   and tick the rules acceptance box.
-3. Password rules: at least 12 characters with one uppercase letter, one
-   lowercase letter, one digit, and one symbol. The page shows a live
-   checklist; the Activate button unlocks when every row passes.
-4. Activation records your acceptance of the competition rules for the current
-   version in the same step. Acceptance is required before you can open files
-   or file reports; it cannot be withdrawn.
-5. Done? Follow the "Go to sign in" link. Your sign-in lands you in the
-   participant lobby.
+1. The organizers create your account and assign it to your team before the event.
+2. Open the sign-in page and enter the email address registered by the organizers.
+3. On your first sign-in, if your participant account has no password yet, choose a password of at least 12 characters. Later sign-ins verify that password.
+4. There is no invitation link or separate activation step. If your email is not recognized, or you cannot sign in, contact the organizers at the help desk.
+5. Do not share your password or account with teammates. Staff accounts are provisioned separately by administrators.
 
 ### 1.2 Team setup
 
-Team membership is set up by the organizers: your invite is attached to your
-team, and after activation your lobby shows the team name and its join code.
+Team membership is set up by the organizers before the event. After you sign in, your lobby shows the team name and its join code.
 The join code is how the desk and your teammates identify the team (quote it
 at the help desk); there is no self-service join flow in this event. If the
-lobby shows "No team record on this account", go to the organizers desk; they
-can attach your account and re-issue the invite if needed.
+lobby shows "No team record on this account", go to the organizers desk; they can attach your account to the correct team.
 
 ### 1.3 What to bring and what to run
 

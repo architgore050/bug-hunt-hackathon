@@ -1,4 +1,4 @@
-Status: describes the implementation as of 2026-11-22
+Status: describes the implementation as of 2026-11-28
 
 # System Architecture
 
@@ -15,7 +15,7 @@ Code locations:
 | Domain services | `backend/app/matching.py`, `scoring.py`, `evaluator.py`, `audit.py`, `jobs.py`, `security.py` | No scoring logic lives in HTTP handlers |
 | Models | `backend/app/models_app.py`, `models_gt.py` | SQLAlchemy 2.0, two engines (see Section 3) |
 | Worker | `backend/worker.py` | Single loop, polls every 2 s, drains up to 20 jobs per pass |
-| Migrations | Ordered SQL files in `backend/migrations/` (0001 through 0004) | Applied by `scripts/migrate.sh`, tracked in `app.schema_migrations` |
+| Migrations | Ordered SQL files in `backend/migrations/` (0001 through 0008) | Applied by `scripts/migrate.sh`, tracked in `app.schema_migrations` |
 | Seed | `backend/seed.py` | Dev-only demo data (tenant, event, stage, challenge files, ground truth) |
 | Frontend | `frontend/` | React 19 + Vite + TypeScript + Tailwind 4, TanStack Query polling |
 | Challenge app | `challenge-app/` | Node 22.5+ / Express 4 / `node:sqlite`, 10 planted bugs (275 points) + 2 flags (60 points) |
@@ -138,7 +138,7 @@ Statuses visible to participants are coarsened to `received` until `feedback_rel
 
 ## 6. Job queue and worker
 
-`app.jobs` is a durable PostgreSQL queue (ADR-003). Claiming is a single `UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP LOCKED)` that sets `status='running'` and a 120 s lease (`jobs.py::claim_next`). The handler runs OUTSIDE the claim transaction. Failures retry with backoff [10, 60, 300, 900] s up to `max_attempts` (default 5), then go to `dead` and surface in `/v1/admin/system/health` and the live-ops view. On worker start (and each loop pass) expired leases are requeued, so a crashed worker's in-flight jobs are retried: delivery is at-least-once, and exactly-once business outcomes come from unique constraints plus idempotent handlers, e.g. `award_claims UNIQUE (stage_id, team_id, award_unit_id)` (DAT-01) and `_has_component` checks before inserting ledger entries.
+`app.jobs` is a durable PostgreSQL queue (ADR-003). Claiming is a single `UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP LOCKED)` that sets `status='running'` and a 120 s lease (`jobs.py::claim_next`). The handler runs OUTSIDE the claim transaction. Failures retry with backoff [10, 60, 300, 900] s up to `max_attempts` (default 5), then go to `dead` and surface in `/v1/admin/system/health` and the live-ops view. On worker start (and each loop pass) expired leases are requeued, so a crashed worker's in-flight jobs are retried: delivery is at-least-once, and exactly-once business outcomes come from unique constraints plus idempotent handlers, e.g. `award_claims UNIQUE (stage_id, team_id, award_unit_id)` (DAT-01), ground-truth flag-row IDs as the version-scoped CTF award unit, and `_has_component` checks before inserting ledger entries.
 
 Handlers (all in `backend/app/evaluator.py`): `evaluate_submission`, `create_review_item`, `verify_flag`, `apply_review_outcome`, `apply_test_results`, `release_feedback`, `refresh_leaderboard`, `dispatch_outbox`. `worker.py` polls every 2 s and drains up to 20 jobs per pass. Tests run handlers synchronously via `conftest.worker_drain()`.
 

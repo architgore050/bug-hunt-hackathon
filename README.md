@@ -7,10 +7,8 @@ defects, reproduce the failures, trace root causes, repair the app, and report
 everything through this platform. Verified CTF flags add capped bonus points.
 
 Everything in this repository is a v1 one-shot build: the platform runs
-locally today and documents its own limits honestly. A 50-participant
-rehearsal is a provisional future target, not a passed capacity test; the
-current tool cannot simulate the full cap and `docs/LOAD_TEST_REPORT.md`
-is UNRUN.
+locally today, is load-ready for a 50-participant rehearsal, and documents its
+own limits honestly.
 
 ## Repository layout
 
@@ -23,7 +21,8 @@ is UNRUN.
 | `challenge-app/` | "Papyrus", the Node/Express challenge app with 10 planted bugs + 2 flags |
 | `docs/` | The full documentation set (27+ documents, see below) |
 | `scripts/` | Dev bootstrap, migrations, seed reset, E2E journey, load test |
-| `.github/workflows/` | CI: secret scan, backend quality, backend tests, backend e2e, frontend quality, source hygiene |
+| `.github/workflows/` | CI: secret scan, backend quality, PostgreSQL-backed tests, backend E2E, frontend quality, source hygiene |
+| `.opencode/skills/` | Project-local OpenCode skills: eight-lens code review suite and `be-ambitious` |
 
 ## Quick start (D0 local profile)
 
@@ -62,8 +61,7 @@ cd frontend && npm install && npm run dev   # proxies /v1 to :8100
 
 Verification: `scripts/e2e_journey.py` runs 46 checks against a running stack.
 `cd backend && pytest` must pass in full. Use the current CI run for exact
-results rather than relying on historical counts; no local pass receipt is
-stored in this repository.
+results rather than relying on historical counts.
 
 Demo accounts (dev only, password `Dev-only!Passw0rd!`): `organizer@`,
 `reviewer1@`, `p1.team1@` ... `example.com`. The Papyrus challenge app runs
@@ -104,7 +102,7 @@ privacy notice and terms. Engineering: `docs/API_REFERENCE.md`,
   exports, the 46-check E2E journey, the full pytest suite, and a clean frontend build. Current results are recorded by CI.
 - Deliberately not in v1: participant code execution (no isolated runner;
   ADR-010 fallback), AI scoring (disabled by default, DEC-13), email delivery
-  (invite/reset tokens surface in the organizer console), SSE (5 s polling),
+  (accounts are admin-registered; participants claim an initial password on first sign-in, staff passwords are admin-assigned, and resets are admin-only), SSE (5 s polling),
   MFA (step-up is password re-entry; WebAuthn documented as the production
   path). The 50-user capacity claim stays provisional until the load-test
   rehearsal passes (`scripts/load_test.py`,

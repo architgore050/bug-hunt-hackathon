@@ -53,14 +53,59 @@ jobs:
       - name: Dependency vulnerability audit (pip-audit)
         run: pip-audit
 
-  # -------------------------------------------------------- backend tests -----
-  backend-tests:
-    name: Backend tests (pytest + coverage)
+  # ------------------------------------------------------- backend tests -----
+  # The suite reseeds the database before every test, so it cannot run in
+  # parallel processes against one database. Six matrix jobs give each shard
+  # its own PostgreSQL service (and therefore its own bughunt_test database),
+  # so the slow work happens at the same time without cross-shard interference.
+  # The shard paths below are literals defined in this file, not user input.
+  backend-test-shards:
+    name: Backend tests (${{ matrix.group }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: admin-followups
+            tests: >-
+              tests/test_admin_5_1_followups.py
+          - group: auth
+            tests: >-
+              tests/test_auth.py tests/test_auth_http_lifecycle.py
+              tests/test_auth_security_primitives.py tests/test_root.py
+          - group: evaluator
+            tests: >-
+              tests/test_security_dependencies.py tests/test_evaluator_handlers.py
+              tests/test_evaluator_matching.py tests/test_matching.py
+          - group: participant
+            tests: >-
+              tests/test_participant_challenges.py
+              tests/test_participant_leaderboard_results.py
+              tests/test_participant_public_state.py
+              tests/test_participant_review_announcements.py
+              tests/test_participant_submission_responses.py
+              tests/test_error_http.py tests/test_authorization.py
+          - group: admin-core
+            tests: >-
+              tests/test_admin_event_operations.py tests/test_admin_5_1_p0.py
+              tests/test_admin_challenge_scoring.py tests/test_admin_levels.py
+              tests/test_admin_scoring_operations.py tests/test_admin_setup_scoring.py
+              tests/test_admin_managed_accounts.py tests/test_storage_adapter.py
+              tests/test_storage_sessions.py
+          - group: flow-and-workers
+            tests: >-
+              tests/test_flow_uploads.py tests/test_flow_gates.py
+              tests/test_flow_submissions.py tests/test_flow_repo_lock.py
+              tests/test_flow_auto_submit.py tests/test_scoring.py
+              tests/test_idempotency.py tests/test_gt_isolation.py
+              tests/test_worker_jobs.py tests/test_worker_flow.py
+              tests/test_worker_auto_submit.py
     env:
       CI_DB: bughunt_test
       PGPORT: 5433
+      # Unique data file per shard so artifacts do not overwrite each other.
+      COVERAGE_FILE: coverage.${{ matrix.group }}
     services:
       postgres:
         image: postgres:17-alpine@sha256:f9cf3e1f0066f0eb0c48707d864f0ac5941e9ff454a072077d97a4d278d07d73 # 17-alpine (Docker Hub)
@@ -120,10 +165,53 @@ jobs:
         env:
           DB: bughunt_test
           PGUSER: pgadmin
-      - name: Run backend tests with coverage
+      - name: Run shard tests with coverage
         run: |
           cd backend
-          python -m pytest tests/ -q --cov=app --cov-branch --cov-fail-under=65 --timeout=120
+          python -m pytest ${{ matrix.tests }} -q --cov=app --cov-branch --timeout=120
+      - name: Upload shard coverage data
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2 (actions/upload-artifact)
+        with:
+          name: coverage.${{ matrix.group }}
+          path: backend/coverage.${{ matrix.group }}
+          if-no-files-found: error
+
+  # Single required check for branch protection: it aggregates the shards and
+  # enforces the same 65% total coverage gate the one-job suite enforced.
+  backend-tests:
+    name: Backend tests (pytest + coverage)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: backend-test-shards
+    # A shard failure must still produce a failed required check here, so the
+    # branch-protection check name does not change when the suite is sharded.
+    if: ${{ !cancelled() }}
+    env:
+      COVERAGE_FILE: coverage
+    steps:
+      - name: Fail if a test shard failed
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo "One or more backend test shards did not pass." >&2
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (actions/checkout)
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0 (actions/setup-python)
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install coverage tooling
+        run: pip install pytest-cov==7.1.0
+      - name: Download shard coverage data
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0 (actions/download-artifact)
+        with:
+          pattern: coverage.*
+          path: coverage-data
+          merge-multiple: true
+      - name: Combine coverage and enforce the 65% gate
+        run: |
+          python -m coverage combine coverage-data
+          python -m coverage report --fail-under=65
 
   # ------------------------------------------------------------- backend e2e ---
   backend-e2e:

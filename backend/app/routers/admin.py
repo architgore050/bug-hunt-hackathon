@@ -1,7 +1,7 @@
 """Organizer/admin endpoints.
 
 Sections implemented (spec ADM-*): events + lifecycle, config freeze,
-stages (arm/start/pause/resume/extend/end), teams, participants + invites,
+stages (arm/start/pause/resume/extend/end), teams and participants,
 challenges (upload files, freeze, seal, publish), ground truth (gt_admin
 session, step-up required), announcements, kill switches, exports, audit
 viewer, readiness, system health, scoring test results, rescoring/adjustments,
@@ -17,18 +17,19 @@ import hashlib
 import json
 import math
 import uuid
-from datetime import UTC
+from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
+from .. import security
 from ..audit import audit_verify, audit_write
 from ..config import settings
 from ..db import app_session, gt_session, health_probe, uuid7
-from ..deps import Principal, require_admin, require_organizer, step_up_verified
+from ..deps import Principal, require_organizer, step_up_verified
 from ..errors import ApiError
 from ..jobs import enqueue
 from ..scoring import add_ledger_entry
@@ -309,13 +310,11 @@ def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal 
             text("SELECT COALESCE(MAX(version), 0) FROM app.event_config_revisions WHERE event_id = CAST(:e AS uuid)"),
             {"e": event_id},
         ).scalar_one()
-        # F-C-13: server-side time function read inside the transaction; never
-        # bind the string 'now()' as an ordinary timestamp value.
-        frozen_at = s.execute(text("SELECT now()")).scalar_one() if body.freeze else None
         s.execute(
             text(
                 "INSERT INTO app.event_config_revisions (id, event_id, version, config, rule_set_hash, reason, created_by, frozen_at) "
-                "VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :v, CAST(:cfg AS jsonb), :h, :reason, CAST(:u AS uuid), :frozen)"
+                "VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :v, CAST(:cfg AS jsonb), :h, :reason, CAST(:u AS uuid), "
+                "CASE WHEN :freeze THEN now() ELSE NULL END)"
             ),
             {
                 "id": str(uuid7()),
@@ -325,7 +324,7 @@ def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal 
                 "h": rule_set_hash,
                 "reason": body.reason,
                 "u": p.id,
-                "frozen": frozen_at,
+                "freeze": body.freeze,
             },
         )
         if body.freeze:
@@ -346,6 +345,39 @@ def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal 
             details={"version": int(ver) + 1, "frozen": body.freeze, "reason": body.reason},
         )
     return {"ok": True, "rule_set_hash": rule_set_hash}
+
+
+@router.get("/admin/events/{event_id}/config/revisions")
+def list_config_revisions(event_id: str, p: Principal = Depends(require_organizer)):
+    """Return current event config and the bounded immutable revision history."""
+    with app_session() as s:
+        event = (
+            s.execute(
+                text("SELECT config, config_version FROM app.events WHERE id = CAST(:e AS uuid)"),
+                {"e": event_id},
+            )
+            .mappings()
+            .first()
+        )
+        if event is None:
+            raise ApiError("NOT_FOUND")
+        rows = (
+            s.execute(
+                text(
+                    "SELECT version, config, rule_set_hash, reason, created_at, frozen_at "
+                    "FROM app.event_config_revisions WHERE event_id = CAST(:e AS uuid) "
+                    "ORDER BY version DESC LIMIT 100"
+                ),
+                {"e": event_id},
+            )
+            .mappings()
+            .all()
+        )
+    return {
+        "config_version": int(event["config_version"]),
+        "current_config": event["config"] or {},
+        "revisions": [dict(row) for row in rows],
+    }
 
 
 @router.get("/admin/events")
@@ -634,7 +666,14 @@ def release_results(stage_id: str, body: dict, request: Request, p: Principal = 
     return {"ok": True}
 
 
-# --- teams, participants, invites ---------------------------------------------
+# --- teams and admin-managed participants -------------------------------------
+
+
+def admin_step_up_verified(p: Principal = Depends(step_up_verified)) -> Principal:
+    """Restrict sensitive participant operations to admins with a recent password check."""
+    if p.role != "admin":
+        raise ApiError("AUTH_FORBIDDEN")
+    return p
 
 
 class TeamIn(BaseModel):
@@ -642,15 +681,21 @@ class TeamIn(BaseModel):
 
 
 @router.post("/admin/events/{event_id}/teams", status_code=201)
-def create_team(event_id: str, body: TeamIn, request: Request, p: Principal = Depends(require_organizer)):
+def create_team(event_id: str, body: TeamIn, request: Request, p: Principal = Depends(admin_step_up_verified)):
     import secrets
 
     with app_session() as s:
+        ev = s.execute(
+            text("SELECT max_teams FROM app.events WHERE id = CAST(:e AS uuid) FOR UPDATE"),
+            {"e": event_id},
+        ).first()
+        if ev is None:
+            raise ApiError("NOT_FOUND")
         count = s.execute(
-            text("SELECT count(*) FROM app.teams WHERE event_id = CAST(:e AS uuid)"), {"e": event_id}
+            text("SELECT count(*) FROM app.teams WHERE event_id = CAST(:e AS uuid)"),
+            {"e": event_id},
         ).scalar_one()
-        ev = s.execute(text("SELECT max_teams FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": event_id}).first()
-        if ev and int(count) >= int(ev[0]):
+        if int(count) >= int(ev[0]):
             raise ApiError("VALIDATION_ERROR", details={"capacity": f"Team cap ({ev[0]}) reached."})
         team_id = str(uuid7())
         join_code = secrets.token_hex(4).upper()
@@ -672,74 +717,378 @@ def create_team(event_id: str, body: TeamIn, request: Request, p: Principal = De
     return {"team_id": team_id, "join_code": join_code}
 
 
-# The roles the application actually defines (app.users.role; the admin-only
-# register endpoint accepts the same set). A non-admin organizer may invite
-# participants and reviewers only; organizer/admin invitations stay admin-only
-# (F-C-05: previously any string, including 'admin', was accepted verbatim).
-INVITE_ROLES = ("participant", "reviewer", "organizer", "admin")
-NON_ADMIN_INVITE_ROLES = ("participant", "reviewer")
+@router.get("/admin/events/{event_id}/teams")
+def list_teams(event_id: str, p: Principal = Depends(require_organizer)):
 
-
-class InviteIn(BaseModel):
-    email: str
-    team_id: str | None = None
-    role: str = "participant"
-
-
-@router.post("/admin/events/{event_id}/invites", status_code=201)
-def create_invite(event_id: str, body: InviteIn, request: Request, p: Principal = Depends(require_organizer)):
-    """Creates a single-use activation token. v1 returns it to the organizer
-    console (email delivery is a deployment follow-up, see runbook)."""
-    import secrets
-
-    if body.role not in INVITE_ROLES:
-        raise ApiError(
-            "VALIDATION_ERROR", details={"role": "role must be one of: participant, reviewer, organizer, admin."}
-        )
-    if body.role not in NON_ADMIN_INVITE_ROLES and p.role != "admin":
-        raise ApiError("AUTH_FORBIDDEN", message="Only an admin can invite organizer or admin accounts.")
-    raw = secrets.token_urlsafe(32)
     with app_session() as s:
-        from datetime import datetime, timedelta
+        if (
+            s.execute(
+                text("SELECT 1 FROM app.events WHERE id = CAST(:e AS uuid)"),
+                {"e": event_id},
+            ).first()
+            is None
+        ):
+            raise ApiError("NOT_FOUND")
+        rows = (
+            s.execute(
+                text(
+                    "SELECT t.id, t.name, count(DISTINCT tm.user_id) AS member_count "
+                    "FROM app.teams t LEFT JOIN app.team_members tm ON tm.team_id = t.id "
+                    "WHERE t.event_id = CAST(:e AS uuid) "
+                    "GROUP BY t.id, t.name ORDER BY t.name"
+                ),
+                {"e": event_id},
+            )
+            .mappings()
+            .all()
+        )
+    return {"teams": [dict(row) for row in rows]}
 
+
+class ParticipantCreateIn(BaseModel):
+    email: EmailStr
+    name: str = Field(min_length=2, max_length=160)
+    team_id: str
+
+
+class ParticipantTeamIn(BaseModel):
+    team_id: str
+
+
+class AdminPasswordResetIn(BaseModel):
+    password: str = Field(min_length=12, max_length=200)
+
+
+@router.post("/admin/events/{event_id}/participants", status_code=201)
+def register_event_participant(
+    event_id: str,
+    body: ParticipantCreateIn,
+    request: Request,
+    p: Principal = Depends(admin_step_up_verified),
+):
+    """Create a passwordless participant and attach them directly to an event team."""
+    user_id = None
+    password_setup_required = True
+    try:
+        with app_session() as s:
+            event = (
+                s.execute(
+                    text("SELECT tenant_id, max_participants FROM app.events WHERE id = CAST(:e AS uuid) FOR UPDATE"),
+                    {"e": event_id},
+                )
+                .mappings()
+                .first()
+            )
+            if event is None:
+                raise ApiError("NOT_FOUND")
+
+            team = s.execute(
+                text("SELECT event_id FROM app.teams WHERE id = CAST(:t AS uuid) FOR UPDATE"),
+                {"t": body.team_id},
+            ).first()
+            if team is None or str(team[0]) != event_id:
+                raise ApiError("VALIDATION_ERROR", details={"team_id": "Choose a team from this event."})
+
+            # The target team row is locked above, so concurrent registrations
+            # for the same team serialize before checking this cap.
+            team_member_count = s.execute(
+                text("SELECT count(*) FROM app.team_members WHERE team_id = CAST(:team AS uuid)"),
+                {"team": body.team_id},
+            ).scalar_one()
+            if int(team_member_count) >= settings.max_team_members:
+                raise ApiError(
+                    "TEAM_FULL",
+                    details={"team_id": f"Team member cap ({settings.max_team_members}) reached."},
+                )
+
+            member_count = s.execute(
+                text(
+                    "SELECT count(DISTINCT tm.user_id) FROM app.team_members tm "
+                    "JOIN app.teams t ON t.id = tm.team_id WHERE t.event_id = CAST(:e AS uuid)"
+                ),
+                {"e": event_id},
+            ).scalar_one()
+            if int(member_count) >= int(event["max_participants"]):
+                raise ApiError(
+                    "VALIDATION_ERROR",
+                    details={"capacity": f"Participant cap ({event['max_participants']}) reached."},
+                )
+
+            existing = (
+                s.execute(
+                    text(
+                        "SELECT id, tenant_id, role, password_hash FROM app.users "
+                        "WHERE lower(email) = :email FOR UPDATE"
+                    ),
+                    {"email": body.email.lower()},
+                )
+                .mappings()
+                .first()
+            )
+            if existing is None:
+                user_id = str(uuid7())
+                s.execute(
+                    text(
+                        "INSERT INTO app.users "
+                        "(id, tenant_id, email, name, role, password_hash, registration_id) "
+                        "VALUES (CAST(:id AS uuid), CAST(:tenant AS uuid), :email, :name, "
+                        "'participant', NULL, :registration_id)"
+                    ),
+                    {
+                        "id": user_id,
+                        "tenant": str(event["tenant_id"]),
+                        "email": body.email.lower(),
+                        "name": body.name,
+                        "registration_id": str(uuid7())[:8],
+                    },
+                )
+            else:
+                user_id = str(existing["id"])
+                if str(existing["tenant_id"]) != str(event["tenant_id"]) or existing["role"] != "participant":
+                    raise ApiError(
+                        "VALIDATION_ERROR",
+                        details={"email": "This email is already registered for a different account role or tenant."},
+                    )
+                membership = s.execute(
+                    text(
+                        "SELECT t.id FROM app.team_members tm "
+                        "JOIN app.teams t ON t.id = tm.team_id "
+                        "WHERE tm.user_id = CAST(:u AS uuid) AND t.event_id = CAST(:e AS uuid)"
+                    ),
+                    {"u": user_id, "e": event_id},
+                ).first()
+                if membership is not None:
+                    raise ApiError(
+                        "VALIDATION_ERROR",
+                        details={
+                            "email": "This participant already belongs to a team in this event. Use team reassignment."
+                        },
+                    )
+                password_setup_required = existing["password_hash"] is None
+
+            s.execute(
+                text(
+                    "INSERT INTO app.team_members (id, team_id, user_id) "
+                    "VALUES (CAST(:id AS uuid), CAST(:team AS uuid), CAST(:user AS uuid))"
+                ),
+                {"id": str(uuid7()), "team": body.team_id, "user": user_id},
+            )
+            audit_write(
+                s,
+                actor_id=p.id,
+                actor_role=p.role,
+                action="participant.registered",
+                entity_type="user",
+                entity_id=user_id,
+                request_id=request.state.request_id,
+                event_scope=f"event:{event_id}",
+                details={
+                    "email": body.email.lower(),
+                    "team_id": body.team_id,
+                    "password_setup_required": password_setup_required,
+                },
+            )
+    except IntegrityError:
+        raise ApiError(
+            "VALIDATION_ERROR",
+            details={"email": "This email or team membership already exists. Refresh the roster and retry."},
+        ) from None
+
+    return {
+        "participant_id": user_id,
+        "email": body.email.lower(),
+        "team_id": body.team_id,
+        "password_setup_required": password_setup_required,
+    }
+
+
+@router.patch("/admin/events/{event_id}/participants/{user_id}/team")
+def reassign_event_participant(
+    event_id: str,
+    user_id: str,
+    body: ParticipantTeamIn,
+    request: Request,
+    p: Principal = Depends(admin_step_up_verified),
+):
+    with app_session() as s:
+        target = s.execute(
+            text("SELECT event_id FROM app.teams WHERE id = CAST(:t AS uuid) FOR UPDATE"),
+            {"t": body.team_id},
+        ).first()
+        if target is None or str(target[0]) != event_id:
+            raise ApiError("VALIDATION_ERROR", details={"team_id": "Choose a team from this event."})
+        current = s.execute(
+            text(
+                "SELECT tm.team_id FROM app.team_members tm "
+                "JOIN app.teams t ON t.id = tm.team_id "
+                "JOIN app.users u ON u.id = tm.user_id "
+                "WHERE tm.user_id = CAST(:u AS uuid) AND t.event_id = CAST(:e AS uuid) "
+                "AND u.role = 'participant' FOR UPDATE"
+            ),
+            {"u": user_id, "e": event_id},
+        ).first()
+        if current is None:
+            raise ApiError("NOT_FOUND")
+        if str(current[0]) != body.team_id:
+            target_count = s.execute(
+                text("SELECT count(*) FROM app.team_members WHERE team_id = CAST(:team AS uuid)"),
+                {"team": body.team_id},
+            ).scalar_one()
+            if int(target_count) >= settings.max_team_members:
+                raise ApiError(
+                    "TEAM_FULL",
+                    details={"team_id": f"Team member cap ({settings.max_team_members}) reached."},
+                )
+            s.execute(
+                text("DELETE FROM app.team_members WHERE user_id = CAST(:u AS uuid) AND team_id = CAST(:t AS uuid)"),
+                {"u": user_id, "t": str(current[0])},
+            )
+            s.execute(
+                text(
+                    "INSERT INTO app.team_members (id, team_id, user_id) "
+                    "VALUES (CAST(:id AS uuid), CAST(:team AS uuid), CAST(:user AS uuid))"
+                ),
+                {"id": str(uuid7()), "team": body.team_id, "user": user_id},
+            )
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="participant.team_reassigned",
+            entity_type="user",
+            entity_id=user_id,
+            request_id=request.state.request_id,
+            event_scope=f"event:{event_id}",
+            details={"from_team_id": str(current[0]), "to_team_id": body.team_id},
+        )
+    return {"ok": True, "team_id": body.team_id}
+
+
+@router.delete("/admin/events/{event_id}/participants/{user_id}")
+def remove_event_participant(
+    event_id: str,
+    user_id: str,
+    request: Request,
+    p: Principal = Depends(admin_step_up_verified),
+):
+    with app_session() as s:
+        row = s.execute(
+            text(
+                "SELECT tm.team_id FROM app.team_members tm "
+                "JOIN app.teams t ON t.id = tm.team_id "
+                "JOIN app.users u ON u.id = tm.user_id "
+                "WHERE tm.user_id = CAST(:u AS uuid) AND t.event_id = CAST(:e AS uuid) "
+                "AND u.role = 'participant' FOR UPDATE"
+            ),
+            {"u": user_id, "e": event_id},
+        ).first()
+        if row is None:
+            raise ApiError("NOT_FOUND")
+        s.execute(
+            text("DELETE FROM app.team_members WHERE user_id = CAST(:u AS uuid) AND team_id = CAST(:t AS uuid)"),
+            {"u": user_id, "t": str(row[0])},
+        )
+        remaining_memberships = s.execute(
+            text("SELECT count(*) FROM app.team_members WHERE user_id = CAST(:u AS uuid)"),
+            {"u": user_id},
+        ).scalar_one()
+        if int(remaining_memberships) == 0:
+            s.execute(
+                text("UPDATE app.users SET token_version = token_version + 1 WHERE id = CAST(:u AS uuid)"),
+                {"u": user_id},
+            )
+            s.execute(
+                text(
+                    "UPDATE app.sessions SET revoked_at = now() WHERE user_id = CAST(:u AS uuid) AND revoked_at IS NULL"
+                ),
+                {"u": user_id},
+            )
+            s.execute(
+                text("UPDATE app.refresh_tokens SET status = 'revoked' WHERE user_id = CAST(:u AS uuid)"),
+                {"u": user_id},
+            )
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="participant.removed_from_event",
+            entity_type="user",
+            entity_id=user_id,
+            request_id=request.state.request_id,
+            event_scope=f"event:{event_id}",
+            details={"remaining_team_memberships": int(remaining_memberships)},
+        )
+    return {"ok": True}
+
+
+@router.post("/admin/users/{user_id}/password-reset")
+def admin_reset_user_password(
+    user_id: str,
+    body: AdminPasswordResetIn,
+    request: Request,
+    p: Principal = Depends(admin_step_up_verified),
+):
+    if user_id == p.id:
+        raise ApiError("VALIDATION_ERROR", details={"user_id": "Use another admin account to reset your own password."})
+    with app_session() as s:
+        user = (
+            s.execute(
+                text("SELECT email FROM app.users WHERE id = CAST(:u AS uuid) FOR UPDATE"),
+                {"u": user_id},
+            )
+            .mappings()
+            .first()
+        )
+        if user is None:
+            raise ApiError("NOT_FOUND")
         s.execute(
             text(
-                "INSERT INTO app.invites (id, event_id, email, token_hash, team_id, role, expires_at) "
-                "VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :email, :th, CAST(:t AS uuid), :role, :exp)"
+                "UPDATE app.users SET password_hash = :pw, token_version = token_version + 1 "
+                "WHERE id = CAST(:u AS uuid)"
             ),
-            {
-                "id": str(uuid7()),
-                "e": event_id,
-                "email": body.email.lower(),
-                "th": __import__("hashlib").sha256(raw.encode()).hexdigest(),
-                "t": body.team_id,
-                "role": body.role,
-                "exp": datetime.now(UTC) + timedelta(hours=48),
-            },
+            {"pw": security.hash_password(body.password), "u": user_id},
+        )
+        s.execute(
+            text("UPDATE app.sessions SET revoked_at = now() WHERE user_id = CAST(:u AS uuid) AND revoked_at IS NULL"),
+            {"u": user_id},
+        )
+        s.execute(
+            text("UPDATE app.refresh_tokens SET status = 'revoked' WHERE user_id = CAST(:u AS uuid)"),
+            {"u": user_id},
         )
         audit_write(
             s,
             actor_id=p.id,
             actor_role=p.role,
-            action="invite.created",
-            entity_type="event",
-            entity_id=event_id,
+            action="auth.password_reset_by_admin",
+            entity_type="user",
+            entity_id=user_id,
             request_id=request.state.request_id,
-            details={"email": body.email},
+            details={"target_email": user["email"]},
         )
-    return {"invite_token": raw, "activation_url": f"/activate?invite={raw}"}
+    return {"ok": True, "email": user["email"]}
 
 
 @router.get("/admin/events/{event_id}/participants")
 def list_participants(event_id: str, p: Principal = Depends(require_organizer)):
     with app_session() as s:
+        if (
+            s.execute(
+                text("SELECT 1 FROM app.events WHERE id = CAST(:e AS uuid)"),
+                {"e": event_id},
+            ).first()
+            is None
+        ):
+            raise ApiError("NOT_FOUND")
         rows = (
             s.execute(
                 text(
-                    "SELECT u.id, u.email, u.name, u.role, u.status, t.name AS team_name, i.used_at IS NOT NULL AS activated "
-                    "FROM app.invites i LEFT JOIN app.users u ON lower(u.email) = i.email "
-                    "LEFT JOIN app.team_members tm ON tm.user_id = u.id LEFT JOIN app.teams t ON t.id = tm.team_id "
-                    "WHERE i.event_id = CAST(:e AS uuid) ORDER BY i.created_at DESC LIMIT 500"
+                    "SELECT u.id, u.email, u.name, u.role, t.id AS team_id, t.name AS team_name, "
+                    "(u.password_hash IS NOT NULL) AS password_set, u.created_at "
+                    "FROM app.team_members tm JOIN app.teams t ON t.id = tm.team_id "
+                    "JOIN app.users u ON u.id = tm.user_id "
+                    "WHERE t.event_id = CAST(:e AS uuid) AND u.role = 'participant' "
+                    "ORDER BY u.email LIMIT 500"
                 ),
                 {"e": event_id},
             )
@@ -758,6 +1107,33 @@ class ChallengeIn(BaseModel):
     # to fail inside the INSERT with a database 500 instead of a clean 422.
     title: str = Field(min_length=3, max_length=200)
     instructions_markdown: str | None = None
+
+
+@router.get("/admin/events/{event_id}/challenges")
+def list_challenge_versions(event_id: str, p: Principal = Depends(require_organizer)):
+    """List safe challenge metadata without participant content or ground-truth secrets."""
+    with app_session() as s:
+        if (
+            s.execute(
+                text("SELECT 1 FROM app.events WHERE id = CAST(:e AS uuid)"),
+                {"e": event_id},
+            ).first()
+            is None
+        ):
+            raise ApiError("NOT_FOUND")
+        rows = (
+            s.execute(
+                text(
+                    "SELECT id, slug, title, version, status, content_hash, frozen_at, published_at, created_at "
+                    "FROM app.challenge_versions WHERE event_id = CAST(:e AS uuid) "
+                    "ORDER BY created_at DESC LIMIT 200"
+                ),
+                {"e": event_id},
+            )
+            .mappings()
+            .all()
+        )
+    return {"challenges": [dict(row) for row in rows]}
 
 
 @router.post("/admin/events/{event_id}/challenges", status_code=201)
@@ -988,15 +1364,7 @@ class BugIn(BaseModel):
 @router.post("/admin/challenges/{challenge_id}/ground-truth/bugs", status_code=201)
 def add_bug(challenge_id: str, body: BugIn, request: Request, p: Principal = Depends(step_up_verified)):
     """Writes ground truth via the gt_admin role only (DAT-03)."""
-    with gt_session() as gts:
-        cv = gts.execute(
-            text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid) FOR UPDATE"),
-            {"c": challenge_id},
-        ).first()
-        if cv is None:
-            raise ApiError("NOT_FOUND")
-        if cv[0] not in ("draft", "reviewed"):
-            raise ApiError("GROUND_TRUTH_LOCKED")
+    with _editable_challenge_lock(challenge_id), gt_session() as gts:
         bug_id = str(uuid7())
         gts.execute(
             text(
@@ -1052,14 +1420,65 @@ def add_bug(challenge_id: str, body: BugIn, request: Request, p: Principal = Dep
             details={"code": body.code},
             event_scope=f"challenge:{challenge_id}",
         )
+
     return {"bug_id": bug_id}
 
 
 class FlagIn(BaseModel):
-    flag_key: str = Field(max_length=40)
+    flag_key: str = Field(min_length=1, max_length=40)
     code: str = Field(min_length=4, max_length=200)
     points: float = Field(gt=0, le=500)
     max_awards: int = Field(default=99, ge=1)
+
+
+class FlagPatchIn(BaseModel):
+    flag_key: str | None = Field(default=None, min_length=1, max_length=40)
+    code: str | None = Field(default=None, min_length=4, max_length=200)
+    points: float | None = Field(default=None, gt=0, le=500)
+    max_awards: int | None = Field(default=None, ge=1)
+
+
+@router.get("/admin/challenges/{challenge_id}/ground-truth/flags")
+def list_ground_truth_flags(challenge_id: str, p: Principal = Depends(step_up_verified)):
+    """Return editable flag metadata only; neither plaintext codes nor hashes are exposed."""
+    with app_session() as s:
+        if (
+            s.execute(
+                text("SELECT 1 FROM app.challenge_versions WHERE id = CAST(:c AS uuid)"),
+                {"c": challenge_id},
+            ).first()
+            is None
+        ):
+            raise ApiError("NOT_FOUND")
+    with gt_session() as gts:
+        rows = (
+            gts.execute(
+                text(
+                    "SELECT id, flag_key, points, max_awards, position_label, created_at "
+                    "FROM gt.gt_flags WHERE challenge_version_id = CAST(:c AS uuid) "
+                    "ORDER BY created_at, flag_key"
+                ),
+                {"c": challenge_id},
+            )
+            .mappings()
+            .all()
+        )
+    return {"flags": [dict(row) for row in rows]}
+
+
+@contextmanager
+def _editable_challenge_lock(challenge_id: str):
+    """Hold the challenge row lock until the isolated ground-truth write completes."""
+    with app_session() as s:
+        challenge = s.execute(
+            text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid) FOR UPDATE"),
+            {"c": challenge_id},
+        ).first()
+        if challenge is None:
+            raise ApiError("NOT_FOUND")
+        if challenge[0] not in ("draft", "reviewed"):
+            raise ApiError("GROUND_TRUTH_LOCKED")
+        yield
 
 
 @router.post("/admin/challenges/{challenge_id}/ground-truth/flags", status_code=201)
@@ -1071,41 +1490,143 @@ def add_flag(challenge_id: str, body: FlagIn, request: Request, p: Principal = D
     """
     from ..security import flag_code_hash
 
-    with gt_session() as gts:
-        cv = gts.execute(
-            text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid) FOR UPDATE"),
-            {"c": challenge_id},
-        ).first()
-        if cv is None:
-            raise ApiError("NOT_FOUND")
-        if cv[0] not in ("draft", "reviewed"):
-            raise ApiError("GROUND_TRUTH_LOCKED")
-        gts.execute(
-            text(
-                "INSERT INTO gt.gt_flags (id, challenge_version_id, flag_key, code_hash, points, max_awards) "
-                "VALUES (CAST(:id AS uuid), CAST(:c AS uuid), :k, :h, :pts, :ma) "
-                "ON CONFLICT (challenge_version_id, code_hash) DO NOTHING"
-            ),
-            {
-                "id": str(uuid7()),
-                "c": challenge_id,
-                "k": body.flag_key,
-                "h": flag_code_hash(body.code),
-                "pts": body.points,
-                "ma": body.max_awards,
-            },
-        )
-        audit_write(
-            gts,
-            actor_id=p.id,
-            actor_role=p.role,
-            action="gt.flag_added",
-            entity_type="gt_flag",
-            entity_id=body.flag_key,
-            request_id=request.state.request_id,
-            event_scope=f"challenge:{challenge_id}",
-        )
-    return {"ok": True}
+    with _editable_challenge_lock(challenge_id):
+        try:
+            with gt_session() as gts:
+                code_hash = flag_code_hash(body.code)
+                # Exact re-post (same flag key AND same code) is idempotent (F-C-07).
+                exact_duplicate = gts.execute(
+                    text(
+                        "SELECT id FROM gt.gt_flags WHERE challenge_version_id = CAST(:c AS uuid) "
+                        "AND flag_key = :k AND code_hash = :h"
+                    ),
+                    {"c": challenge_id, "k": body.flag_key, "h": code_hash},
+                ).first()
+                if exact_duplicate is not None:
+                    return {"flag_id": str(exact_duplicate[0]), "ok": True}
+                # Same flag key with a DIFFERENT code is rejected.
+                duplicate_key = gts.execute(
+                    text(
+                        "SELECT 1 FROM gt.gt_flags WHERE challenge_version_id = CAST(:c AS uuid) "
+                        "AND flag_key = :k AND code_hash <> :h"
+                    ),
+                    {"c": challenge_id, "k": body.flag_key, "h": code_hash},
+                ).first()
+                if duplicate_key:
+                    raise ApiError("VALIDATION_ERROR", details={"flag_key": "This flag key already exists."})
+                flag_id = gts.execute(
+                    text(
+                        "INSERT INTO gt.gt_flags (id, challenge_version_id, flag_key, code_hash, points, max_awards) "
+                        "VALUES (CAST(:id AS uuid), CAST(:c AS uuid), :k, :h, :pts, :ma) "
+                        "ON CONFLICT DO NOTHING RETURNING id"
+                    ),
+                    {
+                        "id": str(uuid7()),
+                        "c": challenge_id,
+                        "k": body.flag_key,
+                        "h": code_hash,
+                        "pts": body.points,
+                        "ma": body.max_awards,
+                    },
+                ).scalar_one_or_none()
+                if flag_id is None:
+                    raise ApiError(
+                        "VALIDATION_ERROR", details={"code": "This flag code already exists for this challenge."}
+                    )
+                audit_write(
+                    gts,
+                    actor_id=p.id,
+                    actor_role=p.role,
+                    action="gt.flag_added",
+                    entity_type="gt_flag",
+                    entity_id=str(flag_id),
+                    request_id=request.state.request_id,
+                    details={"flag_key": body.flag_key},
+                    event_scope=f"challenge:{challenge_id}",
+                )
+        except IntegrityError:
+            raise ApiError("VALIDATION_ERROR", details={"flag": "This flag key or code already exists."}) from None
+        return {"flag_id": str(flag_id), "ok": True}
+
+
+@router.patch("/admin/challenges/{challenge_id}/ground-truth/flags/{flag_id}")
+def update_ground_truth_flag(
+    challenge_id: str,
+    flag_id: str,
+    body: FlagPatchIn,
+    request: Request,
+    p: Principal = Depends(step_up_verified),
+):
+    from ..security import flag_code_hash
+
+    changes = body.model_dump(exclude_unset=True)
+    if not changes:
+        raise ApiError("VALIDATION_ERROR", details={"body": "Provide at least one field to update."})
+    if any(value is None for value in changes.values()):
+        raise ApiError("VALIDATION_ERROR", details={"body": "Fields may be omitted, but cannot be null."})
+    with _editable_challenge_lock(challenge_id):
+        try:
+            with gt_session() as gts:
+                current = (
+                    gts.execute(
+                        text(
+                            "SELECT id, flag_key, code_hash, points, max_awards "
+                            "FROM gt.gt_flags WHERE id = CAST(:id AS uuid) "
+                            "AND challenge_version_id = CAST(:c AS uuid) FOR UPDATE"
+                        ),
+                        {"id": flag_id, "c": challenge_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+                if current is None:
+                    raise ApiError("NOT_FOUND")
+
+                flag_key = changes.get("flag_key", current["flag_key"])
+                code_hash = flag_code_hash(changes["code"]) if "code" in changes else current["code_hash"]
+                points = changes.get("points", current["points"])
+                max_awards = changes.get("max_awards", current["max_awards"])
+
+                duplicate_key = gts.execute(
+                    text(
+                        "SELECT 1 FROM gt.gt_flags WHERE challenge_version_id = CAST(:c AS uuid) "
+                        "AND flag_key = :k AND id <> CAST(:id AS uuid)"
+                    ),
+                    {"c": challenge_id, "k": flag_key, "id": flag_id},
+                ).first()
+                if duplicate_key:
+                    raise ApiError("VALIDATION_ERROR", details={"flag_key": "This flag key already exists."})
+                duplicate_code = gts.execute(
+                    text(
+                        "SELECT 1 FROM gt.gt_flags WHERE challenge_version_id = CAST(:c AS uuid) "
+                        "AND code_hash = :h AND id <> CAST(:id AS uuid)"
+                    ),
+                    {"c": challenge_id, "h": code_hash, "id": flag_id},
+                ).first()
+                if duplicate_code:
+                    raise ApiError("VALIDATION_ERROR", details={"code": "This flag code already exists."})
+
+                gts.execute(
+                    text(
+                        "UPDATE gt.gt_flags SET flag_key = :k, code_hash = :h, points = :pts, max_awards = :ma "
+                        "WHERE id = CAST(:id AS uuid) AND challenge_version_id = CAST(:c AS uuid)"
+                    ),
+                    {"k": flag_key, "h": code_hash, "pts": points, "ma": max_awards, "id": flag_id, "c": challenge_id},
+                )
+                audit_write(
+                    gts,
+                    actor_id=p.id,
+                    actor_role=p.role,
+                    action="gt.flag_updated",
+                    entity_type="gt_flag",
+                    entity_id=flag_id,
+                    request_id=request.state.request_id,
+                    event_scope=f"challenge:{challenge_id}",
+                    details={"flag_key": flag_key, "code_changed": "code" in changes},
+                )
+        except IntegrityError:
+            raise ApiError("VALIDATION_ERROR", details={"flag": "This flag key or code already exists."}) from None
+        return {"ok": True, "flag_id": flag_id}
 
 
 @router.post("/admin/challenges/{challenge_id}/ground-truth/test-results")
@@ -1259,13 +1780,19 @@ def time_adjustment(event_id: str, body: dict, request: Request, p: Principal = 
         if user_id is not None:
             member = s.execute(
                 text(
-                    "SELECT 1 FROM app.team_members tm JOIN app.teams t ON t.id = tm.team_id "
-                    "WHERE tm.user_id = CAST(:u AS uuid) AND t.event_id = CAST(:e AS uuid)"
+                    "SELECT 1 FROM app.team_members tm "
+                    "JOIN app.teams t ON t.id = tm.team_id "
+                    "JOIN app.users u ON u.id = tm.user_id "
+                    "WHERE tm.user_id = CAST(:u AS uuid) AND t.event_id = CAST(:e AS uuid) "
+                    "AND u.role = 'participant'"
                 ),
                 {"u": user_id, "e": event_id},
             ).first()
             if member is None:
-                raise ApiError("VALIDATION_ERROR", details={"user_id": "User is not a member of this event."})
+                raise ApiError(
+                    "VALIDATION_ERROR",
+                    details={"user_id": "Participant must have an active team membership in the selected event."},
+                )
         s.execute(
             text(
                 "INSERT INTO app.time_adjustments (id, stage_id, user_id, delta_seconds, reason_code, created_by) VALUES (CAST(:id AS uuid), CAST(:s AS uuid), CAST(:u AS uuid), :d, :r, CAST(:by AS uuid))"
@@ -1646,8 +2173,8 @@ def resolve_dispute(dispute_id: str, body: dict, request: Request, p: Principal 
 
 
 @router.post("/admin/adjustments")
-def manual_adjustment(body: dict, request: Request, p: Principal = Depends(require_admin)):
-    """Admin-only manual score adjustment (audit reason required; ADM-RS)."""
+def manual_adjustment(body: dict, request: Request, p: Principal = Depends(admin_step_up_verified)):
+    """Admin-only manual score adjustment; requires recent password step-up."""
     stage_id = body.get("stage_id")
     team_id = body.get("team_id")
     raw_points = body.get("points")
@@ -1661,6 +2188,10 @@ def manual_adjustment(body: dict, request: Request, p: Principal = Depends(requi
     points = _validated_points(raw_points, field="points")
     if points == 0:
         raise ApiError("VALIDATION_ERROR", details={"adjustment": "stage_id, team_id, points, reason required."})
+    if abs(points) > 10000 or len(reason) > 1000:
+        raise ApiError(
+            "VALIDATION_ERROR", details={"adjustment": "Points must be within +/-10000 and reason <=1000 chars."}
+        )
     if not _is_uuid(stage_id) or not _is_uuid(team_id):
         raise ApiError("VALIDATION_ERROR", details={"adjustment": "stage_id and team_id must be UUIDs."})
     with app_session() as s:
