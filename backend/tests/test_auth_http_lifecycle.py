@@ -615,8 +615,7 @@ def test_step_up_for_passwordless_participant_returns_generic_401_without_raisin
         assert (
             session.execute(
                 text(
-                    "SELECT count(*) FROM audit.entries WHERE action = 'auth.step_up' "
-                    "AND actor_id = CAST(:uid AS uuid)"
+                    "SELECT count(*) FROM audit.entries WHERE action = 'auth.step_up' AND actor_id = CAST(:uid AS uuid)"
                 ),
                 {"uid": user_id},
             ).scalar_one()

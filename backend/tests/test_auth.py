@@ -347,7 +347,6 @@ def test_zombie_sessions_do_not_hold_slots(client):
     assert client.get("/v1/me", headers=_auth(t2)).status_code == 200
 
 
-
 def test_team_member_cap_is_enforced_for_registration_and_reassignment(client, monkeypatch):
     from app.config import settings
     from app.db import app_engine

@@ -205,8 +205,6 @@ def test_principal_uses_session_and_role_without_account_lifecycle_status(client
     assert not hasattr(principal, "status")
 
 
-
-
 def test_http_role_boundaries_cover_participant_staff_organizer_and_admin(client):
     participant = _login(client, "p1.team1@example.com")["access_token"]
     reviewer = _login(client, "reviewer1@example.com")["access_token"]
