@@ -739,3 +739,23 @@ def test_concurrent_test_result_delivery_scores_one_award(evaluation_case, monke
     entries = [row for row in _ledger(submission_id) if row["component"] == "functional_test"]
     assert len(entries) == 1
     assert float(entries[0]["points"]) == 50.0
+
+
+def test_evaluate_level_submission_unsupported_kind_leaves_state_untouched(seeded_db, evaluation_case):
+    """For kinds other than level_artifact/level_report, evaluation_state must
+    not be changed to EVALUATING (it must keep its previous value).
+    """
+    submission_id = _insert_submission(
+        evaluation_case,
+        "ctf_flag",
+        {"level_no": 1, "flags": []},
+    )
+
+    evaluator_level.evaluate_level_submission({"submission_id": submission_id, "level_no": 1})
+
+    with app_session() as session:
+        state = session.execute(
+            text("SELECT evaluation_state FROM app.submissions WHERE id = CAST(:sid AS uuid)"),
+            {"sid": submission_id},
+        ).scalar_one()
+    assert state == "RECEIVED"

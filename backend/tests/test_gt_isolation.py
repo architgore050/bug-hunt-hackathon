@@ -50,3 +50,38 @@ def test_platform_never_serves_answer_key(client):
     names = [f["path"] for f in files]
     assert "ORGANIZER_ANSWER_KEY.md" not in names
     assert all(not n.startswith("ORGANIZER") for n in names)
+
+
+def test_prerelease_submission_status_masked(client):
+    pc = participant_client(client, "p1.team1@example.com")
+    st = pc.get("/v1/state").json()
+    stage_id = st["round"]["id"]
+    cv_id = pc.get("/v1/assignments").json()["assignments"][0]["challenge_id"]
+    with psycopg.connect(GT_DSN) as conn, conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO app.submissions (id, tenant_id, event_id, stage_id, challenge_version_id, team_id, "
+            "author_id, kind, idempotency_key, payload, payload_hash, status, receipt_code, title, received_at, feedback_released) "
+            "SELECT gen_random_uuid(), u.tenant_id, t.event_id, CAST(%s AS uuid), CAST(%s AS uuid), tm.team_id, "
+            "u.id, 'bug_report', 'mask-test-1', '{}'::jsonb, 'h1', 'rejected_auto', 'RCPT-1', 'mask-test', now(), false "
+            "FROM app.users u "
+            "JOIN app.team_members tm ON tm.user_id = u.id "
+            "JOIN app.teams t ON t.id = tm.team_id "
+            "WHERE u.email = 'p1.team1@example.com'",
+            (stage_id, cv_id),
+        )
+        cur.execute(
+            "INSERT INTO app.submissions (id, tenant_id, event_id, stage_id, challenge_version_id, team_id, "
+            "author_id, kind, idempotency_key, payload, payload_hash, status, receipt_code, title, received_at, feedback_released) "
+            "SELECT gen_random_uuid(), u.tenant_id, t.event_id, CAST(%s AS uuid), CAST(%s AS uuid), tm.team_id, "
+            "u.id, 'bug_report', 'mask-test-2', '{}'::jsonb, 'h2', 'duplicate', 'RCPT-2', 'mask-test', now(), false "
+            "FROM app.users u "
+            "JOIN app.team_members tm ON tm.user_id = u.id "
+            "JOIN app.teams t ON t.id = tm.team_id "
+            "WHERE u.email = 'p1.team1@example.com'",
+            (stage_id, cv_id),
+        )
+        conn.commit()
+    subs = pc.get("/v1/submissions").json()["submissions"]
+    by_receipt = {s["receipt_code"]: s for s in subs}
+    assert by_receipt["RCPT-1"]["status"] == "received"
+    assert by_receipt["RCPT-2"]["status"] == "received"

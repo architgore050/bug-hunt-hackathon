@@ -501,3 +501,481 @@ def test_leaderboard_tie_break_order(seeded_db):
         )
     assert board["rows"][0]["team_id"] == str(teams[0][0])
     assert board["rows"][0]["invalid_reports"] == 0
+
+
+def test_leaderboard_since_returns_304_when_unchanged(client, seeded_db):
+    from app.db import app_session
+    from app.scoring import save_snapshot
+    from tests.conftest import organizer_client
+
+    oc = organizer_client(client)
+    with app_session() as s:
+        row = s.execute(text("SELECT id, event_id FROM app.stages LIMIT 1")).first()
+        stage_id, event_id = str(row[0]), str(row[1])
+        v1 = save_snapshot(
+            s,
+            event_id=event_id,
+            stage_id=stage_id,
+            payload={"stage_id": stage_id, "rows": []},
+            visibility="public",
+        )
+    r1 = oc.get(f"/v1/leaderboard/{stage_id}")
+    assert r1.status_code == 200
+    assert r1.json()["version"] == v1
+
+    r304 = oc.get(f"/v1/leaderboard/{stage_id}?since={v1}")
+    assert r304.status_code == 304
+
+    with app_session() as s:
+        v2 = save_snapshot(
+            s,
+            event_id=event_id,
+            stage_id=stage_id,
+            payload={"stage_id": stage_id, "rows": []},
+            visibility="public",
+        )
+    r2 = oc.get(f"/v1/leaderboard/{stage_id}?since={v1}")
+    assert r2.status_code == 200
+    assert r2.json()["version"] == v2
+
+
+def test_scoring_pipeline_schema_grants_and_tables(seeded_db):
+    from app.db import app_session, gt_session
+
+    with app_session() as s:
+        for tbl in ("submission_flag_results", "submission_scores", "runner_evaluations"):
+            cnt = s.execute(text(f"SELECT count(*) FROM app.{tbl}")).scalar_one()
+            assert cnt == 0
+        state = s.execute(text("SELECT evaluation_state FROM app.submissions LIMIT 1")).first()
+        if state is not None:
+            assert state[0] in ("RECEIVED", "QUEUED", "EVALUATING", "SCORED", "NEEDS_REVIEW", "FAILED")
+    with gt_session() as gts:
+        assert gts.execute(text("SELECT count(*) FROM app.submission_flag_results")).scalar_one() == 0
+
+
+def test_double_reversal_skips_already_reversed_entries(seeded_db):
+    """Regression: original ledger rows must not be matched twice by reversal.
+
+    The reversal query in finalize_submission_score uses
+    `reverses_entry_id IS NULL`, which matches original rows even when they
+    already have a reversal entry pointing to them. This test sets up a
+    submission A whose +10 entry is already reversed (by -10) and whose +15
+    entry is not yet reversed, then executes the same reversal query the
+    application uses. With the bug, the already-reversed +10 is matched
+    again (double reversal). With the fix (NOT EXISTS), it is skipped.
+    """
+    from app.db import app_session
+    from sqlalchemy import text
+
+    with app_session() as s:
+        row = (
+            s.execute(
+                text(
+                    "SELECT t.id AS team_id, t.event_id, st.id AS stage_id, e.tenant_id "
+                    "FROM app.teams t JOIN app.team_members tm ON tm.team_id = t.id "
+                    "JOIN app.stages st ON st.event_id = t.event_id AND st.kind = 'level' AND st.ordinal = 1 "
+                    "JOIN app.events e ON e.id = t.event_id WHERE t.name = 'Team Lambda' LIMIT 1"
+                )
+            )
+            .mappings()
+            .first()
+        )
+        assert row is not None
+        team_id = str(row["team_id"])
+        event_id = str(row["event_id"])
+        stage_id = str(row["stage_id"])
+        tenant_id = str(row["tenant_id"])
+        members = [
+            str(m[0])
+            for m in s.execute(
+                text("SELECT user_id FROM app.team_members WHERE team_id = CAST(:t AS uuid) ORDER BY user_id LIMIT 1"),
+                {"t": team_id},
+            ).all()
+        ]
+        assert len(members) == 1
+        author_id = members[0]
+        sub_a = str(uuid.uuid4())
+        a1_id = str(uuid.uuid4())
+        a1r_id = str(uuid.uuid4())
+        a2_id = str(uuid.uuid4())
+
+        s.execute(
+            text(
+                "INSERT INTO app.submissions "
+                "(id, tenant_id, event_id, stage_id, challenge_version_id, team_id, author_id, kind, "
+                "idempotency_key, payload, payload_hash, status, receipt_code, title, received_at) "
+                "VALUES (CAST(:sid AS uuid), CAST(:t AS uuid), CAST(:ev AS uuid), CAST(:st AS uuid), "
+                "(SELECT id FROM app.challenge_versions WHERE event_id = CAST(:ev AS uuid) LIMIT 1), "
+                "CAST(:team AS uuid), CAST(:au AS uuid), 'level_artifact', :idem, CAST('{}' AS jsonb), 'x', "
+                "'received', :rc, 'sub', :rec)"
+            ),
+            {
+                "sid": sub_a,
+                "t": tenant_id,
+                "ev": event_id,
+                "st": stage_id,
+                "team": team_id,
+                "au": author_id,
+                "idem": f"idem-{sub_a}",
+                "rc": f"RC-{sub_a[:8]}",
+                "rec": "2026-11-28 10:00:00+00",
+            },
+        )
+
+        s.execute(
+            text(
+                "INSERT INTO app.score_ledger_entries "
+                "(id, tenant_id, event_id, stage_id, team_id, submission_id, component, kind, "
+                "points, reason_code, reverses_entry_id, note) "
+                "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), CAST(:ev AS uuid), CAST(:st AS uuid), "
+                "CAST(:team AS uuid), CAST(:sub AS uuid), 'functional_test', 'award', 10.0, 'MATCH_FULL', NULL, 'award')"
+            ),
+            {"id": a1_id, "t": tenant_id, "ev": event_id, "st": stage_id, "team": team_id, "sub": sub_a},
+        )
+        s.execute(
+            text(
+                "INSERT INTO app.score_ledger_entries "
+                "(id, tenant_id, event_id, stage_id, team_id, submission_id, component, kind, "
+                "points, reason_code, reverses_entry_id, note) "
+                "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), CAST(:ev AS uuid), CAST(:st AS uuid), "
+                "CAST(:team AS uuid), CAST(:sub AS uuid), 'adjustment', 'reversal', -10.0, 'BEST_MEMBER_REPLACED', "
+                "CAST(:rev AS uuid), 'superseded')"
+            ),
+            {"id": a1r_id, "t": tenant_id, "ev": event_id, "st": stage_id, "team": team_id, "sub": sub_a, "rev": a1_id},
+        )
+        s.execute(
+            text(
+                "INSERT INTO app.score_ledger_entries "
+                "(id, tenant_id, event_id, stage_id, team_id, submission_id, component, kind, "
+                "points, reason_code, reverses_entry_id, note) "
+                "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), CAST(:ev AS uuid), CAST(:st AS uuid), "
+                "CAST(:team AS uuid), CAST(:sub AS uuid), 'functional_test', 'award', 15.0, 'MATCH_FULL', NULL, 'award')"
+            ),
+            {"id": a2_id, "t": tenant_id, "ev": event_id, "st": stage_id, "team": team_id, "sub": sub_a},
+        )
+        s.flush()
+        rows = (
+            s.execute(
+                text(
+                    "SELECT e.id, e.points FROM app.score_ledger_entries e "
+                    "WHERE e.submission_id = CAST(:sid AS uuid) AND e.stage_id = CAST(:stid AS uuid) "
+                    "AND e.reverses_entry_id IS NULL "
+                    "AND NOT EXISTS (SELECT 1 FROM app.score_ledger_entries r "
+                    "WHERE r.reverses_entry_id = e.id)"
+                ),
+                {"sid": sub_a, "stid": stage_id},
+            )
+            .mappings()
+            .all()
+        )
+
+        matched_ids = {str(r["id"]) for r in rows}
+        assert str(a1_id) not in matched_ids, (
+            f"Double-reversal bug: entry {a1_id} already has a reversal but is matched by the reversal query"
+        )
+        assert str(a2_id) in matched_ids, f"Entry {a2_id} has no reversal and should be matched"
+
+
+def _best_member_setup(s):
+    row = (
+        s.execute(
+            text(
+                "SELECT t.id AS team_id, t.event_id, st.id AS stage_id, e.tenant_id "
+                "FROM app.teams t JOIN app.team_members tm ON tm.team_id = t.id "
+                "JOIN app.stages st ON st.event_id = t.event_id AND st.kind = 'level' AND st.ordinal = 1 "
+                "JOIN app.events e ON e.id = t.event_id WHERE t.name = 'Team Lambda' LIMIT 1"
+            )
+        )
+        .mappings()
+        .first()
+    )
+    assert row is not None
+    return (
+        str(row["team_id"]),
+        str(row["event_id"]),
+        str(row["stage_id"]),
+        str(row["tenant_id"]),
+        [
+            str(m[0])
+            for m in s.execute(
+                text("SELECT user_id FROM app.team_members WHERE team_id = CAST(:t AS uuid) ORDER BY user_id LIMIT 3"),
+                {"t": str(row["team_id"])},
+            ).all()
+        ],
+    )
+
+
+def _best_member_make_submission(s, sid, tenant_id, event_id, stage_id, team_id, author_id, received_at):
+    s.execute(
+        text(
+            "INSERT INTO app.submissions (id, tenant_id, event_id, stage_id, challenge_version_id, team_id, "
+            "author_id, kind, idempotency_key, payload, payload_hash, status, receipt_code, title, received_at) "
+            "VALUES (CAST(:sid AS uuid), CAST(:t AS uuid), CAST(:ev AS uuid), CAST(:st AS uuid), "
+            "(SELECT id FROM app.challenge_versions WHERE event_id = CAST(:ev AS uuid) LIMIT 1), "
+            "CAST(:team AS uuid), CAST(:au AS uuid), 'level_artifact', :idem, CAST('{}' AS jsonb), 'x', "
+            "'received', :rc, 'sub', :rec)"
+        ),
+        {
+            "sid": sid,
+            "t": tenant_id,
+            "ev": event_id,
+            "st": stage_id,
+            "team": team_id,
+            "au": author_id,
+            "idem": f"idem-{sid}",
+            "rc": f"RC-{sid[:8]}",
+            "rec": received_at,
+        },
+    )
+
+
+def _best_member_add_award(s, tenant_id, event_id, stage_id, team_id, submission_id, points):
+    from app.scoring import add_ledger_entry
+
+    add_ledger_entry(
+        s,
+        tenant_id=tenant_id,
+        event_id=event_id,
+        stage_id=stage_id,
+        team_id=team_id,
+        submission_id=submission_id,
+        component="functional_test",
+        kind="award",
+        points=points,
+        reason_code="MATCH_FULL",
+    )
+    s.flush()
+
+
+def _best_member_finalize(s, submission_id, stage_id, team_id, event_id, author_id, tenant_id, received_at):
+    from app.scoring import finalize_submission_score
+
+    finalize_submission_score(
+        s,
+        submission_id=submission_id,
+        stage_id=stage_id,
+        team_id=team_id,
+        event_id=event_id,
+        author_id=author_id,
+        tenant_id=tenant_id,
+        received_at=received_at,
+        kind="level_artifact",
+    )
+
+
+def _best_member_scores(s, team_id):
+    return {
+        str(r["submission_id"]): dict(r)
+        for r in s.execute(
+            text(
+                "SELECT submission_id, total_points, is_team_best FROM app.submission_scores "
+                "WHERE team_id = CAST(:t AS uuid)"
+            ),
+            {"t": team_id},
+        )
+        .mappings()
+        .all()
+    }
+
+
+def test_best_member_tied_members_break_by_earliest_received_at(seeded_db):
+    """Tied members with equal totals: earlier received_at wins the tie-break.
+
+    A (+10, received 10:00) is best. B (+10, received 10:01) ties but loses
+    the tie-break; A keeps is_team_best, B does not. Exact totals asserted.
+    """
+    from datetime import UTC, datetime
+
+    from app.db import app_session
+
+    base = datetime(2026, 11, 28, 10, 0, 0, tzinfo=UTC)
+    with app_session() as s:
+        team_id, event_id, stage_id, tenant_id, members = _best_member_setup(s)
+        assert len(members) >= 2
+        sub_a, sub_b = str(uuid.uuid4()), str(uuid.uuid4())
+
+        _best_member_make_submission(s, sub_a, tenant_id, event_id, stage_id, team_id, members[0], base)
+        _best_member_add_award(s, tenant_id, event_id, stage_id, team_id, sub_a, 10.0)
+        _best_member_finalize(s, sub_a, stage_id, team_id, event_id, members[0], tenant_id, base)
+
+        _best_member_make_submission(
+            s, sub_b, tenant_id, event_id, stage_id, team_id, members[1], base.replace(minute=1)
+        )
+        _best_member_add_award(s, tenant_id, event_id, stage_id, team_id, sub_b, 10.0)
+        _best_member_finalize(s, sub_b, stage_id, team_id, event_id, members[1], tenant_id, base.replace(minute=1))
+
+        scores = _best_member_scores(s, team_id)
+        assert scores[sub_a]["is_team_best"] is True
+        assert scores[sub_b]["is_team_best"] is False
+        assert float(scores[sub_a]["total_points"]) == 10.0
+        assert float(scores[sub_b]["total_points"]) == 10.0
+
+
+def test_best_member_member_with_no_submission(seeded_db):
+    """A member who never submits does not reduce the team's best score.
+
+    Only member A submits (+10). Members B and C have no submission_scores
+    row; the team's best is A's 10 points.
+    """
+    from datetime import UTC, datetime
+
+    from app.db import app_session
+
+    base = datetime(2026, 11, 28, 10, 0, 0, tzinfo=UTC)
+    with app_session() as s:
+        team_id, event_id, stage_id, tenant_id, members = _best_member_setup(s)
+        assert len(members) == 3
+        sub_a = str(uuid.uuid4())
+
+        _best_member_make_submission(s, sub_a, tenant_id, event_id, stage_id, team_id, members[0], base)
+        _best_member_add_award(s, tenant_id, event_id, stage_id, team_id, sub_a, 10.0)
+        _best_member_finalize(s, sub_a, stage_id, team_id, event_id, members[0], tenant_id, base)
+
+        scores = _best_member_scores(s, team_id)
+        assert len(scores) == 1
+        assert scores[sub_a]["is_team_best"] is True
+        assert float(scores[sub_a]["total_points"]) == 10.0
+
+
+def test_best_member_late_auto_submit_beats_manual(seeded_db):
+    """A later auto-submission with a higher total replaces the previous best.
+
+    A (manual, +10, received 10:00) is best. B (auto-submit, +15, received
+    10:02) beats A; B becomes is_team_best. Exact totals asserted.
+    """
+    from datetime import UTC, datetime
+
+    from app.db import app_session
+
+    base = datetime(2026, 11, 28, 10, 0, 0, tzinfo=UTC)
+    with app_session() as s:
+        team_id, event_id, stage_id, tenant_id, members = _best_member_setup(s)
+        assert len(members) >= 2
+        sub_a, sub_b = str(uuid.uuid4()), str(uuid.uuid4())
+
+        _best_member_make_submission(s, sub_a, tenant_id, event_id, stage_id, team_id, members[0], base)
+        _best_member_add_award(s, tenant_id, event_id, stage_id, team_id, sub_a, 10.0)
+        _best_member_finalize(s, sub_a, stage_id, team_id, event_id, members[0], tenant_id, base)
+
+        _best_member_make_submission(
+            s, sub_b, tenant_id, event_id, stage_id, team_id, members[1], base.replace(minute=2)
+        )
+        _best_member_add_award(s, tenant_id, event_id, stage_id, team_id, sub_b, 15.0)
+        _best_member_finalize(s, sub_b, stage_id, team_id, event_id, members[1], tenant_id, base.replace(minute=2))
+
+        scores = _best_member_scores(s, team_id)
+        assert scores[sub_b]["is_team_best"] is True
+        assert float(scores[sub_b]["total_points"]) == 15.0
+        assert float(scores[sub_a]["total_points"]) == 10.0
+
+
+def test_best_member_overtaking_reverses_previous_best(seeded_db):
+    """Regression: a higher-scoring submission must reverse the previous best.
+
+    A (+10, received 10:00) is best. B (+15, received 10:02) overtakes A:
+    B becomes is_team_best, A is unflagged, a BEST_MEMBER_REPLACED reversal is
+    appended for A's award entry, and the team's ledger total is 15.0 (not
+    25.0). Before the fix, the current-best lookup ran after the current
+    submission's upsert, so it found the submission itself and the reversal
+    branch never fired (previous best stayed flagged, team total 25.0).
+    """
+    from datetime import UTC, datetime
+
+    from app.db import app_session
+
+    base = datetime(2026, 11, 28, 10, 0, 0, tzinfo=UTC)
+    with app_session() as s:
+        team_id, event_id, stage_id, tenant_id, members = _best_member_setup(s)
+        assert len(members) >= 2
+        sub_a, sub_b = str(uuid.uuid4()), str(uuid.uuid4())
+
+        _best_member_make_submission(s, sub_a, tenant_id, event_id, stage_id, team_id, members[0], base)
+        _best_member_add_award(s, tenant_id, event_id, stage_id, team_id, sub_a, 10.0)
+        _best_member_finalize(s, sub_a, stage_id, team_id, event_id, members[0], tenant_id, base)
+
+        _best_member_make_submission(
+            s, sub_b, tenant_id, event_id, stage_id, team_id, members[1], base.replace(minute=2)
+        )
+        _best_member_add_award(s, tenant_id, event_id, stage_id, team_id, sub_b, 15.0)
+        _best_member_finalize(s, sub_b, stage_id, team_id, event_id, members[1], tenant_id, base.replace(minute=2))
+
+        scores = _best_member_scores(s, team_id)
+        assert scores[sub_b]["is_team_best"] is True
+        assert scores[sub_a]["is_team_best"] is False
+        assert float(scores[sub_b]["total_points"]) == 15.0
+
+        team_total = s.execute(
+            text(
+                "SELECT COALESCE(SUM(points), 0) FROM app.score_ledger_entries "
+                "WHERE stage_id = CAST(:st AS uuid) AND team_id = CAST(:t AS uuid)"
+            ),
+            {"st": stage_id, "t": team_id},
+        ).scalar_one()
+        assert float(team_total) == 15.0
+
+        reversals = (
+            s.execute(
+                text(
+                    "SELECT points FROM app.score_ledger_entries "
+                    "WHERE stage_id = CAST(:st AS uuid) AND team_id = CAST(:t AS uuid) "
+                    "AND reason_code = 'BEST_MEMBER_REPLACED'"
+                ),
+                {"st": stage_id, "t": team_id},
+            )
+            .scalars()
+            .all()
+        )
+        assert len(reversals) == 1
+        assert float(reversals[0]) == -10.0
+
+
+def test_best_member_tie_does_not_churn_existing_award(seeded_db):
+    """A later submission tying the previous best's total must not take over.
+
+    A (+10, received 10:00) is best. B (+10, received 10:05) ties and loses
+    the tie-break: A keeps is_team_best and no reversal row is appended
+    (no churn on tie per the documented tie-break policy).
+    """
+    from datetime import UTC, datetime
+
+    from app.db import app_session
+
+    base = datetime(2026, 11, 28, 10, 0, 0, tzinfo=UTC)
+    with app_session() as s:
+        team_id, event_id, stage_id, tenant_id, members = _best_member_setup(s)
+        assert len(members) >= 2
+        sub_a, sub_b = str(uuid.uuid4()), str(uuid.uuid4())
+
+        _best_member_make_submission(s, sub_a, tenant_id, event_id, stage_id, team_id, members[0], base)
+        _best_member_add_award(s, tenant_id, event_id, stage_id, team_id, sub_a, 10.0)
+        _best_member_finalize(s, sub_a, stage_id, team_id, event_id, members[0], tenant_id, base)
+
+        _best_member_make_submission(
+            s, sub_b, tenant_id, event_id, stage_id, team_id, members[1], base.replace(minute=5)
+        )
+        _best_member_add_award(s, tenant_id, event_id, stage_id, team_id, sub_b, 10.0)
+        _best_member_finalize(s, sub_b, stage_id, team_id, event_id, members[1], tenant_id, base.replace(minute=5))
+
+        scores = _best_member_scores(s, team_id)
+        assert scores[sub_a]["is_team_best"] is True
+        assert scores[sub_b]["is_team_best"] is False
+
+        reversals = (
+            s.execute(
+                text(
+                    "SELECT count(*) FROM app.score_ledger_entries "
+                    "WHERE stage_id = CAST(:st AS uuid) AND team_id = CAST(:t AS uuid) "
+                    "AND reason_code = 'BEST_MEMBER_REPLACED'"
+                ),
+                {"st": stage_id, "t": team_id},
+            )
+            .scalars()
+            .one()
+        )
+        assert reversals == 0
+
+        # Known design decision (see finalize_submission_score docstring): on a
+        # tie the earlier submission keeps the active award with no churn, so
+        # the later member's award entries stay live in the append-only ledger
+        # until a strict overtake reverses them. Only flags and reversal
+        # absence are asserted here; the team ledger total is not.
