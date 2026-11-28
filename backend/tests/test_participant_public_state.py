@@ -99,7 +99,7 @@ def test_public_event_exposes_only_allowlisted_fields_and_is_cacheable(client):
         "timezone": "Asia/Kolkata",
         "duration_minutes": 180,
         "max_participants": 50,
-        "max_teams": 10,
+        "max_teams": 12,
         "rules_version": 1,
         "format": public_summary,
     }
