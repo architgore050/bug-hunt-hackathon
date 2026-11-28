@@ -43,7 +43,7 @@ def _upload(pc, level: int, filename: str, data: bytes):
 
 def test_upload_valid_zip_stages_artifact(client):
     pc = _team_at_level3(client)
-    data = _zip_bytes([("routes/notes.js", b"fixed code\n"), ("README.md", b"updated docs\n")])
+    data = _zip_bytes([("http/routes/notes.js", b"fixed code\n"), ("README.md", b"updated docs\n")])
     r = _upload(pc, 3, "level3-fix.zip", data)
     assert r.status_code == 200, r.text
     body = r.json()
@@ -162,13 +162,13 @@ def test_computed_diff_submission_from_draft(client):
     pc = _team_at_level3(client)
     # save an edited file into the server draft
     files = pc.get("/v1/repo/tree", params={"level": 3}).json()["files"]
-    target = next(f for f in files if f["path"] == "routes/notes.js")
+    target = next(f for f in files if f["path"] == "http/routes/notes.js")
     content = pc.get("/v1/repo/files/routes/notes.js", params={"level": 3}).json()["content"]
     fixed = content.replace("note.author_id", "note.id")
     assert fixed != content
     r = pc.put(
         "/v1/levels/3/draft",
-        json={"payload": {"files": {"routes/notes.js": fixed}}},
+        json={"payload": {"files": {"http/routes/notes.js": fixed}}},
     )
     assert r.status_code == 200
     r2 = pc.post(
@@ -182,7 +182,7 @@ def test_computed_diff_submission_from_draft(client):
     # the canonical challenge package is untouched
     after = pc.get("/v1/repo/files/routes/notes.js", params={"level": 3}).json()["content"]
     assert "note.author_id" in after  # frozen base unchanged
-    assert target["path"] == "routes/notes.js"
+    assert target["path"] == "http/routes/notes.js"
 
 
 def test_l3_without_artifact_is_rejected(client):

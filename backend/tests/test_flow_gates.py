@@ -111,7 +111,7 @@ def test_submitted_level_is_immutable(client):
                 "title": "Delete uses author id as note id",
                 "category": "data_handling",
                 "description": "The delete route passes note.author_id into a query that matches by note id.",
-                "locations": [{"file_path": "routes/notes.js", "line_start": 40, "line_end": 42}],
+                "locations": [{"file_path": "http/routes/notes.js", "line_start": 20, "line_end": 22}],
             }
         ],
     )
@@ -132,7 +132,7 @@ def test_submitted_level_is_immutable(client):
                     "title": "Delete uses author id as note id",
                     "category": "data_handling",
                     "description": "The delete route passes note.author_id into a query that matches by note id.",
-                    "locations": [{"file_path": "routes/notes.js", "line_start": 40, "line_end": 42}],
+                    "locations": [{"file_path": "http/routes/notes.js", "line_start": 20, "line_end": 22}],
                 }
             ]
         },
@@ -233,8 +233,8 @@ def test_level1_flag_with_two_locations_rejected(client):
                 "category": "logic",
                 "description": "Level 1 flags carry exactly one location, so this must be rejected.",
                 "locations": [
-                    {"file_path": "routes/notes.js", "line_start": 40, "line_end": 42},
-                    {"file_path": "db.js", "line_start": 20, "line_end": 22},
+                    {"file_path": "http/routes/notes.js", "line_start": 20, "line_end": 22},
+                    {"file_path": "config/env.js", "line_start": 20, "line_end": 22},
                 ],
             }
         ],

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import uuid
+from pathlib import Path
 
 from conftest import STAFF_PW, login
 from fastapi.testclient import TestClient
@@ -15,6 +17,71 @@ TEAM2 = [
     "p4.team2@example.com",
     "p5.team2@example.com",
 ]
+
+# The generated ground truth (organizer/gt-manifest.json) is the single source
+# of truth for award units, so flow tests craft reports from the manifest
+# instead of hardcoding files and line ranges that drift with rebuilds.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+_GT_MANIFEST: dict | None = None
+
+REPAIR_SET_TICKETS = [
+    "P1-01",
+    "P1-04",
+    "P1-06",
+    "P1-08",
+    "P1-12",
+    "P2-01",
+    "P2-02",
+    "P2-04",
+    "P2-07",
+    "P2-09",
+]
+
+
+def gt_manifest() -> dict:
+    global _GT_MANIFEST
+    if _GT_MANIFEST is None:
+        _GT_MANIFEST = json.loads((REPO_ROOT / "organizer" / "gt-manifest.json").read_text())
+    return _GT_MANIFEST
+
+
+def gt_bug(code: str) -> dict:
+    for bug in gt_manifest()["bugs"]:
+        if bug["code"] == code:
+            return bug
+    raise AssertionError(f"award unit {code} not found in organizer/gt-manifest.json")
+
+
+def gt_bug_locations(code: str) -> list[dict]:
+    """The seeded report locations for one award unit (3-line windows)."""
+    return [
+        {"file_path": loc["file_path"], "line_start": loc["line_start"], "line_end": loc["line_end"]}
+        for loc in gt_bug(code)["locations"]
+    ]
+
+
+def gt_bug_report(code: str, extra: str = "") -> dict:
+    """A report that auto-accepts against the manifest entry: all seeded
+    locations, the entry's category, and alias-bearing description text."""
+    bug = gt_bug(code)
+    aliases = ", ".join(keyword for keyword, _ in bug["aliases"])
+    return {
+        "title": bug["title"],
+        "category": bug["category"],
+        "description": f"{bug['explanation']} Matching concepts: {aliases}. {extra}".strip(),
+        "evidence": f"Reproduced per the manifest entry for {bug['code']}.",
+        "locations": gt_bug_locations(code),
+    }
+
+
+def gt_level_points(level_no: int) -> int:
+    """Stage ceiling: level 1 and 2 sum their own award units; levels 3 and 4
+    are scored against the repair set."""
+    bugs = gt_manifest()["bugs"]
+    if level_no in (1, 2):
+        return sum(int(b["points"]) for b in bugs if b["level"] == level_no)
+    ticket_points = {b["ticket"]: int(b["points"]) for b in bugs}
+    return sum(ticket_points[t] for t in REPAIR_SET_TICKETS)
 
 
 def flow_client(client: TestClient, email: str) -> TestClient:

@@ -1,14 +1,19 @@
 {
   "name": "papyrus-campus-notes",
-  "version": "1.0.0",
-  "description": "Campus notes sharing app for the Fall Back debugging challenge (contains intentional, seeded defects)",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Campus notes sharing app: accounts, notes, search, comments, tags, bookmarks, profile stats, notifications and an admin corner",
   "type": "commonjs",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test \"test/unit/**/*.test.js\"",
+    "test:all": "node --test \"test/unit/**/*.test.js\" \"test/integration/**/*.test.js\"",
+    "smoke": "node --test \"test/integration/api/smoke.test.js\"",
+    "tc:l1": "node --test \"test/cases/level1/*.test.js\""
   },
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=22.13.0"
   },
   "dependencies": {
     "express": "^4.21.2"

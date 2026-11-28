@@ -53,6 +53,9 @@ class GtBug(GtBase):
     root_cause_group: Mapped[str] = mapped_column(String(80), nullable=False)
     explanation: Mapped[str] = mapped_column(Text, nullable=False)
     fix_guidance: Mapped[str | None] = mapped_column(Text)
+    # Level scope for the four-level flow (NULL = legacy fixture, matches every
+    # level). Filtered on in evaluator_level._candidates_for_version.
+    level: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = ts()
 
 

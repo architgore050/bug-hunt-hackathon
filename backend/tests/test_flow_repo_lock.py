@@ -119,7 +119,7 @@ def test_lock_opens_repo_tree_for_members(client):
     r = member.get("/v1/repo/tree")
     assert r.status_code == 200, r.text
     files = r.json()["files"]
-    assert any(f["path"] == "routes/notes.js" for f in files)
+    assert any(f["path"] == "http/routes/notes.js" for f in files)
     # scoped to the chosen option: the workspace is reachable
     r = member.get("/v1/levels/1/workspace")
     assert r.status_code == 200

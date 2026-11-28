@@ -5,10 +5,12 @@ Creates deterministic demo data that exercises every role and state:
 - the "Fall Back" event with the official proposal preset (schedule, scoring
   weights, CTF policy) and readiness checklist
 - one stage with frozen rule set, challenge "papyrus" ingested from
-  ../challenge-app (source files only; the organizer answer key file is
-  EXCLUDED from participant-visible storage)
-- ground truth (10 bugs, 2 flags) seeded from the manifest below with
-  pattern-anchored locations (DAT-06)
+  ../challenge-app (the GENERATED participant tree; the file list comes from
+  challenge-app/PARTICIPANT_FILES.json, which never contains the answer key)
+- ground truth for option A seeded from organizer/gt-manifest.json (level
+  scoped, pattern-resolved locations, DAT-06 anchor hashes) plus the side
+  quest flag hashes from organizer/sidequest-flags.json; option B (Marina)
+  keeps its development fixture ground truth below
 - rules document, announcements, admin-managed participants (no invitation tokens)
 
 Never run against a live deployment: known credentials are dev-only.
@@ -27,8 +29,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parent
-CHALLENGE_DIR = BACKEND.parent / "challenge-app"
-CHALLENGE_DIR_B = BACKEND.parent / "challenge-app-option-b"
+REPO_ROOT = BACKEND.parent
+CHALLENGE_DIR = REPO_ROOT / "challenge-app"
+CHALLENGE_DIR_B = REPO_ROOT / "challenge-app-option-b"
+ORGANIZER_DIR = REPO_ROOT / "organizer"
 sys.path.insert(0, str(BACKEND))
 
 from app import security  # noqa: E402
@@ -37,20 +41,20 @@ from app.db import app_session, gt_session, uuid7  # noqa: E402
 from app.flow import init_participant_flow  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
-# Files served to participants (answer key deliberately excluded).
-PARTICIPANT_FILES = [
-    "package.json",
-    "server.js",
-    "db.js",
-    "routes/auth.js",
-    "routes/notes.js",
-    "routes/comments.js",
-    "public/index.html",
-    "public/app.js",
-    "public/styles.css",
-    "public/admin.html",
-    "README.md",
-]
+
+# Participant-visible files for the generated challenge tree. The list itself
+# is a build artifact (scripts/build_papyrus_challenge.py) and never contains
+# the answer key, which lives outside the tree by construction.
+def _load_participant_files() -> list[str]:
+    manifest = CHALLENGE_DIR / "PARTICIPANT_FILES.json"
+    if not manifest.exists():
+        raise SystemExit(
+            "challenge-app/PARTICIPANT_FILES.json is missing; run python scripts/build_papyrus_challenge.py first"
+        )
+    return list(json.loads(manifest.read_text())["files"])
+
+
+PARTICIPANT_FILES = _load_participant_files()
 
 # Option B fixture (Marina, FastAPI + SQLite): same product concept, same bug
 # count, severities, categories and point values as Option A. Development
@@ -108,140 +112,73 @@ STAGE_CONFIG = {
     "penalty": {"fp_factor": 0.25, "cap_fraction": 0.2, "applies": "at_release_only"},
 }
 
-# (code, file, line pattern, title, severity, category, points, root_cause_group, explanation, aliases, locations+)
-GT_BUGS = [
-    (
-        "BUG-01",
-        "db.js",
-        r"WHERE n\.title LIKE \? OR n\.body LIKE \?",
-        "Search never matches notes",
-        "medium",
-        "input_validation",
-        25,
-        "search-binding",
-        "The prepared statement binds the raw term so LIKE compares the exact full value; wildcards are never added.",
-        [("like", 1.0), ("wildcard", 0.8), ("search", 0.6)],
-        [("routes/notes.js", r"res\.json\(\{ notes: db\.q\.searchNotes\.all\(term, term\)", False)],
-    ),
-    (
-        "BUG-02",
-        "routes/notes.js",
-        r"res\.status\(201\)\.json\(\{ id: info\.changes",
-        "Save response reports the wrong note id",
-        "medium",
-        "logic",
-        25,
-        "create-response-id",
-        "The response returns info.changes (a rowcount) instead of info.lastInsertRowid, so the client banner links to the wrong note.",
-        [("changes", 1.0), ("lastinsertrowid", 0.8), ("insert", 0.5), ("rowid", 0.5)],
-        [("db.js", r"createNote: db\.prepare", False)],
-    ),
-    (
-        "BUG-03",
-        "public/app.js",
-        r"list\.innerHTML = comments\.comments",
-        "Comments execute injected markup (controlled XSS)",
-        "critical",
-        "injection",
-        50,
-        "comment-render",
-        "Comment bodies are interpolated into innerHTML without escaping, so markup posted as a comment executes in every reader's browser.",
-        [("innerhtml", 1.0), ("xss", 1.0), ("escape", 0.6), ("onerror", 0.6)],
-        [("routes/comments.js", r'router\.post\("/:noteId"', False)],
-    ),
-    (
-        "BUG-04",
-        "routes/notes.js",
-        r"String\(new Date\(\)\.getUTCSeconds\(\)\)",
-        "Last edited shows meaningless digits",
-        "low",
-        "logic",
-        15,
-        "updated-at-units",
-        "updated_at stores the seconds component of the current time instead of an ISO timestamp.",
-        [("getutcseconds", 1.0), ("iso", 0.6), ("updated", 0.5), ("timestamp", 0.5)],
-        [("db.js", r"updateNote: db\.prepare", False)],
-    ),
-    (
-        "BUG-05",
-        "routes/notes.js",
-        r"db\.q\.deleteNote\.run\(note\.author_id\)",
-        "Deleting a note removes a different note than requested",
-        "high",
-        "data_handling",
-        40,
-        "delete-target",
-        "The route passes note.author_id where the query expects the note id, so the request silently deletes the note whose id equals the caller's user id.",
-        [("author", 1.0), ("delete", 0.8), ("wrong note", 0.8), ("id mismatch", 0.5)],
-        [("db.js", r"deleteNote: db\.prepare", False)],
-    ),
-    (
-        "BUG-06",
-        "db.js",
-        r"ORDER BY c\.created_at DESC LIMIT 100",
-        "Comments render in reverse order",
-        "low",
-        "logic",
-        15,
-        "comment-order",
-        "The comment query orders created_at DESC while the product expects chronological ascending order.",
-        [("desc", 1.0), ("asc", 0.8), ("order", 0.6), ("chronological", 0.6)],
-        [("routes/comments.js", r'router\.get\("/:noteId"', False)],
-    ),
-    (
-        "BUG-07",
-        "routes/auth.js",
-        r'router\.post\("/register"',
-        "Registration crashes with a raw 500 on duplicates",
-        "medium",
-        "input_validation",
-        25,
-        "register-validation",
-        "No validation runs before the INSERT; the UNIQUE constraint error escapes as an unhandled exception.",
-        [("unique", 1.0), ("constraint", 0.8), ("validation", 0.8), ("500", 0.4)],
-        [("db.js", r"createUser: db\.prepare", False)],
-    ),
-    (
-        "BUG-08",
-        "server.js",
-        r"const SESSION_TTL_MS = CONFIG_TTL_DAYS \* 60 \* 60 \* 24;",
-        "Sessions expire after ~10 minutes instead of 7 days",
-        "high",
-        "configuration",
-        40,
-        "cookie-ttl-units",
-        "CONFIG_TTL_DAYS (days) is multiplied as if it were milliseconds, collapsing the intended 7-day TTL to ~10 minutes.",
-        [("maxage", 1.0), ("ttl", 0.8), ("cookie", 0.8), ("units", 0.6)],
-        [("routes/auth.js", r"Max-Age=\$\{Math\.floor\(ttlMs\(\) / 1000\)\}", False)],
-    ),
-    (
-        "BUG-09",
-        "db.js",
-        r"\(SELECT count\(\*\) FROM notes\) AS notes_total",
-        "Profile notes total counts everyone's notes",
-        "medium",
-        "logic",
-        25,
-        "author-stats",
-        "The stats subquery counts every row of notes with no author filter.",
-        [("count", 1.0), ("stats", 0.8), ("profile", 0.6), ("author", 0.6)],
-        [("routes/auth.js", r'router\.get\("/me"', False)],
-    ),
-    (
-        "BUG-10",
-        "public/app.js",
-        r'document\.querySelector\("\.search-go"\)',
-        "Search button does nothing (Enter works)",
-        "low",
-        "integration_api_contract",
-        15,
-        "search-handler",
-        "The click handler queries the .search-go class selector but the button only has the search-go id, so the listener never attaches.",
-        [("queryselector", 1.0), ("class", 0.6), ("id", 0.6), ("handler", 0.5)],
-        [("public/index.html", r'id="search-go"', False)],
-    ),
-]
 
+# (code, file, line pattern, title, severity, category, points, root_cause_group, explanation, aliases, locations+)
+def _load_manifest_bugs() -> list[dict]:
+    """Option A ground truth from the generated manifest (RESTRICTED storage).
+
+    Each entry carries level, resolved 3-line locations with DAT-06 anchor
+    hashes, aliases and points; produced by scripts/build_papyrus_challenge.py
+    so the seeded truth cannot drift from the shipped challenge-app tree."""
+    manifest = ORGANIZER_DIR / "gt-manifest.json"
+    if not manifest.exists():
+        raise SystemExit("organizer/gt-manifest.json is missing; run python scripts/build_papyrus_challenge.py first")
+    data = json.loads(manifest.read_text())
+    bugs = []
+    for b in data["bugs"]:
+        bugs.append(
+            {
+                "code": b["code"],
+                "level": int(b["level"]),
+                "title": b["title"],
+                "severity": b["severity"],
+                "category": b["category"],
+                "points": int(b["points"]),
+                "root_cause_group": b["root_cause_group"],
+                "explanation": b["explanation"],
+                "aliases": [(a[0], float(a[1])) for a in b["aliases"]],
+                "locations": [
+                    {
+                        "file_path": loc["file_path"],
+                        "line_start": int(loc["line_start"]),
+                        "line_end": int(loc["line_end"]),
+                        "primary": bool(loc["primary"]),
+                        "anchor_hash": loc.get("anchor_hash"),
+                    }
+                    for loc in b["locations"]
+                ],
+            }
+        )
+    return bugs
+
+
+def _load_sidequest_flags() -> list[dict]:
+    """Side quest flags arrive HMAC-hashed only; plaintext stays in the
+    organizer answer key (restricted storage)."""
+    path = ORGANIZER_DIR / "sidequest-flags.json"
+    if not path.exists():
+        raise SystemExit(
+            "organizer/sidequest-flags.json is missing; run python scripts/build_papyrus_challenge.py first"
+        )
+    data = json.loads(path.read_text())
+    return [
+        {
+            "flag_key": f["flag_key"],
+            "code_hash": f["code_hash"],
+            "points": int(f["points"]),
+            "max_awards": int(f["max_awards"]),
+            "position_label": f["position_label"],
+        }
+        for f in data["flags"]
+    ]
+
+
+GT_BUGS = _load_manifest_bugs()
+
+# Option A flags: the admin-corner flag (FLAG-1, obtainable through the
+# injected client-side admin gate) plus the five side quest hashes. The old
+# FLAG-2 artifact (a base64 token inside a participant file) is banned by the
+# leakage rules for the generated tree, so it does not ship.
 GT_FLAGS = [
     (
         "FLAG-1",
@@ -249,15 +186,31 @@ GT_FLAGS = [
         30,
         99,
         "Admin notice returned by the unauthenticated admin overview API (broken access control).",
-    ),
-    (
-        "FLAG-2",
-        "FLAG{base64_1s_n0t_encrypt10n_44e2}",
-        30,
-        99,
-        "Base64-encoded string in the onboarding comment of public/app.js.",
-    ),
+    )
 ]
+SIDEQUEST_FLAGS = _load_sidequest_flags()
+
+# Repair set R (expansion spec 6.1): the tickets Level 3 and Level 4 score.
+REPAIR_SET_TICKETS = (
+    "P1-01",
+    "P1-04",
+    "P1-06",
+    "P1-08",
+    "P1-12",
+    "P2-01",
+    "P2-02",
+    "P2-04",
+    "P2-07",
+    "P2-09",
+)
+
+
+def _level_max_points(level_no: int) -> int:
+    if level_no in (1, 2):
+        return sum(b["points"] for b in GT_BUGS if b["level"] == level_no)
+    ticket_points = {b["ticket"]: b["points"] for b in GT_BUGS}
+    return sum(ticket_points[t] for t in REPAIR_SET_TICKETS)
+
 
 # Option B (Marina) ground truth: mirrors the Option A set one-for-one
 # (same codes, severities, categories, points, root-cause groups). Locations
@@ -421,10 +374,28 @@ LEVEL_NAMES = {
     4: "Level 4: Tests and Documentation",
 }
 LEVEL_EXPLAIN_MD = {
-    1: "Inspect your team's locked repository and file one flag per bug. Each flag needs a file, a line range, a category and an explanation.",
-    2: "One defect spans several files. Report every location it touches as one ordered list on a single flag.",
-    3: "Fix the defects in the editable workspace and complete the side quest. Submit a .zip/.diff/.patch artifact or submit the computed draft diff.",
-    4: "Write the missing tests and update the documentation, then submit your artifact.",
+    1: (
+        "The app ships with twelve failing checks and twelve matching hints. Run the checks "
+        "(npm run tc:l1), reproduce each failure, find the single line responsible, and file one "
+        "report per failure. A report needs a file, a line range, a category, and an explanation "
+        "of why the line causes the failure."
+    ),
+    2: (
+        "Ten defects each span two or three files. Error messages and logs are your trail. File one "
+        "report per defect with the locations in the order you followed them. Naming only the "
+        "visible failure is not enough."
+    ),
+    3: (
+        "Fix the ten tickets in REPAIR_SET.md in your editable workspace. You may use the provided "
+        "coding agent and its rules (agent/AGENT_RULES.md). Verify every change against the "
+        "documented behaviour before you submit. The side quest pack is optional, is not part of "
+        "this repository, and awards capped bonus points through the flag-code endpoint."
+    ),
+    4: (
+        "Your Level 3 repairs are frozen. Add a regression test for each repaired ticket under "
+        "test/regression/ and update the documentation so the repository tells the truth. A test "
+        "that does not fail on the original defect does not count."
+    ),
 }
 LEVEL_WINDOWS = {1: ("active", -30, 60), 2: ("armed", 15, 45), 3: ("draft", None, None), 4: ("draft", None, None)}
 
@@ -737,9 +708,10 @@ def main(reset: bool) -> None:
                 "explain_md": LEVEL_EXPLAIN_MD[n],
                 "max_span": 25,
                 "max_flags_per_level": 12,
-                # Development fixture ceiling. Each level can claim every bug once;
-                # CTF bonuses accumulate as points outside this evaluation score.
-                "max_points": sum(bug[6] for bug in GT_BUGS),
+                # Stage ceilings come from the generated manifest: levels 1 and 2
+                # sum their own award units; levels 3 and 4 score the repair set
+                # (expansion spec 8.5). CTF bonuses accumulate outside this score.
+                "max_points": _level_max_points(n),
                 "feedback_mode": "hidden",
                 "leaderboard_mode": "hidden",
             }
@@ -843,7 +815,7 @@ def main(reset: bool) -> None:
         )
 
     with gt_session() as g:
-        _seed_ground_truth(g, challenge_id, CHALLENGE_DIR, GT_BUGS, GT_FLAGS)
+        _seed_ground_truth(g, challenge_id, CHALLENGE_DIR, GT_BUGS, list(GT_FLAGS) + list(SIDEQUEST_FLAGS))
         _seed_ground_truth(g, challenge_b_id, CHALLENGE_DIR_B, GT_BUGS_B, GT_FLAGS_B)
         g.execute(
             text(
@@ -852,7 +824,13 @@ def main(reset: bool) -> None:
             {
                 "i": str(uuid7()),
                 "c": challenge_id,
-                "p": json.dumps({"bugs": [b[0] for b in GT_BUGS], "flags": [f[0] for f in GT_FLAGS]}),
+                "p": json.dumps(
+                    {
+                        "bugs": [b["code"] for b in GT_BUGS],
+                        "flags": [f[0] for f in GT_FLAGS] + [f["flag_key"] for f in SIDEQUEST_FLAGS],
+                        "levels": sorted({b["level"] for b in GT_BUGS}),
+                    }
+                ),
             },
         )
         g.execute(
@@ -869,8 +847,12 @@ def main(reset: bool) -> None:
     print("seed complete:")
     print(f"  event fall-back-2026, stage {stage_id[:8]}, challenge papyrus ({len(PARTICIPANT_FILES)} files)")
     print(f"  option B fixture marina ({len(PARTICIPANT_FILES_B)} files), four level stages (synthetic windows)")
+    option_a_points = sum(b["points"] for b in GT_BUGS)
     print(
-        f"  ground truth: option A {len(GT_BUGS)} bugs ({sum(b[6] for b in GT_BUGS)} pts), option B {len(GT_BUGS_B)} bugs ({sum(b[6] for b in GT_BUGS_B)} pts), 2 flags per option"
+        f"  ground truth: option A {len(GT_BUGS)} level-scoped bugs ({option_a_points} pts, "
+        f"max_points L1={_level_max_points(1)} L2={_level_max_points(2)} L3={_level_max_points(3)} L4={_level_max_points(4)}), "
+        f"option B {len(GT_BUGS_B)} fixture bugs ({sum(b[6] for b in GT_BUGS_B)} pts), "
+        f"{len(GT_FLAGS) + len(SIDEQUEST_FLAGS)} flags for option A (incl. {len(SIDEQUEST_FLAGS)} side quests)"
     )
     print("  staff: admin@ / organizer@ / reviewer1@ / reviewer2@ example.com - password Dev-only!Passw0rd!")
     print(
@@ -918,50 +900,63 @@ def _ingest_challenge(app_session_, challenge_id: str, base_dir: Path, files: li
     return len(line_index)
 
 
+def _bug_to_dict(bug) -> dict:
+    """Legacy tuple fixtures (option B) normalize into the manifest shape."""
+    if isinstance(bug, dict):
+        return bug
+    code, filename, pattern, title, severity, category, points, rcg, explanation, aliases, extra_locs = bug
+    locations = [{"file_path": filename, "pattern": pattern, "primary": True}]
+    locations += [{"file_path": f, "pattern": p, "primary": bool(prim)} for f, p, prim in extra_locs]
+    return {
+        "code": code,
+        "level": None,
+        "title": title,
+        "severity": severity,
+        "category": category,
+        "points": points,
+        "root_cause_group": rcg,
+        "explanation": explanation,
+        "aliases": aliases,
+        "locations": locations,
+    }
+
+
 def _seed_ground_truth(gt_session_, challenge_id: str, base_dir: Path, bugs: list, flags: list) -> None:
-    """Insert the sealed ground truth for one challenge version (gt schema only)."""
-    for code, filename, pattern, title, severity, category, points, rcg, explanation, aliases, extra_locs in bugs:
+    """Insert the sealed ground truth for one challenge version (gt schema only).
+
+    Manifest bugs carry level-scoped, already-resolved 3-line locations and
+    anchor hashes; legacy tuple fixtures resolve their pattern here."""
+    for raw in bugs:
+        bug = _bug_to_dict(raw)
         bug_id = str(uuid7())
         gt_session_.execute(
             text(
                 "INSERT INTO gt.gt_bugs (id, challenge_version_id, code, title, severity, category, points, "
-                "root_cause_group, explanation) VALUES (CAST(:i AS uuid), CAST(:c AS uuid), :code, :t, :sev, :cat, :pts, :rcg, :expl)"
+                "root_cause_group, explanation, level) VALUES (CAST(:i AS uuid), CAST(:c AS uuid), :code, :t, :sev, :cat, :pts, :rcg, :expl, :lvl)"
             ),
             {
                 "i": bug_id,
                 "c": challenge_id,
-                "code": code,
-                "t": title,
-                "sev": severity,
-                "cat": category,
-                "pts": points,
-                "rcg": rcg,
-                "expl": explanation,
+                "code": bug["code"],
+                "t": bug["title"],
+                "sev": bug["severity"],
+                "cat": bug["category"],
+                "pts": bug["points"],
+                "rcg": bug["root_cause_group"],
+                "expl": bug["explanation"],
+                "lvl": bug.get("level"),
             },
         )
-        path = base_dir / filename
-        lineno = find_line(path, pattern)
-        if lineno is None:
-            print(f"WARNING: anchor pattern not found for {code} in {filename}")
-            continue
-        gt_session_.execute(
-            text(
-                "INSERT INTO gt.gt_locations (id, bug_id, file_path, line_start, line_end, is_primary, anchor_hash) VALUES (CAST(:i AS uuid), CAST(:b AS uuid), :fp, :ls, :le, true, :ah)"
-            ),
-            {
-                "i": str(uuid7()),
-                "b": bug_id,
-                "fp": filename,
-                "ls": max(1, lineno - 1),
-                "le": lineno + 1,
-                "ah": anchor_hash(path, lineno),
-            },
-        )
-        for loc_file, loc_pattern, primary in extra_locs:
-            lp = base_dir / loc_file
-            lno = find_line(lp, loc_pattern)
-            if lno is None:
-                continue
+        for loc in bug["locations"]:
+            if loc.get("line_start") is not None:
+                ls, le, ah = int(loc["line_start"]), int(loc["line_end"]), loc.get("anchor_hash")
+            else:
+                path = base_dir / loc["file_path"]
+                lineno = find_line(path, loc["pattern"])
+                if lineno is None:
+                    print(f"WARNING: anchor pattern not found for {bug['code']} in {loc['file_path']}")
+                    continue
+                ls, le, ah = max(1, lineno - 1), lineno + 1, anchor_hash(path, lineno)
             gt_session_.execute(
                 text(
                     "INSERT INTO gt.gt_locations (id, bug_id, file_path, line_start, line_end, is_primary, anchor_hash) VALUES (CAST(:i AS uuid), CAST(:b AS uuid), :fp, :ls, :le, :prim, :ah)"
@@ -969,21 +964,32 @@ def _seed_ground_truth(gt_session_, challenge_id: str, base_dir: Path, bugs: lis
                 {
                     "i": str(uuid7()),
                     "b": bug_id,
-                    "fp": loc_file,
-                    "ls": max(1, lno - 1),
-                    "le": lno + 1,
-                    "prim": primary,
-                    "ah": anchor_hash(lp, lno),
+                    "fp": loc["file_path"],
+                    "ls": ls,
+                    "le": le,
+                    "prim": bool(loc["primary"]),
+                    "ah": ah,
                 },
             )
-        for kw, w in aliases:
+        for kw, w in bug["aliases"]:
             gt_session_.execute(
                 text(
                     "INSERT INTO gt.gt_aliases (id, bug_id, keyword, weight) VALUES (CAST(:i AS uuid), CAST(:b AS uuid), :kw, :w)"
                 ),
                 {"i": str(uuid7()), "b": bug_id, "kw": kw, "w": w},
             )
-    for flag_key, plaintext, points, max_awards, note in flags:
+    for flag in flags:
+        if isinstance(flag, dict):
+            flag_key, code_hash, points, max_awards, note = (
+                flag["flag_key"],
+                flag["code_hash"],
+                flag["points"],
+                flag["max_awards"],
+                flag["position_label"],
+            )
+        else:
+            flag_key, plaintext, points, max_awards, note = flag
+            code_hash = security.flag_code_hash(plaintext)
         gt_session_.execute(
             text(
                 "INSERT INTO gt.gt_flags (id, challenge_version_id, flag_key, code_hash, points, max_awards, position_label) VALUES (CAST(:i AS uuid), CAST(:c AS uuid), :k, :h, :p, :m, :n)"
@@ -992,7 +998,7 @@ def _seed_ground_truth(gt_session_, challenge_id: str, base_dir: Path, bugs: lis
                 "i": str(uuid7()),
                 "c": challenge_id,
                 "k": flag_key,
-                "h": security.flag_code_hash(plaintext),
+                "h": code_hash,
                 "p": points,
                 "m": max_awards,
                 "n": note,

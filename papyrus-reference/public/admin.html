@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Papyrus admin corner</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    /* The corner stays visually quiet until the overview answers. */
+    .admin-panel { display: none; }
+    .admin-panel.is-open { display: block; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/notes">Papyrus</a>
+    <div class="session-box"><a href="#/notes">Back to notes</a></div>
+  </header>
+  <main class="page">
+    <h1>Admin corner</h1>
+    <div id="admin-status" class="muted">Checking access...</div>
+    <section id="admin-panel" class="admin-panel">
+      <div class="card" id="admin-overview"></div>
+    </section>
+  </main>
+  <script type="module">
+    const status = document.getElementById("admin-status");
+    const panel = document.getElementById("admin-panel");
+    const overview = document.getElementById("admin-overview");
+    try {
+      const res = await fetch("/api/admin/overview");
+      if (res.status !== 200) {
+        status.textContent = "This corner is for admins only.";
+      } else {
+        const data = await res.json();
+        status.textContent = "";
+        panel.classList.add("is-open");
+        const o = data.overview;
+        const digestRows = (o.digest || [])
+          .map((d) => `<li>${d.note_title}: ${d.comment_count} new comments</li>`)
+          .join("");
+        overview.innerHTML = `
+          <p>Users: ${o.counts.users} - Notes: ${o.counts.notes} - Comments: ${o.counts.comments}</p>
+          <p class="muted">Pending outbox rows: ${o.counts.pending_outbox}</p>
+          <h2>Notices</h2>
+          <ul>${(o.notices || []).map((n) => `<li>${n.title}</li>`).join("")}</ul>
+          <h2>New comments</h2>
+          <ul>${digestRows || "<li>(nothing new)</li>"}</ul>`;
+      }
+    } catch (err) {
+      status.textContent = "The overview is unreachable.";
+    }
+  </script>
+</body>
+</html>
