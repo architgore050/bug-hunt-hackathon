@@ -62,6 +62,7 @@ def inspect_zip(data: bytes) -> dict:
     nodes, entry-count bombs and oversized uncompressed content.
     """
     import io
+    import ntpath
     import zipfile
 
     try:
@@ -75,14 +76,20 @@ def inspect_zip(data: bytes) -> dict:
     for info in infos:
         name = info.filename
         norm = os.path.normpath(name.replace("\\", "/"))
-        if os.path.isabs(norm) or norm.startswith("..") or "\x00" in norm:
+        if (
+            os.path.isabs(norm)
+            or ntpath.isabs(norm)
+            or ntpath.splitdrive(norm)[0]
+            or norm.startswith("..")
+            or "\x00" in norm
+        ):
             raise ApiError("ARTIFACT_INVALID", details={"entry": f"Unsafe path in archive: {name[:120]}"})
         mode = (info.external_attr >> 16) & 0xF000
-        if mode in (0xA000, 0xC000):  # symlink or device node
+        if mode not in (0, 0x4000, 0x8000):  # directories, regular files, or entries without Unix type bits
             raise ApiError("ARTIFACT_INVALID", details={"entry": f"Unsupported entry type: {name[:120]}"})
-        if name in seen:
+        if norm in seen:
             raise ApiError("ARTIFACT_INVALID", details={"entry": f"Duplicate path in archive: {name[:120]}"})
-        seen.add(name)
+        seen.add(norm)
         total_uncompressed += int(info.file_size or 0)
         if len(seen) > MAX_ENTRY_COUNT:
             raise ApiError("ARTIFACT_INVALID", details={"zip": "Too many entries in the archive."})
