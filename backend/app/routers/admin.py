@@ -1537,28 +1537,24 @@ def list_disputes(
         raise ApiError("VALIDATION_ERROR", details={"limit": f"limit must be between 1 and {MAX_DISPUTES_PAGE_SIZE}."})
     if offset < 0:
         raise ApiError("VALIDATION_ERROR", details={"offset": "offset must be >= 0."})
-    where = ""
-    params: dict = {"limit": limit, "offset": offset}
-    if event_id is not None:
-        if not _is_uuid(event_id):
-            raise ApiError("VALIDATION_ERROR", details={"event_id": "Must be a valid event id."})
-        # the only dynamic SQL fragment below is one of two fixed literals
-        where = " AND s.event_id = CAST(:e AS uuid)"
-        params["e"] = event_id
+    if event_id is not None and not _is_uuid(event_id):
+        raise ApiError("VALIDATION_ERROR", details={"event_id": "Must be a valid event id."})
+    params = {"event_id": event_id, "limit": limit, "offset": offset}
     with app_session() as s:
         total = s.execute(
             text(
-                "SELECT count(*) FROM app.disputes d JOIN app.submissions s ON s.id = d.submission_id WHERE 1=1" + where
+                "SELECT count(*) FROM app.disputes d JOIN app.submissions s ON s.id = d.submission_id "
+                "WHERE (CAST(:event_id AS uuid) IS NULL OR s.event_id = CAST(:event_id AS uuid))"
             ),
-            {k: v for k, v in params.items() if k in ("e",)},
+            {"event_id": event_id},
         ).scalar_one()
         rows = (
             s.execute(
                 text(
                     "SELECT d.id, d.status, d.statement, d.created_at, s.title, s.receipt_code, d.submission_id "
-                    "FROM app.disputes d JOIN app.submissions s ON s.id = d.submission_id WHERE 1=1"
-                    + where
-                    + " ORDER BY d.created_at DESC, d.id DESC LIMIT :limit OFFSET :offset"
+                    "FROM app.disputes d JOIN app.submissions s ON s.id = d.submission_id "
+                    "WHERE (CAST(:event_id AS uuid) IS NULL OR s.event_id = CAST(:event_id AS uuid)) "
+                    "ORDER BY d.created_at DESC, d.id DESC LIMIT :limit OFFSET :offset"
                 ),
                 params,
             )
