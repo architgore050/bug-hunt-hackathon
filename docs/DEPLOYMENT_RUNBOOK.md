@@ -37,8 +37,8 @@ Steps:
    - Vite on 5173 (strictPort), proxying `/v1` and `/health` to 8100 so the refresh cookie is first-party.
 6. Verify:
    - `curl http://127.0.0.1:8100/health` must show `database_app: up` and `database_gt: up`.
-   - `python scripts/e2e_journey.py` must exit 0 (46 checks).
-   - `cd backend && python -m pytest` must complete successfully against PostgreSQL. At the 2026-11-28 review snapshot, 81 tests were collected; collection is not a passing test run.
+   - `python scripts/e2e_journey.py` must exit 0.
+   - `cd backend && python -m pytest` must complete successfully against PostgreSQL; collection is not a passing test run.
 
 Environment variables (all optional in dev, see `backend/app/config.py`):
 

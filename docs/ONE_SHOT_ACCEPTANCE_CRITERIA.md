@@ -6,10 +6,10 @@ Status: CURRENT. The criteria this build set for itself, with status and evidenc
 
 | Criterion | Status | Evidence |
 | --- | --- | --- |
-| Organizer lifecycle: create event, stages sealed->armed->started, announcements, release, export | VERIFIED | `scripts/e2e_journey.py` organizer checks (46/46 pass reported); `backend/app/routers/admin.py` |
+| Organizer lifecycle: create event, stages sealed->armed->started, announcements, release, export | VERIFIED | `scripts/e2e_journey.py` organizer checks; `backend/app/routers/admin.py` |
 | Participant loop: activate, login, read event/state, fetch challenge files, submit repair + evidence | VERIFIED | E2E journey participant loop; `backend/tests/test_idempotency.py`; frontend pages `frontend/src/pages/participant/` |
 | Reviewer loop: open review item, decide accept/reject, outcome applied to ledger | VERIFIED | E2E journey reviewer checks; `backend/app/routers/review.py`, `apply_review_outcome` in `backend/app/evaluator.py` |
-| Scoring: components 0.5/0.3/0.2, CTF cap 100, append-only ledger, reversal/adjustment entries | VERIFIED | `backend/tests/test_scoring.py` (34/34 suite includes these); `backend/app/scoring.py` |
+| Scoring: components 0.5/0.3/0.2, CTF cap 100, append-only ledger, reversal/adjustment entries | VERIFIED | `backend/tests/test_scoring.py` includes these; `backend/app/scoring.py` |
 | Release gate: feedback hidden before, visible after release | VERIFIED | E2E journey release check; hidden-feedback invariant in AGENTS.md and state router |
 | Disputes: participant dispute creates review item; resolution flows to ledger | VERIFIED | E2E journey dispute check; `frontend/src/components/DisputeForm.tsx` |
 | Flags: 2 flags on Papyrus (60 pts) verified with capped bonus | VERIFIED | `verify_flag` in `backend/app/evaluator.py`; challenge-app 2 flags; E2E flag checks |
@@ -40,8 +40,8 @@ Status: CURRENT. The criteria this build set for itself, with status and evidenc
 
 | Criterion | Status | Evidence |
 | --- | --- | --- |
-| pytest suite green | VERIFIED | 34/34 pass reported for the one-shot run; re-run with `cd backend && python -m pytest tests/ -q` |
-| E2E journey green | VERIFIED | 46/46 checks reported via `scripts/e2e_journey.py` |
+| pytest suite green | VERIFIED | re-run with `cd backend && python -m pytest tests/ -q` |
+| E2E journey green | VERIFIED | checks reported via `scripts/e2e_journey.py` |
 | Frontend build clean | VERIFIED | `npm run build` (React 19 + Vite + TS + Tailwind 4) reported clean |
 | No placeholders in code | VERIFIED | CI placeholder grep step in `.github/workflows/ci.yml` (TODO/Lorem/XXX) |
 

@@ -7,7 +7,7 @@ pushed GitHub state only - no disk-only facts.
 
 Merged into `main` (in order): #94 auth/email, #96 series importer, #95 Class 10
 assessment banks (Human Eye + Electricity), #97 deploy prep, #98 F11 hermetic E2E
-suite (63 tests: 60 HTTP + 3 real Chromium), #99 PL5 personalized-learning judges
+suite, #99 PL5 personalized-learning judges
 (EV-PL-001/002/004) with calibration + live-suite verdict.
 
 Open PRs:
@@ -84,7 +84,7 @@ All with placeholders documented in `docs/deployment/founder-cutover-runbook.md`
 - Content factory: `docs/content-factory/runbook.md`,
   `docs/content-factory/assessment.md`.
 - Evals: `docs/specs/personalized-learning/evals.md`, `evals/` cards + judges.
-- E2E: `testing/e2e/` (63 tests, `python -m unittest discover -s testing/e2e -t .`).
+- E2E: `testing/e2e/` (`python -m unittest discover -s testing/e2e -t .`).
 
 ## Addendum 2026-11-22 - progress since this file merged
 

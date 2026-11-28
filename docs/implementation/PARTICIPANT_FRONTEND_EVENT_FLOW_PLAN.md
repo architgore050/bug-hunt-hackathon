@@ -10,7 +10,7 @@ fields without changing progression or scoring decisions.
 
 ## 1. Current state summary
 
-Backend (implemented, 74-test gate): four level stages with a monotonic node
+Backend (implemented): four level stages with a monotonic node
 pointer (`explain` / `exec` / `done`), per-level statuses
 (`locked/available/in_progress/submitted/auto_submitted/missed`), gates with
 `waiting_on[]`, lead-only repo lock (idempotent, one choice per team),
@@ -152,9 +152,9 @@ deletion, extra path = new file).
   run actions; upload client checks reject wrong ext/size before upload.
 - Static: `npm run lint` (0 errors), `npm run build` clean, `npm test` green.
 - Backend: no code change planned; suite run for contract confidence
-  (baseline 73/74; `test_ctf_bonus_is_capped` fails on main before any change
+  (baseline run; `test_ctf_bonus_is_capped` fails on main before any change
   - recorded as pre-existing).
-- E2E: `scripts/e2e_journey.py` (46 checks) against a seeded dev stack
+- E2E: `scripts/e2e_journey.py` against a seeded dev stack
   (API 8100 + worker) for the v1 loop, plus a scripted four-level API journey
   (repo lock -> workspaces -> flags -> artifacts -> completed dashboard) with
   curl/python against the same stack.

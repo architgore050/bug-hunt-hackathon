@@ -46,8 +46,8 @@ Login with a seeded organizer account to reach admin views; seeded participant a
 
 ## How to run the quality gates
 
-- Backend: `cd backend && python -m pytest tests/ -q` (34 tests: auth, authorization, gt isolation, idempotency, matching, scoring).
-- E2E: `python scripts/e2e_journey.py` (46 checks across organizer, participant, reviewer, release, flags, audit).
+- Backend: `cd backend && python -m pytest tests/ -q` (auth, authorization, gt isolation, idempotency, matching, scoring).
+- E2E: `python scripts/e2e_journey.py` (across organizer, participant, reviewer, release, flags, audit).
 - Frontend: `cd frontend && npm run build` (must stay clean; CI also greps for TODO/Lorem/XXX).
 - CI parity: `.github/workflows/ci.yml` runs the same three gates on GitHub (first run UNVERIFIED, L-15).
 

@@ -6,7 +6,7 @@ The pyramid as actually implemented:
 
 - A pytest integration-heavy suite against real PostgreSQL.
 - Pure-function unit tests for the deterministic matcher and scoring math.
-- One end-to-end journey script against a running stack (46 checks).
+- One end-to-end journey script against a running stack.
 - Frontend type-check, build, lint, and server-rendered security regression tests.
 - The gt-isolation tests that assert the database boundary itself.
 
@@ -27,16 +27,16 @@ Layout: `backend/tests/`, driven by `pytest.ini` (`testpaths = tests`, 120 s tim
 
 Per-file coverage:
 
-| File | Tests | What it proves |
-| --- | --- | --- |
-| `test_auth.py` (6) | Generic login failures prevent account enumeration; password reset revokes sessions and bumps token_version; sensitive admin routes require step-up; refresh rotation reuses the successor inside grace and revokes the entire family outside grace; session caps evict the oldest live session; expired refresh-token families do not hold session slots |
-| `test_authorization.py` (7) | Cross-team submission read -> 404 (SEC-02 IDOR); participant/reviewer role boundaries; persisted challenge binding is the server-resolved assignment; unauthenticated requests rejected; traversal paths return exactly 400 `PATH_INVALID`; report text is preserved for the separately tested frontend renderer |
-| `test_gt_isolation.py` (5) | Real `app_api` role denied on `gt.gt_bugs` / `gt.gt_flags` / gt INSERT. `gt_admin` positive control. The platform never lists or serves `ORGANIZER_ANSWER_KEY.md` (DAT-03, AT-08) |
-| `test_idempotency.py` (4) | Same key five times -> one receipt (DAT-02). Same key different payload -> 409 `IDEMPOTENCY_CONFLICT`. Committed-key replay returns the ORIGINAL receipt even after the deadline. Cooldown races on the same file rejected with 429 (INT-05) |
-| `test_matching.py` (8) | Deterministic matcher units: exact overlap auto-accept; near location plus alias evidence accepts; wrong file needs review; thin unmatched report structurally rejected; span over cap rejected; already-awarded unit -> duplicate; `location_score` bounds; weighted alias fraction |
-| `test_scoring.py` (7) | Weight split math; database-enforced ledger immutability and reversal linkage; two independent transactions racing for an award unit produce one claim; seed-independent CTF flags exercise the 100-point cap; concurrent verification cannot exceed the team cap or a flag's max_awards; leaderboard tie-break ordering |
-| `test_root.py` (1) | Root endpoint returns 200 JSON with the app name and `ok` status |
-| `test_flow_*.py` (39) | Four-level gates, repository locks, submissions, uploads, and deadline auto-submit against real PostgreSQL |
+| File | What it proves |
+| --- | --- |
+| `test_auth.py` | Generic login failures prevent account enumeration; password reset revokes sessions and bumps token_version; sensitive admin routes require step-up; refresh rotation reuses the successor inside grace and revokes the entire family outside grace; session caps evict the oldest live session; expired refresh-token families do not hold session slots |
+| `test_authorization.py` | Cross-team submission read -> 404 (SEC-02 IDOR); participant/reviewer role boundaries; persisted challenge binding is the server-resolved assignment; unauthenticated requests rejected; traversal paths return exactly 400 `PATH_INVALID`; report text is preserved for the separately tested frontend renderer |
+| `test_gt_isolation.py` | Real `app_api` role denied on `gt.gt_bugs` / `gt.gt_flags` / gt INSERT. `gt_admin` positive control. The platform never lists or serves `ORGANIZER_ANSWER_KEY.md` (DAT-03, AT-08) |
+| `test_idempotency.py` | Same key five times -> one receipt (DAT-02). Same key different payload -> 409 `IDEMPOTENCY_CONFLICT`. Committed-key replay returns the ORIGINAL receipt even after the deadline. Cooldown races on the same file rejected with 429 (INT-05) |
+| `test_matching.py` | Deterministic matcher units: exact overlap auto-accept; near location plus alias evidence accepts; wrong file needs review; thin unmatched report structurally rejected; span over cap rejected; already-awarded unit -> duplicate; `location_score` bounds; weighted alias fraction |
+| `test_scoring.py` | Weight split math; database-enforced ledger immutability and reversal linkage; two independent transactions racing for an award unit produce one claim; seed-independent CTF flags exercise the 100-point cap; concurrent verification cannot exceed the team cap or a flag's max_awards; leaderboard tie-break ordering |
+| `test_root.py` | Root endpoint returns 200 JSON with the app name and `ok` status |
+| `test_flow_*.py` | Four-level gates, repository locks, submissions, uploads, and deadline auto-submit against real PostgreSQL |
 
 Run:
 
@@ -61,7 +61,7 @@ Because `matching.decide` is a pure function of (report, candidates, rule set, c
 - Any rule change must update them.
 - Recorded feature values in ledger notes keep real decisions replayable (DAT-05).
 
-## 3. E2E journey (`scripts/e2e_journey.py`, 46 checks)
+## 3. E2E journey (`scripts/e2e_journey.py`)
 
 Runs against a live stack (`bash scripts/run_dev.sh` first; API on 8100, worker draining). One participant-team-organizer-reviewer journey exercising the P0 paths:
 
@@ -87,8 +87,8 @@ Run:
 bash scripts/run_dev.sh && python scripts/e2e_journey.py   # pass --base for a remote stack
 ```
 
-- Exit code 0 required; prints `46/46 checks passed` when green.
-- Note: the "reviewer records auditable decision" check and its "auto-matched" fallback are mutually exclusive by branch, so the total executed is 46 either way.
+- Exit code 0 required; prints the checks-passed summary when green.
+- Note: the "reviewer records auditable decision" check and its "auto-matched" fallback are mutually exclusive by branch, so the executed total does not change.
 
 ## 4. Frontend verification
 
@@ -148,8 +148,8 @@ All of these must be green before the event goes live. They map to the seeded `a
 
 Per-suite gates for every code change:
 
-- pytest 38 test functions.
-- e2e journey 46/46.
+- pytest suite.
+- e2e journey.
 - frontend build clean.
 - frontend SSR rendering regression test clean.
 - oxlint clean.

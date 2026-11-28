@@ -11,7 +11,7 @@ full pytest suite green and a granular commit.
 - Old surface: unchanged. `/v1/state`, `/v1/submissions`, `/v1/assignments`,
   `/v1/drafts/{challenge_id}`, admin endpoints, auth, review, leaderboard,
   announcements keep their contracts (the running frontend concept PRs and the
-  37-test suite depend on them).
+  suite depend on them).
 - New surface (participant):
   `GET /v1/levels`, `GET /v1/levels/{n}/content`, `GET /v1/levels/{n}/gate`,
   `GET/PUT /v1/levels/{n}/draft`, `POST /v1/levels/{n}/submit`,
@@ -33,7 +33,7 @@ full pytest suite green and a granular commit.
 
 | # | Slice | Files | Status |
 | --- | --- | --- | --- |
-| 1 | Baseline: portable Postgres cluster, 37/37 tests green on rewritten history | - | done |
+| 1 | Baseline: portable Postgres cluster, tests green on rewritten history | - | done |
 | 2 | Migration 0002: repo_options, team_repo_choices, participant_pointers, participant_progress, level_drafts, submission_artifacts | backend/migrations/0002_four_level_flow.sql | done |
 | 3 | Domain module: node state machine, gate computation, pointer transitions | backend/app/flow.py | done |
 | 4 | Participant routers: levels, repo, team, progress, uploads, runs | backend/app/routers/levels.py | done |
@@ -50,7 +50,7 @@ full pytest suite green and a granular commit.
 
 ## Verification gates for this branch
 
-1. `cd backend && pytest` fully green (old 37 + new flow tests).
+1. `cd backend && pytest` fully green (old suite + new flow tests).
 2. `ruff check` and `ruff format --check` clean on touched files.
 3. Fresh-clone run: dev_db.sh, migrate.sh, seed.py, uvicorn, worker, then the
    documented walkthrough (LOCAL_DEVELOPMENT update).

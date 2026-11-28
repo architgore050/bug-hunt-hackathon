@@ -8,8 +8,8 @@ Reviewed: auth flows (login, refresh rotation, step-up, admin registration, firs
 
 ## Method
 
-1. `pytest --collect-only`: 81 tests collected, 0 collection errors. The full pytest suite was not executed in the review environment because PostgreSQL binaries/service were unavailable; do not interpret collection as test success.
-2. E2E journey: 46/46 checks in `scripts/e2e_journey.py`, covering organizer lifecycle, participant and reviewer loops, release, flags, audit verify.
+1. `pytest --collect-only`: collection completed with no errors. The full pytest suite was not executed in the review environment because PostgreSQL binaries/service were unavailable; do not interpret collection as test success.
+2. E2E journey: `scripts/e2e_journey.py`, covering organizer lifecycle, participant and reviewer loops, release, flags, audit verify.
 3. Code reading of `backend/app/security.py`, `deps.py`, `routers/submissions.py`, `db.py`, `audit.py`, and frontend rendering paths.
 4. Hostile-payload test in the backend suite: oversized bodies, malformed ids, path traversal strings on file reads.
 
@@ -41,7 +41,7 @@ python -m pytest tests/test_authorization.py -q
 # hostile payload and idempotency replay cases
 python -m pytest tests/test_idempotency.py -q
 
-# E2E journey (46 checks, needs DB+API+worker running)
+# E2E journey (needs DB+API+worker running)
 python scripts/e2e_journey.py
 
 # XSS posture check (must print no matches)
