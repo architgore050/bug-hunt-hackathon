@@ -1,4 +1,4 @@
-Status: describes the implementation as of 2026-11-22
+Status: describes the implementation as of 2026-11-28
 
 # Deployment Runbook
 
@@ -38,7 +38,24 @@ Steps:
 6. Verify:
    - `curl http://127.0.0.1:8100/health` must show `database_app: up` and `database_gt: up`.
    - `python scripts/e2e_journey.py` must exit 0 (46 checks).
-   - `cd backend && python -m pytest` must show 34 passed.
+   - `cd backend && python -m pytest` must pass in full. Use the current CI run for the exact result rather than a hardcoded count.
+
+### Existing database upgrades
+
+1. Take and verify a backup. Stop API/worker traffic or schedule a maintenance window; `0004_stage_ordinal_unique.sql` adds a unique index and briefly takes an `ACCESS EXCLUSIVE` lock on `app.stages`.
+2. Check for duplicate ordinal groups before migrating:
+
+   ```sql
+   SELECT event_id, kind, ordinal, count(*), array_agg(id ORDER BY id) AS stage_ids
+   FROM app.stages
+   GROUP BY event_id, kind, ordinal
+   HAVING count(*) > 1;
+   ```
+
+   Resolve duplicates only after reviewing stage progression, submissions, and assignments. The migration intentionally refuses to delete or renumber them.
+3. Run one migrator as the database owner: `bash scripts/migrate.sh`. Set a bounded `lock_timeout` and `statement_timeout` for the session if the database client supports them.
+4. Verify `ux_stages_event_kind_ordinal` exists in `pg_constraint` and `0004_stage_ordinal_unique.sql` is recorded in `app.schema_migrations`. Smoke-test stage creation, level bootstrap, and participant stage selection before reopening traffic.
+5. Prefer rolling back application code while retaining the constraint. Do not drop it while the new bootstrap path is running. A schema rollback requires a reviewed forward fix or a restore that accounts for writes made after the migration.
 
 Environment variables (all optional in dev, see `backend/app/config.py`):
 
@@ -122,8 +139,8 @@ Procedure:
   - Containment is process-level: scores are ledger-derived, so corrections are appended disputes/adjustments (`DISPUTE_UPHELD`, `MANUAL`), never mutations.
   - Announce via a `critical` announcement and follow the scoring-correction runbook entry (master guide runbook list).
 - A wrong stage start can be adjusted with `extend` (1..3600 s) or per-user `time_adjustments` with reason codes.
-  - Pause/resume has the partially-implemented ends_at restoration caveat documented in SYSTEM_ARCHITECTURE.md Section 5.2.
-  - Prefer `extend` after an outage rather than relying on `resume` time restoration.
+  - Resume restores the latest real pause window, including legacy `pause` transitions, capped at 7200 seconds. Extending while paused does not reset that window.
+  - Verify the resulting ends_at after an outage; use `extend` for any additional correction.
 - A compromised account: revoke the session via the user's own endpoint, or set the user disqualified (every request 403s) and bump token_version via password reset.
 - Full host loss (D1): restore per BACKUP_AND_RECOVERY.md on a fresh VM; the SPA on Cloudflare Pages can display a status notice; do not claim automatic failover (master guide: no fake failover claims).
 - Change freeze: no code or config changes during an active round except the documented control actions (OPS-03).

@@ -15,11 +15,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+import uuid
 from datetime import UTC
+from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from ..audit import audit_verify, audit_write
 from ..config import settings
@@ -32,6 +36,74 @@ from ..scoring import add_ledger_entry
 router = APIRouter(tags=["admin"])
 
 
+# --- shared input validation (F-C-06 / F-C-18) ----------------------------------
+
+# The score ledger stores NUMERIC(10,2); this is the technical column limit,
+# not a scoring policy. The repository defines no authoritative per-event
+# maximum adjustment; that cap is an open organizer decision (see the
+# Section 5.1 remediation report).
+_MAX_LEDGER_POINTS = Decimal("99999999.99")
+
+# Stage control 'extend' accepts 1..3600 s per call (admin.py extend action,
+# documented in docs/API_REFERENCE.md). Time adjustments reuse that documented
+# per-action ceiling so a single request cannot shift a deadline by hours.
+_MAX_TIME_ADJUSTMENT_SECONDS = 3600
+
+
+def _validated_points(value: object, *, field: str) -> Decimal:
+    """Finite-number validation for ledger adjustments (F-C-06).
+
+    Rejects NaN, infinities, booleans, non-numeric strings and values beyond
+    the NUMERIC(10,2) ledger column BEFORE any ledger or audit row is written,
+    so invalid input can never poison SUM(points).
+    """
+    if value is None or isinstance(value, bool):
+        raise ApiError("VALIDATION_ERROR", details={field: "A finite numeric value is required."})
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        raise ApiError("VALIDATION_ERROR", details={field: "A finite numeric value is required."}) from None
+    if not number.is_finite():
+        raise ApiError(
+            "VALIDATION_ERROR", details={field: "Points must be a finite number (NaN and infinity are rejected)."}
+        )
+    if abs(number) > _MAX_LEDGER_POINTS:
+        raise ApiError("VALIDATION_ERROR", details={field: f"Absolute value must not exceed {_MAX_LEDGER_POINTS}."})
+    return number
+
+
+def _validated_delta_seconds(value: object) -> int:
+    """Range/type validation for time-adjustment deltas (F-C-18).
+
+    Rejects NaN, infinity, booleans, non-integral and non-numeric input, and
+    deltas whose absolute value exceeds the documented per-call extend cap.
+    """
+    if value is None or isinstance(value, bool):
+        raise ApiError("VALIDATION_ERROR", details={"delta_seconds": "An integer number of seconds is required."})
+    if isinstance(value, float) and (not math.isfinite(value) or not value.is_integer()):
+        raise ApiError("VALIDATION_ERROR", details={"delta_seconds": "An integer number of seconds is required."})
+    try:
+        delta = int(value)
+    except (TypeError, ValueError, OverflowError):
+        raise ApiError(
+            "VALIDATION_ERROR", details={"delta_seconds": "An integer number of seconds is required."}
+        ) from None
+    if abs(delta) > _MAX_TIME_ADJUSTMENT_SECONDS:
+        raise ApiError(
+            "VALIDATION_ERROR",
+            details={"delta_seconds": f"Absolute value must not exceed {_MAX_TIME_ADJUSTMENT_SECONDS} seconds."},
+        )
+    return delta
+
+
+def _is_uuid(value: object) -> bool:
+    try:
+        uuid.UUID(str(value))
+    except (ValueError, AttributeError, TypeError):
+        return False
+    return True
+
+
 # --- events -------------------------------------------------------------------
 
 
@@ -39,7 +111,10 @@ class EventIn(BaseModel):
     name: str = Field(min_length=3, max_length=160)
     slug: str = Field(min_length=3, max_length=80, pattern="^[a-z0-9-]+$")
     starts_at: str | None = None
-    duration_minutes: int = 180
+    # F-C-18: negative durations would put ends_at in the past at event start
+    # (make_interval(mins => duration_minutes)); positive is required. An upper
+    # bound is an organizer policy decision the repository does not define.
+    duration_minutes: int = Field(default=180, gt=0)
     max_participants: int = 50
     max_teams: int = 12
     timezone: str = "Asia/Kolkata"
@@ -54,8 +129,8 @@ def create_event(body: EventIn, request: Request, p: Principal = Depends(require
         ev_id = str(uuid7())
         s.execute(
             text(
-                "INSERT INTO app.events (id, tenant_id, slug, name, duration_minutes, max_participants, max_teams, config) "
-                "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), :slug, :name, :dur, :mp, :mt, CAST(:cfg AS jsonb))"
+                "INSERT INTO app.events (id, tenant_id, slug, name, duration_minutes, max_participants, max_teams, timezone, config) "
+                "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), :slug, :name, :dur, :mp, :mt, :tz, CAST(:cfg AS jsonb))"
             ),
             {
                 "id": ev_id,
@@ -65,6 +140,7 @@ def create_event(body: EventIn, request: Request, p: Principal = Depends(require
                 "dur": body.duration_minutes,
                 "mp": body.max_participants,
                 "mt": body.max_teams,
+                "tz": body.timezone,
                 "cfg": json.dumps(
                     {
                         "features": {
@@ -144,6 +220,55 @@ def set_event_status(event_id: str, body: dict, request: Request, p: Principal =
     return {"ok": True, "status": target}
 
 
+# Scoring weights are validated at configuration freeze; the three components
+# and their 1.0 sum are the documented scoring model (docs/SCORING_MODEL.md 2).
+REQUIRED_WEIGHT_COMPONENTS = ("functional_test", "code_review", "evidence_report")
+
+
+def _validated_weights(config: dict, *, require_complete: bool) -> None:
+    """F-C-13: validate scoring weights with clean errors before the freeze transaction.
+
+    Rejects non-numeric values (previously an unhandled ValueError -> 500),
+    NaN/infinite values (previously passed the sum comparison because every
+    comparison against NaN is false) and negative weights. When freezing, the
+    three documented weight components must all be present.
+    """
+    scoring = config.get("scoring")
+    weights = scoring.get("weights") if isinstance(scoring, dict) else None
+    if weights is None:
+        if require_complete:
+            raise ApiError(
+                "VALIDATION_ERROR", details={"weights": "Configuration must include scoring.weights before freezing."}
+            )
+        return
+    if not isinstance(weights, dict):
+        raise ApiError("VALIDATION_ERROR", details={"weights": "scoring.weights must be an object."})
+    if require_complete:
+        missing = [c for c in REQUIRED_WEIGHT_COMPONENTS if c not in weights]
+        if missing:
+            raise ApiError("VALIDATION_ERROR", details={"weights": f"Missing weight components: {', '.join(missing)}."})
+    parsed: dict[str, float] = {}
+    for key, raw in weights.items():
+        if key not in REQUIRED_WEIGHT_COMPONENTS:
+            raise ApiError("VALIDATION_ERROR", details={"weights": f"Unknown weight component: '{key}'."})
+        if isinstance(raw, bool):
+            raise ApiError("VALIDATION_ERROR", details={"weights": f"Weight '{key}' must be numeric."})
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            raise ApiError("VALIDATION_ERROR", details={"weights": f"Weight '{key}' is not a number."}) from None
+        if not math.isfinite(value):
+            raise ApiError(
+                "VALIDATION_ERROR",
+                details={"weights": f"Weight '{key}' must be finite (NaN and infinity are rejected)."},
+            )
+        if value < 0:
+            raise ApiError("VALIDATION_ERROR", details={"weights": f"Weight '{key}' must not be negative."})
+        parsed[str(key)] = value
+    if parsed and abs(sum(parsed.values()) - 1.0) > 0.001:
+        raise ApiError("VALIDATION_ERROR", details={"weights": "Scoring weights must sum to 1.0."})
+
+
 class ConfigIn(BaseModel):
     config: dict
     reason: str = Field(min_length=5, max_length=500)
@@ -153,16 +278,37 @@ class ConfigIn(BaseModel):
 @router.post("/admin/events/{event_id}/config")
 def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal = Depends(require_organizer)):
     """New config revision with reason; publication freezes the snapshot (DAT-04)."""
-    w = body.config.get("scoring", {}).get("weights", {})
-    if w and abs(sum(float(v) for v in w.values()) - 1.0) > 0.001:
-        raise ApiError("VALIDATION_ERROR", details={"weights": "Scoring weights must sum to 1.0."})
-    canonical = json.dumps(body.config, sort_keys=True, separators=(",", ":"))
+    # F-C-13: all validation runs BEFORE the freeze transaction starts, so a
+    # rejected freeze can never leave a partially applied configuration.
+    _validated_weights(body.config, require_complete=body.freeze)
+    scoring = body.config.get("scoring")
+    if isinstance(scoring, dict) and scoring.get("ctf_bonus_cap_points") is not None:
+        cap = scoring["ctf_bonus_cap_points"]
+        if isinstance(cap, bool):
+            raise ApiError("VALIDATION_ERROR", details={"ctf_bonus_cap_points": "Must be numeric."})
+        try:
+            cap_value = float(cap)
+        except (TypeError, ValueError):
+            raise ApiError("VALIDATION_ERROR", details={"ctf_bonus_cap_points": "Must be numeric."}) from None
+        if not math.isfinite(cap_value) or cap_value <= 0:
+            raise ApiError("VALIDATION_ERROR", details={"ctf_bonus_cap_points": "Must be a positive finite number."})
+    try:
+        canonical = json.dumps(body.config, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    except ValueError:
+        # a NaN/Infinity anywhere else in the document is not valid JSONB
+        raise ApiError("VALIDATION_ERROR", details={"config": "Values must be valid JSON (NaN rejected)."}) from None
     rule_set_hash = "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
     with app_session() as s:
+        ev = s.execute(text("SELECT id FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": event_id}).first()
+        if ev is None:
+            raise ApiError("NOT_FOUND")
         ver = s.execute(
             text("SELECT COALESCE(MAX(version), 0) FROM app.event_config_revisions WHERE event_id = CAST(:e AS uuid)"),
             {"e": event_id},
         ).scalar_one()
+        # F-C-13: server-side time function read inside the transaction; never
+        # bind the string 'now()' as an ordinary timestamp value.
+        frozen_at = s.execute(text("SELECT now()")).scalar_one() if body.freeze else None
         s.execute(
             text(
                 "INSERT INTO app.event_config_revisions (id, event_id, version, config, rule_set_hash, reason, created_by, frozen_at) "
@@ -172,11 +318,11 @@ def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal 
                 "id": str(uuid7()),
                 "e": event_id,
                 "v": int(ver) + 1,
-                "cfg": json.dumps(body.config, default=str),
+                "cfg": canonical,
                 "h": rule_set_hash,
                 "reason": body.reason,
                 "u": p.id,
-                "frozen": "now()" if body.freeze else None,
+                "frozen": frozen_at,
             },
         )
         if body.freeze:
@@ -184,7 +330,7 @@ def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal 
                 text(
                     "UPDATE app.events SET config = CAST(:cfg AS jsonb), config_version = config_version + 1, rules_version = rules_version + 0 WHERE id = CAST(:e AS uuid)"
                 ),
-                {"cfg": json.dumps(body.config, default=str), "e": event_id},
+                {"cfg": canonical, "e": event_id},
             )
         audit_write(
             s,
@@ -240,40 +386,77 @@ DEFAULT_STAGE_CONFIG = {
 
 @router.post("/admin/events/{event_id}/stages", status_code=201)
 def create_stage(event_id: str, body: StageIn, request: Request, p: Principal = Depends(require_organizer)):
+    if body.kind != "main":
+        raise ApiError(
+            "VALIDATION_ERROR", details={"kind": "Only main stages can be created here; use level bootstrap."}
+        )
     cfg = {**DEFAULT_STAGE_CONFIG, **body.config}
     canonical = json.dumps(cfg, sort_keys=True, separators=(",", ":"))
     rsh = "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
-    with app_session() as s:
-        ordinal = s.execute(
-            text("SELECT COALESCE(MAX(ordinal), 0) FROM app.stages WHERE event_id = CAST(:e AS uuid)"), {"e": event_id}
-        ).scalar_one()
-        st_id = str(uuid7())
-        s.execute(
-            text(
-                "INSERT INTO app.stages (id, event_id, name, kind, ordinal, config, rule_set_hash) "
-                "VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :name, :kind, :ord, CAST(:cfg AS jsonb), :rsh)"
-            ),
-            {
-                "id": st_id,
-                "e": event_id,
-                "name": body.name,
-                "kind": body.kind,
-                "ord": int(ordinal) + 1,
-                "cfg": json.dumps(cfg),
-                "rsh": rsh,
-            },
-        )
-        audit_write(
-            s,
-            actor_id=p.id,
-            actor_role=p.role,
-            action="stage.created",
-            entity_type="stage",
-            entity_id=st_id,
-            request_id=request.state.request_id,
-            details={"rule_set_hash": rsh},
-        )
-    return {"stage_id": st_id, "rule_set_hash": rsh}
+    # F-C-16: application-side MAX+1 alone is racy; the database now enforces
+    # UNIQUE (event_id, kind, ordinal) (migration 0004). On a conflict with a
+    # concurrent creation, recompute MAX+1 and retry; the whole attempt
+    # (ordinal read, insert, audit row) is one transaction, so a failed
+    # attempt rolls back cleanly before the next one.
+    for attempt in range(5):
+        try:
+            with app_session() as s:
+                ordinal = s.execute(
+                    text("SELECT COALESCE(MAX(ordinal), 0) FROM app.stages WHERE event_id = CAST(:e AS uuid)"),
+                    {"e": event_id},
+                ).scalar_one()
+                st_id = str(uuid7())
+                s.execute(
+                    text(
+                        "INSERT INTO app.stages (id, event_id, name, kind, ordinal, config, rule_set_hash) "
+                        "VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :name, :kind, :ord, CAST(:cfg AS jsonb), :rsh)"
+                    ),
+                    {
+                        "id": st_id,
+                        "e": event_id,
+                        "name": body.name,
+                        "kind": body.kind,
+                        "ord": int(ordinal) + 1,
+                        "cfg": json.dumps(cfg),
+                        "rsh": rsh,
+                    },
+                )
+                audit_write(
+                    s,
+                    actor_id=p.id,
+                    actor_role=p.role,
+                    action="stage.created",
+                    entity_type="stage",
+                    entity_id=st_id,
+                    request_id=request.state.request_id,
+                    details={"rule_set_hash": rsh, "ordinal": int(ordinal) + 1},
+                )
+            return {"stage_id": st_id, "rule_set_hash": rsh}
+        except IntegrityError as exc:
+            if not _is_stage_ordinal_conflict(exc):
+                raise  # unrelated integrity errors keep their existing behavior
+            if attempt == 4:
+                raise ApiError(
+                    "VALIDATION_ERROR",
+                    details={"ordinal": "Concurrent stage creation conflicted. Retry the request."},
+                ) from exc
+    raise ApiError("VALIDATION_ERROR", details={"ordinal": "Concurrent stage creation conflicted. Retry the request."})
+
+
+def _is_stage_ordinal_conflict(exc: IntegrityError) -> bool:
+    """True only for a unique violation of ux_stages_event_kind_ordinal.
+
+    psycopg3 exposes the SQLSTATE as `sqlstate` (pgcode is the psycopg2 name);
+    both are accepted here.
+    """
+    orig = getattr(exc, "orig", None)
+    if orig is None:
+        return False
+    state = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+    return bool(
+        state == "23505"
+        and getattr(getattr(orig, "diag", None), "constraint_name", None) == "ux_stages_event_kind_ordinal"
+    )
 
 
 STAGE_TRANSITIONS = {
@@ -338,20 +521,24 @@ def control_stage(stage_id: str, body: dict, request: Request, p: Principal = De
         elif action == "resume":
             if st["status"] != "paused":
                 raise ApiError("VALIDATION_ERROR", details={"transition": "Only a paused stage can resume."})
-            # TIM-05: shift ends_at by the pause duration measured from the pause
-            # transition (not stage start), so the promised working time is kept.
+            # TIM-05: shift ends_at by the pause duration measured from the real
+            # active -> paused transition, not stage start or an extend action's
+            # paused -> paused audit row. Legacy builds recorded 'pause' as the
+            # resulting status, so accept that spelling as well.
             paused_at = s.execute(
                 text(
-                    "SELECT created_at FROM app.stage_transitions WHERE stage_id = CAST(:s AS uuid) AND to_status = 'paused' ORDER BY created_at DESC LIMIT 1"
+                    "SELECT created_at FROM app.stage_transitions WHERE stage_id = CAST(:s AS uuid) "
+                    "AND from_status = 'active' AND to_status IN ('paused', 'pause') "
+                    "ORDER BY created_at DESC LIMIT 1"
                 ),
                 {"s": stage_id},
-            ).scalar_one()
+            ).scalar_one_or_none()
             if paused_at is not None:
                 s.execute(
                     text(
-                        "UPDATE app.stages SET status='active', ends_at = ends_at + make_interval(secs => LEAST(7200, GREATEST(0, EXTRACT(epoch FROM (clock_timestamp() - CAST(:p AS timestamptz)))::int))) WHERE id = CAST(:s AS uuid)"
+                        "UPDATE app.stages SET status='active', ends_at = ends_at + make_interval(secs => LEAST(7200, GREATEST(0, EXTRACT(epoch FROM (CAST(:now AS timestamptz) - CAST(:p AS timestamptz)))::int))) WHERE id = CAST(:s AS uuid)"
                     ),
-                    {"s": stage_id, "p": paused_at},
+                    {"s": stage_id, "p": paused_at, "now": now},
                 )
             else:
                 s.execute(text("UPDATE app.stages SET status='active' WHERE id = CAST(:s AS uuid)"), {"s": stage_id})
@@ -374,12 +561,18 @@ def control_stage(stage_id: str, body: dict, request: Request, p: Principal = De
             )
         else:
             raise ApiError("VALIDATION_ERROR", details={"action": "Unknown action."})
+        # F-C-01: record the resulting status, never the action verb. The pause
+        # path used to write to_status='pause' while resume looked up 'paused',
+        # so resume raised NoResultFound (500) and the stage stayed paused
+        # forever. 'extend' does not change the status, so the current status is
+        # the accurate resulting value for that row.
+        to_status = mapping[action][1] if action in mapping else st["status"]
         s.execute(
             text(
                 "INSERT INTO app.stage_transitions (id, stage_id, from_status, to_status, actor_id, reason_code) "
                 "VALUES (CAST(:id AS uuid), CAST(:s AS uuid), :f, :t, CAST(:u AS uuid), :r)"
             ),
-            {"id": str(uuid7()), "s": stage_id, "f": st["status"], "t": action, "u": p.id, "r": reason},
+            {"id": str(uuid7()), "s": stage_id, "f": st["status"], "t": to_status, "u": p.id, "r": reason},
         )
         audit_write(
             s,
@@ -397,8 +590,13 @@ def control_stage(stage_id: str, body: dict, request: Request, p: Principal = De
 @router.post("/admin/stages/{stage_id}/release")
 def release_results(stage_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
     """ENDED -> EVALUATING -> RELEASED: publishes verdicts and leaderboard (ADM-RS-04)."""
-    action = body.get("action", "release")
+    # F-C-15: validate the action BEFORE any operation; an unknown or misspelled
+    # action must fail cleanly and never write a bogus entry into the audit
+    # chain (previously unknown actions returned 200 ok).
+    action = body.get("action")
     reason = body.get("reason", "results release")
+    if action not in ("evaluate", "release"):
+        raise ApiError("VALIDATION_ERROR", details={"action": "action must be 'evaluate' or 'release'."})
     with app_session() as s:
         st = s.execute(
             text("SELECT status FROM app.stages WHERE id = CAST(:s AS uuid) FOR UPDATE"), {"s": stage_id}
@@ -467,6 +665,14 @@ def create_team(event_id: str, body: TeamIn, request: Request, p: Principal = De
     return {"team_id": team_id, "join_code": join_code}
 
 
+# The roles the application actually defines (app.users.role; the admin-only
+# register endpoint accepts the same set). A non-admin organizer may invite
+# participants and reviewers only; organizer/admin invitations stay admin-only
+# (F-C-05: previously any string, including 'admin', was accepted verbatim).
+INVITE_ROLES = ("participant", "reviewer", "organizer", "admin")
+NON_ADMIN_INVITE_ROLES = ("participant", "reviewer")
+
+
 class InviteIn(BaseModel):
     email: str
     team_id: str | None = None
@@ -479,6 +685,12 @@ def create_invite(event_id: str, body: InviteIn, request: Request, p: Principal 
     console (email delivery is a deployment follow-up, see runbook)."""
     import secrets
 
+    if body.role not in INVITE_ROLES:
+        raise ApiError(
+            "VALIDATION_ERROR", details={"role": "role must be one of: participant, reviewer, organizer, admin."}
+        )
+    if body.role not in NON_ADMIN_INVITE_ROLES and p.role != "admin":
+        raise ApiError("AUTH_FORBIDDEN", message="Only an admin can invite organizer or admin accounts.")
     raw = secrets.token_urlsafe(32)
     with app_session() as s:
         from datetime import datetime, timedelta
@@ -535,7 +747,9 @@ def list_participants(event_id: str, p: Principal = Depends(require_organizer)):
 
 class ChallengeIn(BaseModel):
     slug: str = Field(pattern="^[a-z0-9-]+$")
-    title: str
+    # F-C-18: app.challenge_versions.title is VARCHAR(200); longer values used
+    # to fail inside the INSERT with a database 500 instead of a clean 422.
+    title: str = Field(min_length=3, max_length=200)
     instructions_markdown: str | None = None
 
 
@@ -582,7 +796,8 @@ async def upload_files(
     line_count = text_content.count("\n") + 1
     with app_session() as s:
         cv = s.execute(
-            text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid)"), {"c": challenge_id}
+            text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid) FOR UPDATE"),
+            {"c": challenge_id},
         ).first()
         if cv is None:
             raise ApiError("NOT_FOUND")
@@ -732,6 +947,24 @@ def publish_challenge(challenge_id: str, body: dict, request: Request, p: Princi
 # --- ground truth (gt_admin session; step-up required) -------------------------
 
 
+class BugLocationIn(BaseModel):
+    """F-C-18: bug locations were untyped dicts; malformed or missing keys
+    raised KeyError/DB errors inside the gt session (500). The fields mirror
+    gt.gt_locations: file_path VARCHAR(500), positive line integers."""
+
+    file_path: str = Field(min_length=1, max_length=500)
+    line_start: int = Field(ge=1)
+    line_end: int = Field(ge=1)
+    is_primary: bool = True
+
+
+class BugAliasIn(BaseModel):
+    """F-C-18: aliases were untyped dicts; weights must fit NUMERIC(3,2)."""
+
+    keyword: str = Field(min_length=1, max_length=120)
+    weight: float = Field(default=1.0, ge=0, le=9.99)
+
+
 class BugIn(BaseModel):
     code: str = Field(max_length=40)
     title: str
@@ -741,22 +974,22 @@ class BugIn(BaseModel):
     root_cause_group: str
     explanation: str
     fix_guidance: str | None = None
-    locations: list[dict] = Field(default_factory=list, max_length=8)
-    aliases: list[dict] = Field(default_factory=list, max_length=12)
+    locations: list[BugLocationIn] = Field(default_factory=list, max_length=8)
+    aliases: list[BugAliasIn] = Field(default_factory=list, max_length=12)
 
 
 @router.post("/admin/challenges/{challenge_id}/ground-truth/bugs", status_code=201)
 def add_bug(challenge_id: str, body: BugIn, request: Request, p: Principal = Depends(step_up_verified)):
     """Writes ground truth via the gt_admin role only (DAT-03)."""
-    with app_session() as s:
-        cv = s.execute(
-            text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid)"), {"c": challenge_id}
+    with gt_session() as gts:
+        cv = gts.execute(
+            text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid) FOR UPDATE"),
+            {"c": challenge_id},
         ).first()
         if cv is None:
             raise ApiError("NOT_FOUND")
         if cv[0] not in ("draft", "reviewed"):
             raise ApiError("GROUND_TRUTH_LOCKED")
-    with gt_session() as gts:
         bug_id = str(uuid7())
         gts.execute(
             text(
@@ -777,6 +1010,10 @@ def add_bug(challenge_id: str, body: BugIn, request: Request, p: Principal = Dep
             },
         )
         for loc in body.locations:
+            if loc.line_end < loc.line_start:
+                raise ApiError(
+                    "VALIDATION_ERROR", details={"locations": f"line_end < line_start for '{loc.file_path}'."}
+                )
             gts.execute(
                 text(
                     "INSERT INTO gt.gt_locations (id, bug_id, file_path, line_start, line_end, is_primary) VALUES (CAST(:id AS uuid), CAST(:b AS uuid), :fp, :ls, :le, :prim)"
@@ -784,10 +1021,10 @@ def add_bug(challenge_id: str, body: BugIn, request: Request, p: Principal = Dep
                 {
                     "id": str(uuid7()),
                     "b": bug_id,
-                    "fp": loc["file_path"],
-                    "ls": loc["line_start"],
-                    "le": loc["line_end"],
-                    "prim": loc.get("is_primary", True),
+                    "fp": loc.file_path,
+                    "ls": loc.line_start,
+                    "le": loc.line_end,
+                    "prim": loc.is_primary,
                 },
             )
         for al in body.aliases:
@@ -795,7 +1032,7 @@ def add_bug(challenge_id: str, body: BugIn, request: Request, p: Principal = Dep
                 text(
                     "INSERT INTO gt.gt_aliases (id, bug_id, keyword, weight) VALUES (CAST(:id AS uuid), CAST(:b AS uuid), :kw, :w)"
                 ),
-                {"id": str(uuid7()), "b": bug_id, "kw": al["keyword"], "w": al.get("weight", 1.0)},
+                {"id": str(uuid7()), "b": bug_id, "kw": al.keyword, "w": al.weight},
             )
         audit_write(
             gts,
@@ -820,9 +1057,22 @@ class FlagIn(BaseModel):
 
 @router.post("/admin/challenges/{challenge_id}/ground-truth/flags", status_code=201)
 def add_flag(challenge_id: str, body: FlagIn, request: Request, p: Principal = Depends(step_up_verified)):
+    """F-C-07: flags are ground truth and must obey the same challenge-status
+    lock as add_bug. The status check and the insert run in ONE gt transaction:
+    the challenge row is locked FOR UPDATE, so a concurrent freeze/publish is
+    serialized against the flag write and can no longer interleave (TOCTOU).
+    """
     from ..security import flag_code_hash
 
     with gt_session() as gts:
+        cv = gts.execute(
+            text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid) FOR UPDATE"),
+            {"c": challenge_id},
+        ).first()
+        if cv is None:
+            raise ApiError("NOT_FOUND")
+        if cv[0] not in ("draft", "reviewed"):
+            raise ApiError("GROUND_TRUTH_LOCKED")
         gts.execute(
             text(
                 "INSERT INTO gt.gt_flags (id, challenge_version_id, flag_key, code_hash, points, max_awards) "
@@ -854,13 +1104,78 @@ def add_flag(challenge_id: str, body: FlagIn, request: Request, p: Principal = D
 @router.post("/admin/challenges/{challenge_id}/ground-truth/test-results")
 def record_test_results(challenge_id: str, body: dict, request: Request, p: Principal = Depends(step_up_verified)):
     """Organizer records offline functional-test results per submission (ADR-019):
-    {submission_id, tests_passed, tests_total} -> enqueues ledger application."""
+    {submission_id, tests_passed, tests_total} -> enqueues ledger application.
+
+    F-C-12: the submission reference is validated BEFORE anything is recorded
+    or enqueued: malformed and nonexistent ids, submissions belonging to a
+    different challenge, unsupported kinds (no award claims to pay) and
+    submissions without a team are rejected here instead of dead-lettering in
+    the worker.
+    """
     sub_id = body.get("submission_id")
-    passed = int(body.get("tests_passed", 0))
-    total = int(body.get("tests_total", 0))
-    if not sub_id or total <= 0 or passed < 0 or passed > total:
+    raw_passed = body.get("tests_passed")
+    raw_total = body.get("tests_total")
+    try:
+        passed = int(raw_passed)
+        total = int(raw_total)
+    except (TypeError, ValueError, OverflowError):
+        raise ApiError(
+            "VALIDATION_ERROR", details={"tests": "Provide submission_id, tests_passed, tests_total."}
+        ) from None
+    if not sub_id or not isinstance(sub_id, str) or not _is_uuid(sub_id) or total <= 0 or passed < 0 or passed > total:
         raise ApiError("VALIDATION_ERROR", details={"tests": "Provide submission_id, tests_passed, tests_total."})
     with app_session() as s:
+        sub = (
+            s.execute(
+                text(
+                    "SELECT id, kind, event_id, stage_id, team_id, challenge_version_id FROM app.submissions "
+                    "WHERE id = CAST(:sid AS uuid)"
+                ),
+                {"sid": sub_id},
+            )
+            .mappings()
+            .first()
+        )
+        if sub is None:
+            raise ApiError("NOT_FOUND", details={"submission_id": "No such submission."})
+        if str(sub["challenge_version_id"]) != challenge_id:
+            raise ApiError(
+                "VALIDATION_ERROR", details={"submission_id": "Submission does not belong to this challenge."}
+            )
+        # the challenge id already equals the submission's challenge version, so
+        # this lookup cannot fail (FK); the event cross-check closes the last
+        # context gap (a hand-forged cross-event reference).
+        challenge_event = s.execute(
+            text("SELECT event_id FROM app.challenge_versions WHERE id = CAST(:c AS uuid)"), {"c": challenge_id}
+        ).scalar_one()
+        if str(challenge_event) != str(sub["event_id"]):
+            raise ApiError(
+                "VALIDATION_ERROR", details={"submission_id": "Submission does not belong to this challenge."}
+            )
+        stage_event = s.execute(
+            text("SELECT event_id FROM app.stages WHERE id = CAST(:s AS uuid)"), {"s": str(sub["stage_id"])}
+        ).scalar_one()
+        if str(stage_event) != str(sub["event_id"]):
+            raise ApiError(
+                "VALIDATION_ERROR", details={"submission_id": "Submission stage does not belong to this event."}
+            )
+        if sub["team_id"] is not None:
+            team_event = s.execute(
+                text("SELECT event_id FROM app.teams WHERE id = CAST(:t AS uuid)"), {"t": str(sub["team_id"])}
+            ).scalar_one()
+            if str(team_event) != str(sub["event_id"]):
+                raise ApiError(
+                    "VALIDATION_ERROR", details={"submission_id": "Submission team does not belong to this event."}
+                )
+        if sub["kind"] not in ("bug_report", "level_report"):
+            raise ApiError(
+                "VALIDATION_ERROR",
+                details={
+                    "submission_id": f"Test results apply to bug_report or level_report submissions, not {sub['kind']}"
+                },
+            )
+        if sub["team_id"] is None:
+            raise ApiError("VALIDATION_ERROR", details={"submission_id": "Submission has no team to score."})
         enqueue(
             s,
             "apply_test_results",
@@ -915,14 +1230,35 @@ def create_announcement(
 @router.post("/admin/events/{event_id}/time-adjustment")
 def time_adjustment(event_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
     stage_id = body.get("stage_id")
-    delta = int(body.get("delta_seconds", 0))
+    # F-C-18: reject NaN/infinity, non-numeric input and absurd deltas BEFORE
+    # any row is written (previously int(body.get(...)) could raise an
+    # unhandled ValueError -> 500, and plus/minus a billion seconds was stored).
+    delta = _validated_delta_seconds(body.get("delta_seconds"))
     reason_code = body.get("reason_code", "OTHER")
     user_id = body.get("user_id")
     if not stage_id or delta == 0:
         raise ApiError("VALIDATION_ERROR", details={"adjustment": "stage_id and nonzero delta_seconds required."})
     if reason_code not in ("ACCOMMODATION", "OUTAGE", "DEVICE_FAILURE", "OTHER"):
         raise ApiError("VALIDATION_ERROR", details={"reason_code": "ACCOMMODATION|OUTAGE|DEVICE_FAILURE|OTHER"})
+    if not _is_uuid(event_id) or not _is_uuid(stage_id) or (user_id is not None and not _is_uuid(user_id)):
+        raise ApiError("VALIDATION_ERROR", details={"adjustment": "event_id, stage_id and user_id must be UUIDs."})
     with app_session() as s:
+        stage = s.execute(
+            text("SELECT id FROM app.stages WHERE id = CAST(:s AS uuid) AND event_id = CAST(:e AS uuid) FOR UPDATE"),
+            {"s": stage_id, "e": event_id},
+        ).first()
+        if stage is None:
+            raise ApiError("NOT_FOUND", details={"stage_id": "No such stage for this event."})
+        if user_id is not None:
+            member = s.execute(
+                text(
+                    "SELECT 1 FROM app.team_members tm JOIN app.teams t ON t.id = tm.team_id "
+                    "WHERE tm.user_id = CAST(:u AS uuid) AND t.event_id = CAST(:e AS uuid)"
+                ),
+                {"u": user_id, "e": event_id},
+            ).first()
+            if member is None:
+                raise ApiError("VALIDATION_ERROR", details={"user_id": "User is not a member of this event."})
         s.execute(
             text(
                 "INSERT INTO app.time_adjustments (id, stage_id, user_id, delta_seconds, reason_code, created_by) VALUES (CAST(:id AS uuid), CAST(:s AS uuid), CAST(:u AS uuid), :d, :r, CAST(:by AS uuid))"
@@ -1021,12 +1357,16 @@ def set_readiness(event_id: str, key: str, body: dict, request: Request, p: Prin
     if state not in ("checked", "unchecked", "na"):
         raise ApiError("VALIDATION_ERROR")
     with app_session() as s:
-        s.execute(
+        # F-C-16: an UPDATE that matched zero rows used to still return ok;
+        # the caller must learn the readiness item does not exist.
+        result = s.execute(
             text(
                 "UPDATE app.readiness_items SET state=CAST(:st AS varchar), checked_at=CASE WHEN CAST(:st AS varchar)='checked' THEN now() ELSE NULL END WHERE event_id = CAST(:e AS uuid) AND key = :k"
             ),
             {"st": state, "e": event_id, "k": key},
         )
+        if result.rowcount == 0:
+            raise ApiError("NOT_FOUND", details={"key": "No such readiness item for this event."})
         audit_write(
             s,
             actor_id=p.id,
@@ -1175,29 +1515,69 @@ def export_csv(event_id: str, kind: str, p: Principal = Depends(require_organize
 # --- disputes -------------------------------------------------------------------
 
 
+# F-C-23: the organizer disputes list is bounded like every other listing
+# (announcements use 1..100; the audit viewer 1..500).
+MAX_DISPUTES_PAGE_SIZE = 100
+
+
 @router.get("/admin/disputes")
-def list_disputes(p: Principal = Depends(require_organizer)):
+def list_disputes(
+    p: Principal = Depends(require_organizer),
+    event_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """F-C-23: bounded, deterministic, optionally event-scoped disputes listing.
+
+    Previously the endpoint loaded every dispute in the database with no
+    bound and no ordering tiebreak. The response keeps the 'disputes' key and
+    adds pagination metadata.
+    """
+    if limit < 1 or limit > MAX_DISPUTES_PAGE_SIZE:
+        raise ApiError("VALIDATION_ERROR", details={"limit": f"limit must be between 1 and {MAX_DISPUTES_PAGE_SIZE}."})
+    if offset < 0:
+        raise ApiError("VALIDATION_ERROR", details={"offset": "offset must be >= 0."})
+    if event_id is not None and not _is_uuid(event_id):
+        raise ApiError("VALIDATION_ERROR", details={"event_id": "Must be a valid event id."})
+    params = {"event_id": event_id, "limit": limit, "offset": offset}
     with app_session() as s:
+        total = s.execute(
+            text(
+                "SELECT count(*) FROM app.disputes d JOIN app.submissions s ON s.id = d.submission_id "
+                "WHERE (CAST(:event_id AS uuid) IS NULL OR s.event_id = CAST(:event_id AS uuid))"
+            ),
+            {"event_id": event_id},
+        ).scalar_one()
         rows = (
             s.execute(
                 text(
                     "SELECT d.id, d.status, d.statement, d.created_at, s.title, s.receipt_code, d.submission_id "
-                    "FROM app.disputes d JOIN app.submissions s ON s.id = d.submission_id ORDER BY d.created_at DESC"
-                )
+                    "FROM app.disputes d JOIN app.submissions s ON s.id = d.submission_id "
+                    "WHERE (CAST(:event_id AS uuid) IS NULL OR s.event_id = CAST(:event_id AS uuid)) "
+                    "ORDER BY d.created_at DESC, d.id DESC LIMIT :limit OFFSET :offset"
+                ),
+                params,
             )
             .mappings()
             .all()
         )
-    return {"disputes": [dict(r) for r in rows]}
+    return {"disputes": [dict(r) for r in rows], "total": int(total), "limit": limit, "offset": offset}
 
 
 @router.post("/admin/disputes/{dispute_id}/resolve")
 def resolve_dispute(dispute_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
     outcome = body.get("outcome")  # upheld | rejected
     resolution = body.get("resolution", "")
-    adjust_points = body.get("adjust_points")  # optional ledger adjustment for the team
+    adjust_raw = body.get("adjust_points")  # optional ledger adjustment for the team
     if outcome not in ("upheld", "rejected"):
         raise ApiError("VALIDATION_ERROR", details={"outcome": "upheld|rejected"})
+    # F-C-06: validate the adjustment BEFORE any dispute, ledger or audit row
+    # is written; NaN/infinity/malformed values used to flow straight into
+    # NUMERIC and poison SUM(points) for the team. Zero keeps the existing
+    # no-adjustment semantics (falsy check below).
+    adjust_points = None
+    if adjust_raw is not None:
+        adjust_points = _validated_points(adjust_raw, field="adjust_points")
     with app_session() as s:
         d = (
             s.execute(
@@ -1263,17 +1643,30 @@ def manual_adjustment(body: dict, request: Request, p: Principal = Depends(requi
     """Admin-only manual score adjustment (audit reason required; ADM-RS)."""
     stage_id = body.get("stage_id")
     team_id = body.get("team_id")
-    points = float(body.get("points", 0))
+    raw_points = body.get("points")
     reason = body.get("reason", "")
-    if not stage_id or not team_id or not reason or points == 0:
+    if not stage_id or not team_id or not reason or raw_points is None:
         raise ApiError("VALIDATION_ERROR", details={"adjustment": "stage_id, team_id, points, reason required."})
+    # F-C-06: NaN passes an ordinary `points == 0` check (every comparison with
+    # NaN is false) and poisons SUM(points) for the team forever; infinities
+    # and oversized values overflow NUMERIC(10,2). Validate as a finite
+    # Decimal BEFORE any ledger or audit row is written.
+    points = _validated_points(raw_points, field="points")
+    if points == 0:
+        raise ApiError("VALIDATION_ERROR", details={"adjustment": "stage_id, team_id, points, reason required."})
+    if not _is_uuid(stage_id) or not _is_uuid(team_id):
+        raise ApiError("VALIDATION_ERROR", details={"adjustment": "stage_id and team_id must be UUIDs."})
     with app_session() as s:
-        event_id = s.execute(
-            text("SELECT event_id FROM app.stages WHERE id = CAST(:s AS uuid)"), {"s": stage_id}
-        ).scalar_one()
-        tenant_id = s.execute(
-            text("SELECT tenant_id FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": str(event_id)}
-        ).scalar_one()
+        scope = s.execute(
+            text(
+                "SELECT e.id, e.tenant_id FROM app.stages st JOIN app.events e ON e.id = st.event_id "
+                "JOIN app.teams t ON t.event_id = e.id WHERE st.id = CAST(:s AS uuid) AND t.id = CAST(:t AS uuid)"
+            ),
+            {"s": stage_id, "t": team_id},
+        ).first()
+        if scope is None:
+            raise ApiError("VALIDATION_ERROR", details={"adjustment": "Stage and team must belong to the same event."})
+        event_id, tenant_id = str(scope[0]), str(scope[1])
         add_ledger_entry(
             s,
             tenant_id=str(tenant_id),
@@ -1282,7 +1675,7 @@ def manual_adjustment(body: dict, request: Request, p: Principal = Depends(requi
             team_id=team_id,
             component="adjustment",
             kind="adjustment",
-            points=points,
+            points=float(points),
             reason_code="MANUAL",
             actor_id=p.id,
             note=reason,
@@ -1295,7 +1688,7 @@ def manual_adjustment(body: dict, request: Request, p: Principal = Depends(requi
             entity_type="team",
             entity_id=team_id,
             request_id=request.state.request_id,
-            details={"points": points, "reason": reason},
+            details={"points": float(points), "reason": reason},
             event_scope="scoring",
         )
     return {"ok": True}

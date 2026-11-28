@@ -74,13 +74,28 @@ def test_step_up_required_for_sensitive_admin_routes(client):
     )
     assert r.status_code == 403
     assert r.json()["error"]["code"] == "ADMIN_STEP_UP_REQUIRED"
-    # after step-up it succeeds
+    # after step-up it succeeds. The seeded challenge is published (ground truth
+    # locked, F-C-07), so write against a fresh draft challenge in this event.
     oc.post("/v1/auth/step-up", json={"password": "Dev-only!Passw0rd!"}).raise_for_status()
+    ev_id = oc.get("/v1/admin/events").json()["events"][0]["id"]
+    draft = oc.post(
+        f"/v1/admin/events/{ev_id}/challenges", json={"slug": "step-up-fixture", "title": "Step-up fixture"}
+    )
+    assert draft.status_code == 201, draft.text
+    draft_id = draft.json()["challenge_id"]
     r = oc.post(
-        f"/v1/admin/challenges/{_any_challenge_id(oc)}/ground-truth/flags",
+        f"/v1/admin/challenges/{draft_id}/ground-truth/flags",
         json={"flag_key": "FLAG-TEST", "code": "FLAG{step_up}", "points": 5},
     )
     assert r.status_code == 201, r.text
+    # and a published challenge must refuse ground-truth mutation (F-C-07)
+    published_id = _any_published_challenge_id()
+    r = oc.post(
+        f"/v1/admin/challenges/{published_id}/ground-truth/flags",
+        json={"flag_key": "FLAG-TEST", "code": "FLAG{step_up}", "points": 5},
+    )
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "GROUND_TRUTH_LOCKED"
 
 
 def _any_challenge_id(oc):
@@ -89,6 +104,18 @@ def _any_challenge_id(oc):
 
     with app_engine.connect() as conn:
         return str(conn.execute(text("SELECT id FROM app.challenge_versions LIMIT 1")).scalar_one())
+
+
+def _any_published_challenge_id() -> str:
+    from app.db import app_engine
+    from sqlalchemy import text
+
+    with app_engine.connect() as conn:
+        return str(
+            conn.execute(
+                text("SELECT id FROM app.challenge_versions WHERE status = 'published' ORDER BY created_at LIMIT 1")
+            ).scalar_one()
+        )
 
 
 def test_refresh_rotation_and_reuse_detection(client):
