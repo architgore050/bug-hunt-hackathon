@@ -106,7 +106,7 @@ def create_submission(
         member = (
             s.execute(
                 text(
-                    "SELECT tm.team_id, t.event_id, t.status AS team_status, e.tenant_id, e.status AS event_status "
+                    "SELECT tm.team_id, t.event_id, e.tenant_id, e.status AS event_status "
                     "FROM app.team_members tm JOIN app.teams t ON t.id = tm.team_id "
                     "JOIN app.events e ON e.id = t.event_id WHERE tm.user_id = CAST(:u AS uuid) LIMIT 1"
                 ),
@@ -117,8 +117,6 @@ def create_submission(
         )
         if member is None:
             raise ApiError("AUTH_FORBIDDEN", message="You are not assigned to a team for this event.")
-        if member["team_status"] != "active":
-            raise ApiError("AUTH_FORBIDDEN", message="This team cannot submit.")
 
         # --- idempotency reservation (unique (author_id, idempotency_key)) -----
         existing = (

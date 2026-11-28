@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     max_body_bytes: int = 512 * 1024
     submission_max_desc_chars: int = 2000
     max_concurrent_requests_per_user: int = 20
+    # Maximum number of participants assigned to one team.
+    max_team_members: int = 6
     # Artifact uploads (Levels 3-4): spec default 5 MB; the transport cap adds
     # headroom for multipart encoding. Configurable per deployment.
     max_upload_bytes: int = 6 * 1024 * 1024

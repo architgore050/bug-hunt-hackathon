@@ -345,3 +345,87 @@ def test_zombie_sessions_do_not_hold_slots(client):
     live_ids = {s["id"] for s in client.get("/v1/me/sessions", headers=_auth(t3)).json()}
     assert sid1 not in live_ids
     assert client.get("/v1/me", headers=_auth(t2)).status_code == 200
+
+
+
+def test_team_member_cap_is_enforced_for_registration_and_reassignment(client, monkeypatch):
+    from app.config import settings
+    from app.db import app_engine
+    from sqlalchemy import text
+
+    admin_login = client.post(
+        "/v1/auth/login",
+        json={"email": "admin@example.com", "password": "Dev-only!Passw0rd!"},
+    )
+    assert admin_login.status_code == 200, admin_login.text
+    admin = TestClient(client.app)
+    admin.headers.update({"Authorization": f"Bearer {admin_login.json()['access_token']}"})
+    admin.post("/v1/auth/step-up", json={"password": "Dev-only!Passw0rd!"}).raise_for_status()
+
+    with app_engine.connect() as conn:
+        target = (
+            conn.execute(
+                text(
+                    "SELECT t.id, t.event_id, count(tm.user_id) AS member_count "
+                    "FROM app.teams t LEFT JOIN app.team_members tm ON tm.team_id = t.id "
+                    "GROUP BY t.id, t.event_id ORDER BY count(tm.user_id) DESC, t.id LIMIT 1"
+                )
+            )
+            .mappings()
+            .one()
+        )
+        source_user = conn.execute(
+            text(
+                "SELECT tm.user_id FROM app.team_members tm "
+                "JOIN app.users u ON u.id = tm.user_id "
+                "WHERE tm.team_id <> CAST(:team AS uuid) AND u.role = 'participant' "
+                "ORDER BY tm.user_id LIMIT 1"
+            ),
+            {"team": str(target["id"])},
+        ).scalar_one()
+
+    target_team_id = str(target["id"])
+    event_id = str(target["event_id"])
+    # Set the test cap just one above the current largest team, then fill it.
+    cap = int(target["member_count"]) + 1
+    monkeypatch.setattr(settings, "max_team_members", cap)
+
+    added = admin.post(
+        f"/v1/admin/events/{event_id}/participants",
+        json={
+            "email": f"team-cap-{__import__('uuid').uuid4().hex[:8]}@example.com",
+            "name": "Team Capacity Participant",
+            "team_id": target_team_id,
+        },
+    )
+    assert added.status_code == 201, added.text
+
+    overflow = admin.post(
+        f"/v1/admin/events/{event_id}/participants",
+        json={
+            "email": f"team-overflow-{__import__('uuid').uuid4().hex[:8]}@example.com",
+            "name": "Team Overflow Participant",
+            "team_id": target_team_id,
+        },
+    )
+    assert overflow.status_code == 409
+    assert overflow.json()["error"]["code"] == "TEAM_FULL"
+
+    reassignment = admin.patch(
+        f"/v1/admin/events/{event_id}/participants/{source_user}/team",
+        json={"team_id": target_team_id},
+    )
+    assert reassignment.status_code == 409
+    assert reassignment.json()["error"]["code"] == "TEAM_FULL"
+
+    with app_engine.connect() as conn:
+        current_team = conn.execute(
+            text("SELECT team_id FROM app.team_members WHERE user_id = CAST(:user AS uuid)"),
+            {"user": str(source_user)},
+        ).scalar_one()
+        member_count = conn.execute(
+            text("SELECT count(*) FROM app.team_members WHERE team_id = CAST(:team AS uuid)"),
+            {"team": target_team_id},
+        ).scalar_one()
+    assert str(current_team) != target_team_id
+    assert int(member_count) == cap
