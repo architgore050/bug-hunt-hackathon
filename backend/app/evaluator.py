@@ -484,6 +484,19 @@ def apply_test_results(payload: dict) -> None:
                 note=f"passed {passed}/{total}",
                 dedupe_award=True,
             )
+        from .scoring import finalize_submission_score
+
+        finalize_submission_score(
+            session,
+            submission_id=submission_id,
+            stage_id=str(sub["stage_id"]),
+            team_id=str(sub["team_id"]),
+            event_id=str(sub["event_id"]),
+            author_id=str(sub["author_id"]),
+            tenant_id=str(sub["tenant_id"]),
+            received_at=sub["received_at"],
+            kind=sub["kind"],
+        )
 
 
 @jobs.handler("release_feedback")
@@ -524,7 +537,7 @@ def release_feedback(payload: dict) -> None:
                     "SELECT s.id, s.team_id, s.challenge_version_id, e.tenant_id "
                     "FROM app.submissions s JOIN app.events e ON e.id = s.event_id "
                     "WHERE s.stage_id = CAST(:s AS uuid) AND s.status IN ('decided','matched_auto','ledgered') "
-                    "AND s.kind IN ('bug_report','level_report')"
+                    "AND s.kind IN ('bug_report', 'level_report') AND s.matched_bug_code IS NOT NULL"
                 ),
                 {"s": stage_id},
             )
@@ -571,7 +584,9 @@ def release_feedback(payload: dict) -> None:
                 )
             if claims:
                 session.execute(
-                    text("UPDATE app.submissions SET status='ledgered' WHERE id = CAST(:sid AS uuid)"),
+                    text(
+                        "UPDATE app.submissions SET status='ledgered', evaluation_state='SCORED' WHERE id = CAST(:sid AS uuid)"
+                    ),
                     {"sid": str(a["id"])},
                 )
 
@@ -581,7 +596,7 @@ def release_feedback(payload: dict) -> None:
                 session.execute(
                     text(
                         "SELECT s.team_id, e.tenant_id, count(*) AS n FROM app.submissions s JOIN app.events e ON e.id = s.event_id "
-                        "WHERE s.stage_id = CAST(:s AS uuid) AND s.status = 'rejected_auto' AND s.kind = 'bug_report' GROUP BY s.team_id, e.tenant_id"
+                        "WHERE s.stage_id = CAST(:s AS uuid) AND s.status = 'rejected_auto' AND s.kind IN ('bug_report', 'level_report') GROUP BY s.team_id, e.tenant_id"
                     ),
                     {"s": stage_id},
                 )
