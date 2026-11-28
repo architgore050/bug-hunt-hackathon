@@ -462,3 +462,39 @@ def test_leaderboard_tie_break_order(seeded_db):
         )
     assert board["rows"][0]["team_id"] == str(teams[0][0])
     assert board["rows"][0]["invalid_reports"] == 0
+
+
+def test_leaderboard_since_returns_304_when_unchanged(client, seeded_db):
+    from app.db import app_session
+    from app.scoring import save_snapshot
+    from tests.conftest import organizer_client
+
+    oc = organizer_client(client)
+    with app_session() as s:
+        row = s.execute(text("SELECT id, event_id FROM app.stages LIMIT 1")).first()
+        stage_id, event_id = str(row[0]), str(row[1])
+        v1 = save_snapshot(
+            s,
+            event_id=event_id,
+            stage_id=stage_id,
+            payload={"stage_id": stage_id, "rows": []},
+            visibility="public",
+        )
+    r1 = oc.get(f"/v1/leaderboard/{stage_id}")
+    assert r1.status_code == 200
+    assert r1.json()["version"] == v1
+
+    r304 = oc.get(f"/v1/leaderboard/{stage_id}?since={v1}")
+    assert r304.status_code == 304
+
+    with app_session() as s:
+        v2 = save_snapshot(
+            s,
+            event_id=event_id,
+            stage_id=stage_id,
+            payload={"stage_id": stage_id, "rows": []},
+            visibility="public",
+        )
+    r2 = oc.get(f"/v1/leaderboard/{stage_id}?since={v1}")
+    assert r2.status_code == 200
+    assert r2.json()["version"] == v2

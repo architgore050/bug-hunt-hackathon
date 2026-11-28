@@ -6,9 +6,9 @@ Visibility follows the frozen stage config: hidden | frozen (delayed snapshots)
 
 from __future__ import annotations
 
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import text
 
 from ..db import app_session
@@ -19,7 +19,11 @@ router = APIRouter(tags=["leaderboard"])
 
 
 @router.get("/leaderboard/{stage_id}")
-def leaderboard(stage_id: str, p: Principal = Depends(get_principal)):
+def leaderboard(
+    stage_id: str,
+    since: int | None = Query(default=None, ge=0),
+    p: Principal = Depends(get_principal),
+):
     with app_session() as s:
         stage = (
             s.execute(
@@ -37,8 +41,6 @@ def leaderboard(stage_id: str, p: Principal = Depends(get_principal)):
         if mode == "hidden" and p.role == "participant" and not released:
             return {"visible": False, "message": "The leaderboard is hidden for this round."}
         delay_s = int(cfg.get("leaderboard_delay_s", 600))
-        from datetime import datetime, timedelta
-
         cutoff = datetime.now(UTC) - timedelta(seconds=delay_s if mode == "frozen" else 0)
         snap = (
             s.execute(
@@ -54,6 +56,8 @@ def leaderboard(stage_id: str, p: Principal = Depends(get_principal)):
         )
     if snap is None:
         return {"visible": True, "snapshot": None, "message": "No results published yet."}
+    if since is not None and int(snap["version"]) <= since:
+        return Response(status_code=304)
     return {
         "visible": True,
         "version": snap["version"],
