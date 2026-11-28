@@ -1,0 +1,64 @@
+{
+  "id": "REM-071",
+  "title": "Release-feedback processing performs repeated GT/session and stage-max queries in an N+1 pattern",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-QLT-17"
+  ],
+  "original_titles": [
+    {
+      "id": "F-QLT-17",
+      "title": "release_feedback is N+1: one gt session per submission plus repeated stage-max queries"
+    }
+  ],
+  "problem": "The release_feedback handler processes submissions and performs repeated ground-truth lookups/session creation and repeated stage-max computations while applying release penalties/defaults. This increases DB round trips as submission volume grows.",
+  "impact": "A release operation can become slow or hold locks/resources for too long under a larger participant count, increasing event-day release latency.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/evaluator.py: release_feedback",
+      "backend/app/evaluator.py: _stage_max_points",
+      "backend/app/db.py: app_session and gt_session"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Profile query count and wall-clock time for 50/200/500 submissions using realistic DB data. Record baseline p95."
+      },
+      {
+        "step": 2,
+        "action": "Fetch all candidate bug points and relevant stage configuration in bounded batch queries before processing submissions."
+      },
+      {
+        "step": 3,
+        "action": "Compute stage max once per stage and reuse it; avoid opening a GT session inside each submission loop."
+      },
+      {
+        "step": 4,
+        "action": "Apply ledger writes in bounded batches while preserving transaction/idempotency boundaries."
+      },
+      {
+        "step": 5,
+        "action": "Add a query-count regression test and a load test for result release."
+      }
+    ],
+    "acceptance_criteria": [
+      "Query count grows sub-linearly or near-constant with submissions per stage.",
+      "Release completes under the approved event cap within the agreed deadline."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

@@ -1,0 +1,98 @@
+{
+  "id": "REM-052",
+  "title": "Runtime API and operational documentation still contains endpoint/schema and process-lifecycle drift",
+  "severity": "LOW",
+  "status": "partially_fixed",
+  "priority": "P3",
+  "source_ids": [
+    "F-B02A-12",
+    "F-B02A-19",
+    "F-B02B-34",
+    "F-B02B-39",
+    "F-S03A-22",
+    "F-S03A-29",
+    "F-AG07-16"
+  ],
+  "original_titles": [
+    {
+      "id": "F-B02A-12",
+      "title": "Configuration surface deviates wholesale from spec variable groups (no PG_*/STORAGE_KIND/AI_*/RUNNER_*/SMTP_*/staging/FEATURE_*)"
+    },
+    {
+      "id": "F-B02A-19",
+      "title": "Stages addressed by ordinal level number instead of a stable stage_key; no Deprecation/Sunset mechanism"
+    },
+    {
+      "id": "F-B02B-34",
+      "title": "GET /team/repo-lock absent as standalone endpoint"
+    },
+    {
+      "id": "F-B02B-39",
+      "title": "Assorted admin/ops path naming deviations"
+    },
+    {
+      "id": "F-S03A-22",
+      "title": "Challenge URLs use UUIDs, not slugs"
+    },
+    {
+      "id": "F-S03A-29",
+      "title": "Landing performs an extra dynamic call GET /v1/time beyond the spec's single cached event fetch"
+    },
+    {
+      "id": "F-AG07-16",
+      "title": "document.title never set per page (one-h1 rule is met)"
+    }
+  ],
+  "problem": "The repo has current source and some updated runbooks, but several specification path conventions, deployment settings, stage addressing and page/title behaviors differ from the reference design. Some are intentional design choices, others are documentation drift; they should not be treated as security defects without owner confirmation.",
+  "impact": "Unresolved API/documentation deviations make integrators rely on stale endpoint names and can break external tooling or training materials.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "partially_confirmed",
+    "evidence_paths": [
+      "docs/API_REFERENCE.md",
+      "docs/DEPLOYMENT_RUNBOOK.md",
+      "docs/SECURITY_ARCHITECTURE.md",
+      "frontend/src/App.tsx",
+      "frontend/src/lib/format.ts",
+      "backend/app/config.py"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Classify each deviation as an accepted design decision, compatibility alias requirement or defect. Record it in a short ADR/requirements reconciliation table."
+      },
+      {
+        "step": 2,
+        "action": "For external API naming changes, provide compatibility aliases with deprecation dates instead of silently switching paths."
+      },
+      {
+        "step": 3,
+        "action": "Make docs generated or checked from OpenAPI where possible; add stale endpoint checks in CI."
+      },
+      {
+        "step": 4,
+        "action": "Add page-specific document.title and focus-to-heading behavior if required by the user-facing accessibility standard."
+      },
+      {
+        "step": 5,
+        "action": "Remove outdated process, service and configuration instructions from operational docs once deployment artifacts are finalized."
+      }
+    ],
+    "acceptance_criteria": [
+      "Every API deviation has a decision owner and status.",
+      "Current docs match routes and event operations.",
+      "No current runbook calls a removed endpoint."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

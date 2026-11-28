@@ -1,0 +1,66 @@
+{
+  "id": "REM-062",
+  "title": "The review/leaderboard release and scoring pipeline has unresolved terminal-state and time semantics",
+  "severity": "MEDIUM",
+  "status": "needs_manual_revalidation",
+  "priority": "P2",
+  "source_ids": [
+    "F-S03B-28",
+    "F-S03B-21"
+  ],
+  "original_titles": [
+    {
+      "id": "F-S03B-28",
+      "title": "Missing terminal transitions: stage RELEASED->FINAL and submission DISPUTED->RESOLVED"
+    },
+    {
+      "id": "F-S03B-21",
+      "title": "Leaderboard snapshots event-driven only; no interval snapshot job; responses not cacheable"
+    }
+  ],
+  "problem": "The audit claims missing RELEASED->FINAL and DISPUTED->RESOLVED transitions, event-driven-only leaderboard snapshots and app-server-clock cutoffs. Some state machines have been revised for the four-level flow, so the exact terminal-state semantics need an up-to-date state diagram and tests.",
+  "impact": "Ambiguous terminal transitions can leave submissions/disputes in non-terminal states or results with inconsistent ranking/cutoff behavior.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "scope_or_policy_check",
+    "evidence_paths": [
+      "backend/app/flow.py",
+      "backend/app/routers/admin.py: release and dispute resolution",
+      "backend/app/routers/leaderboard.py",
+      "backend/app/evaluator.py: refresh_leaderboard"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Publish one canonical event/stage/submission/dispute state diagram, including terminal and post-release states."
+      },
+      {
+        "step": 2,
+        "action": "Compare every transition in the backend and DB constraints against the diagram; remove impossible transitions and add missing authorized transitions."
+      },
+      {
+        "step": 3,
+        "action": "Use database time for leaderboard cutoff/release and a deterministic snapshot version sequence."
+      },
+      {
+        "step": 4,
+        "action": "Add transition-table tests for every valid/invalid edge and post-release dispute/correction behavior."
+      }
+    ],
+    "acceptance_criteria": [
+      "Every state machine has a defined terminal state and transition owner.",
+      "Leaderboard ordering/cutoff is deterministic and based on DB time."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

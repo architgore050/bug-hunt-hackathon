@@ -1,0 +1,92 @@
+{
+  "id": "REM-055",
+  "title": "Conditional polling, ETag/version checks and state freshness are not consistently implemented",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-F01A-07",
+    "F-F01A-11",
+    "F-F01A-16",
+    "F-ARA-13",
+    "F-B02B-04",
+    "F-CKLB-28"
+  ],
+  "original_titles": [
+    {
+      "id": "F-F01A-07",
+      "title": "Boot gaps: no /config.json, single-sample clock sync, no X-Min-Client-Version gate"
+    },
+    {
+      "id": "F-F01A-11",
+      "title": "Polling deviations: fixed intervals, no jitter/backoff/visibility/online triggers; leaderboard not version-gated"
+    },
+    {
+      "id": "F-F01A-16",
+      "title": "No flags/maintenance in /v1/state and no P-24 maintenance page"
+    },
+    {
+      "id": "F-ARA-13",
+      "title": "/state polls at a fixed 5 s even outside an active round"
+    },
+    {
+      "id": "F-B02B-04",
+      "title": "/state ETag/If-None-Match/304 and state_versions record missing"
+    },
+    {
+      "id": "F-CKLB-28",
+      "title": "Leaderboard snapshot cutoff uses the app server clock"
+    }
+  ],
+  "problem": "State and leaderboard clients still rely on fixed polling and app-server time for some cutoff logic. The API does not consistently expose ETag/If-None-Match or version-based not-modified semantics; repository search is bounded without a cursor, and maintenance/feature flags are not fully represented in /state.",
+  "impact": "Clients request unchanged data repeatedly and can display stale or inconsistent state after sleep/network transitions. Server-side load increases during synchronized refresh periods.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/routers/state.py",
+      "backend/app/routers/leaderboard.py",
+      "backend/app/routers/levels.py: repository search",
+      "frontend/src/lib/event-session.ts",
+      "frontend/src/pages/participant/* query intervals"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Add monotonic state_version/leaderboard_version values updated transactionally on relevant changes."
+      },
+      {
+        "step": 2,
+        "action": "Support ETag or since_version on state, leaderboard and repository search responses. Return 304 or a compact not-modified response when unchanged."
+      },
+      {
+        "step": 3,
+        "action": "Use DB time for leaderboard cutoffs and state transitions; do not use application host time for authoritative competition deadlines."
+      },
+      {
+        "step": 4,
+        "action": "Use polling only while an event is active/visible; apply jittered backoff while hidden/offline and refetch on visibility/online transitions."
+      },
+      {
+        "step": 5,
+        "action": "Add cursor pagination for search and test version changes, no-change responses, sleep/wake, network reconnect and synchronized client load."
+      }
+    ],
+    "acceptance_criteria": [
+      "Unchanged state/leaderboard does not send a full response on each poll.",
+      "Version increments atomically on state change.",
+      "Hidden/offline clients back off and reconcile correctly when visible/online."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

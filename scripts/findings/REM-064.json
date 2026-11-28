@@ -1,0 +1,65 @@
+{
+  "id": "REM-064",
+  "title": "Some public/operator requirements (FAQ, status page, accommodation form and certificates) are not fully delivered",
+  "severity": "LOW",
+  "status": "needs_owner_decision",
+  "priority": "P3",
+  "source_ids": [
+    "F-S03A-28"
+  ],
+  "original_titles": [
+    {
+      "id": "F-S03A-28",
+      "title": "Accommodation request field not reachable from the participant profile"
+    }
+  ],
+  "problem": "A dedicated FAQ/status page, accommodation request form, published rules PDF and some event support content are not present or not demonstrably complete. These are user-support and event operations requirements whose priority depends on the approved event checklist.",
+  "impact": "Participants may not know supported devices, outage procedure, accessibility accommodations or service incidents; coordinators may handle requests in ad hoc channels.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "scope_or_policy_check",
+    "evidence_paths": [
+      "frontend/src/App.tsx route table",
+      "frontend/src/pages/* public pages",
+      "docs/COMPETITION_RULES.md",
+      "docs/EVENT_OPERATIONS_PLAYBOOK.md"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Have the event owner identify which support pages/forms are mandatory before public launch."
+      },
+      {
+        "step": 2,
+        "action": "Publish FAQ topics for supported browsers/devices, account access, offline/network drop, uploads, deadlines, appeals and contact escalation."
+      },
+      {
+        "step": 3,
+        "action": "Add an accommodation request path with restricted access, minimal data collection and a documented review SLA."
+      },
+      {
+        "step": 4,
+        "action": "Publish a public status/incident page or identify a third-party page; do not claim availability monitoring exists until it is configured."
+      },
+      {
+        "step": 5,
+        "action": "Generate rules PDF from the same versioned content that the platform stores and participants accept."
+      }
+    ],
+    "acceptance_criteria": [
+      "Every required participant support item has an owner, URL, response process and retention policy.",
+      "Rules PDF and web rules share the same version/hash."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

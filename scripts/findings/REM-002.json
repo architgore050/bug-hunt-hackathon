@@ -1,0 +1,127 @@
+{
+  "id": "REM-002",
+  "title": "Participant API process still holds the ground-truth database credential and exposes admin/GT routes",
+  "severity": "CRITICAL",
+  "status": "confirmed",
+  "priority": "P0",
+  "source_ids": [
+    "F-ARA-01",
+    "F-ARB-03",
+    "F-B02A-02",
+    "F-B02A-14",
+    "F-ARA-04",
+    "F-ARB-16",
+    "F-CKLB-05",
+    "F-F01A-02",
+    "F-ARA-09",
+    "F-AD8A-11",
+    "F-S03A-24",
+    "F-S03B-18"
+  ],
+  "original_titles": [
+    {
+      "id": "F-ARA-01",
+      "title": "Single participant-facing API process holds the ground-truth DB credential"
+    },
+    {
+      "id": "F-ARB-03",
+      "title": "Participant-facing API process holds gt_admin credentials and serves gt endpoints"
+    },
+    {
+      "id": "F-B02A-02",
+      "title": "Participant and admin API merged into one process/port/DB role; no separate worker_evaluator/scheduler/runner_gateway roles"
+    },
+    {
+      "id": "F-B02A-14",
+      "title": "Ground-truth schema read/written directly from the API process (admin router uses gt_session)"
+    },
+    {
+      "id": "F-ARA-04",
+      "title": "DB role model deviates: no admin_api or read-only evaluator; gt_admin over-privileged"
+    },
+    {
+      "id": "F-ARB-16",
+      "title": "gt_admin granted write on gt and ALL on app schema (exceeds evaluator need)"
+    },
+    {
+      "id": "F-CKLB-05",
+      "title": "Admin and reviewer screens ship in the participant bundle"
+    },
+    {
+      "id": "F-F01A-02",
+      "title": "Participant bundle ships admin/review consoles; no app split and no CI leak grep"
+    },
+    {
+      "id": "F-ARA-09",
+      "title": "Participant SPA bundle statically includes admin and reviewer screens"
+    },
+    {
+      "id": "F-AD8A-11",
+      "title": "One SPA/origin serves both the participant and the admin console"
+    },
+    {
+      "id": "F-S03A-24",
+      "title": "Admin API served from the same host/app as the participant API (audience-only separation)"
+    },
+    {
+      "id": "F-S03B-18",
+      "title": "Admin API on same host/audience; step-up is password re-entry; no idempotency keys on admin mutations"
+    }
+  ],
+  "problem": "main.py includes participant, review and admin routers in one FastAPI process. db.py constructs gt_engine at import time; admin.py imports gt_session and writes to gt.gt_* using the same process. SQL role separation limits what app_api can query, but compromise of any route/process can potentially use the GT credential already available to that process. The frontend also statically imports review/admin modules into one SPA bundle.",
+  "impact": "A participant endpoint compromise has a path to the process environment and the GT database credential; the answer-key trust boundary is therefore process-level, not just SQL-role-level. Admin route names and console code are also shipped to participants, although server authorization remains authoritative.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/main.py: create_app router registration",
+      "backend/app/db.py: gt_engine and gt_session initialization",
+      "backend/app/routers/admin.py: gt_session imports and GT writes",
+      "frontend/src/App.tsx: static imports for review/admin pages",
+      "backend/app/config.py: DATABASE_URL_GT setting"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Create a participant API app that does not import admin.py, admin_levels.py, db.gt_engine or any module that can load DATABASE_URL_GT. Fail startup if DATABASE_URL_GT is present in the participant process environment."
+      },
+      {
+        "step": 2,
+        "action": "Create a separate admin/authoring API service behind a separate hostname and identity proxy. It owns staff/admin routes and a narrowly scoped authoring credential."
+      },
+      {
+        "step": 3,
+        "action": "Move evaluator GT reads into a worker process with a read-only GT DB role. Move GT writes into a distinct authoring service/role; do not grant the evaluator role write access to the GT schema."
+      },
+      {
+        "step": 4,
+        "action": "Revoke broad grants from gt_admin on app schema; grant only required SELECT/INSERT/UPDATE operations and sequences. Add migration tests that inspect actual grants."
+      },
+      {
+        "step": 5,
+        "action": "Build separate participant and admin/reviewer frontend entry points or lazy-load role bundles with CI artifact scanning. Confirm the participant artifact contains no admin route/component chunks or GT-authoring strings."
+      }
+    ],
+    "acceptance_criteria": [
+      "Participant API process has no GT URL, pool, router import or network route.",
+      "A runtime compromise test from participant API cannot connect to gt schema.",
+      "GT authoring and evaluator roles are least privilege and covered by real PostgreSQL tests.",
+      "Participant build artifact excludes admin/reviewer route modules."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [
+    "Separate process/service deployment",
+    "Cloudflare Access or equivalent admin identity proxy",
+    "DB-role migration"
+  ]
+}

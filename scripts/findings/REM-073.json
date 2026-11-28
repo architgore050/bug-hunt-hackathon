@@ -1,0 +1,65 @@
+{
+  "id": "REM-073",
+  "title": "Pre-event system check should validate the actual participant device/network requirements and block unsafe entry",
+  "severity": "MEDIUM",
+  "status": "needs_manual_revalidation",
+  "priority": "P2",
+  "source_ids": [
+    "F-S03B-08"
+  ],
+  "original_titles": [
+    {
+      "id": "F-S03B-08",
+      "title": "LB-02 system check covers only 4 items and never blocks entry"
+    }
+  ],
+  "problem": "The audit reports that the participant system check covers only a small number of items and does not block entry. Current route/component coverage needs a focused check against the actual event hardware/network policy.",
+  "impact": "Participants may reach a timed level with an unsupported browser, viewport, upload capability or venue network, causing avoidable support incidents.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "scope_or_policy_check",
+    "evidence_paths": [
+      "frontend/src/pages/participant/* dashboard/system check",
+      "frontend/src/App.tsx",
+      "docs/COMPETITION_RULES.md",
+      "docs/EVENT_OPERATIONS_PLAYBOOK.md"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Define mandatory checks: supported browser/version, viewport, pointer/keyboard, secure context, storage availability, upload/download connectivity and clock synchronization."
+      },
+      {
+        "step": 2,
+        "action": "Separate blocking checks from warnings and accessibility accommodations; do not block users solely for non-essential device characteristics."
+      },
+      {
+        "step": 3,
+        "action": "Run checks before event entry and again before a timed level if critical capability has changed."
+      },
+      {
+        "step": 4,
+        "action": "Provide a diagnostic summary that participants can copy to the help desk without exposing tokens or personal data."
+      },
+      {
+        "step": 5,
+        "action": "Test with supported/unsupported browser profiles and network restrictions from the actual venue."
+      }
+    ],
+    "acceptance_criteria": [
+      "Mandatory capability checks run before a timed level.",
+      "Failures are actionable and have an organizer override with audit trail."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

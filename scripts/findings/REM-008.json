@@ -1,0 +1,101 @@
+{
+  "id": "REM-008",
+  "title": "Ground-truth bug authoring is only partially implemented and lacks canonical-file/line/anchor validation",
+  "severity": "HIGH",
+  "status": "confirmed",
+  "priority": "P1",
+  "source_ids": [
+    "F-AD8B-06",
+    "F-AD8B-07",
+    "F-BSP-08",
+    "F-CKLA-19",
+    "F-QLT-11",
+    "F-AD8B-10",
+    "F-AD8B-11",
+    "F-AD8B-12"
+  ],
+  "original_titles": [
+    {
+      "id": "F-AD8B-06",
+      "title": "GT authoring validation gaps: no canonical-file existence check, no line-range bounds, anchor cap 8 vs spec 1-10, award-unit id not generated"
+    },
+    {
+      "id": "F-AD8B-07",
+      "title": "Authoring UX and safety checks absent: no ground-truth page, no matchability check, no overlap warning, no per-bug draft/publish, no answer-authority console"
+    },
+    {
+      "id": "F-BSP-08",
+      "title": "Ground-truth anchors never computed or validated on the production authoring path"
+    },
+    {
+      "id": "F-CKLA-19",
+      "title": "Pre-freeze validation report incomplete; no anchor hashes (CH-05a S2, GT-02a)"
+    },
+    {
+      "id": "F-QLT-11",
+      "title": "Seed silently continues when a GT anchor pattern misses; Option-A ingestion duplicates the helper"
+    },
+    {
+      "id": "F-AD8B-10",
+      "title": "Category and severity taxonomies deviate from spec enums"
+    },
+    {
+      "id": "F-AD8B-11",
+      "title": "Aliases are weighted keywords, not alternative locations {file, lines[]}"
+    },
+    {
+      "id": "F-AD8B-12",
+      "title": "Field-name deviations: canonical_file/canonical_patch_md/reference_explanation_md/award_unit_id vs implementation"
+    }
+  ],
+  "problem": "A ground-truth bug create route and simple create form exist, but BugIn accepts generic dicts for locations and aliases. The API inserts rows without proving that each file exists in the selected challenge, line ranges are valid for that file, anchors are stable, locations are within bounds or overlapping bugs are intentional. The UI has no comprehensive per-bug list/edit/revision/matchability validation workflow.",
+  "impact": "A typo in a canonical path or out-of-range location silently makes a planted defect unmatchable or creates unfair scoring. Missing/incorrect anchors make challenge revisions difficult to verify.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/routers/admin.py: BugIn and add_bug",
+      "backend/app/routers/admin.py: freeze_challenge",
+      "backend/app/models_gt.py and GT migrations",
+      "frontend/src/pages/admin/GroundTruthBugs.tsx"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Replace list[dict] locations/aliases with Pydantic models. Enforce non-empty canonical file path, start >= 1, end >= start, maximum span and maximum location count."
+      },
+      {
+        "step": 2,
+        "action": "Before insert, fetch the uploaded challenge file metadata/content from app.challenge_files for the same challenge_version_id. Reject missing paths and line_end greater than line_count."
+      },
+      {
+        "step": 3,
+        "action": "Generate and store a canonical anchor hash from normalized source lines around each location, including context lines before/after; recalculate during freeze and fail if any anchor no longer matches."
+      },
+      {
+        "step": 4,
+        "action": "Add overlap detection against existing GT locations. Return warnings for intentional overlap and require explicit override/reason rather than silently allowing it."
+      },
+      {
+        "step": 5,
+        "action": "Implement GT bug list/detail/edit as immutable revisions, include matchability simulation against sample reports, and make freeze require zero blocking validation errors."
+      }
+    ],
+    "acceptance_criteria": [
+      "Invalid path/range/anchor submissions fail before any GT row is written.",
+      "Freeze emits a signed/hashable validation report for every bug and flag.",
+      "A seeded corpus can replay and reproduce expected matches after a challenge revision."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

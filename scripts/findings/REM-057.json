@@ -1,0 +1,89 @@
+{
+  "id": "REM-057",
+  "title": "Database defense-in-depth and lock/quota invariants are incomplete",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-B02A-11",
+    "F-ARA-25",
+    "F-CKLA-31",
+    "F-B02A-22",
+    "F-BSP-13"
+  ],
+  "original_titles": [
+    {
+      "id": "F-B02A-11",
+      "title": "Reads do not use read-only sessions with a short statement timeout"
+    },
+    {
+      "id": "F-ARA-25",
+      "title": "No PostgreSQL RLS as defense in depth"
+    },
+    {
+      "id": "F-CKLA-31",
+      "title": "No PostgreSQL row-level security behind the app layer (PMX-04 S3)"
+    },
+    {
+      "id": "F-B02A-22",
+      "title": "Lock order deviates (progress pointer locked before stage row); caps via COUNT without quota-row FOR UPDATE"
+    },
+    {
+      "id": "F-BSP-13",
+      "title": "Root-cause group is not the award unit; one group can be paid multiple times"
+    }
+  ],
+  "problem": "App-level tenant checks are not yet implemented everywhere, PostgreSQL RLS is absent, read sessions lack explicit read-only/short statement timeouts, and some counters/locks rely on COUNT queries rather than a dedicated quota row. gt_admin appears to have broader schema grants than a pure evaluator needs. Some award uniqueness semantics differ from the spec.",
+  "impact": "A missed app authorization check or unexpected transaction can bypass intended isolation; lock contention and concurrent cap enforcement may behave differently under burst traffic.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/db.py",
+      "backend/app/deps.py",
+      "backend/app/config.py",
+      "backend/migrations/* role/grant statements",
+      "backend/app/routers/submissions.py",
+      "backend/app/routers/levels.py",
+      "backend/app/scoring.py"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "First finish tenant_id propagation and explicit event scope checks; RLS is defense in depth, not a substitute for application authorization."
+      },
+      {
+        "step": 2,
+        "action": "Add PostgreSQL RLS policies for tenant-scoped app tables and set an unforgeable transaction-local tenant context. Ensure worker/admin bypass roles are intentionally separate."
+      },
+      {
+        "step": 3,
+        "action": "Split DB roles by service: participant API, admin API, evaluator read-only GT, authoring GT write, worker app operations. Revoke unused schema/table rights."
+      },
+      {
+        "step": 4,
+        "action": "Use read-only transactions and statement_timeout for read-heavy endpoints; define lock ordering for event/stage/team/progress/ledger rows."
+      },
+      {
+        "step": 5,
+        "action": "Replace COUNT-only quotas with a locked quota/counter row or atomic conditional update; add high-concurrency cap/award tests."
+      }
+    ],
+    "acceptance_criteria": [
+      "RLS policies prevent cross-tenant reads even when a route query omits tenant predicate.",
+      "Least-privilege grants are tested in PostgreSQL.",
+      "Concurrent submissions cannot exceed caps or double-claim awards."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

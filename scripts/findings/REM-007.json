@@ -1,0 +1,111 @@
+{
+  "id": "REM-007",
+  "title": "Answer packs, candidate-bug escalation and mid-event correction/rescore protocol are absent",
+  "severity": "HIGH",
+  "status": "confirmed",
+  "priority": "P1",
+  "source_ids": [
+    "F-AD8B-01",
+    "F-AD8B-02",
+    "F-AD8B-03",
+    "F-AD8B-04",
+    "F-CKLA-07",
+    "F-CKLA-20",
+    "F-CKLB-19",
+    "F-BSP-07",
+    "F-AD8B-05"
+  ],
+  "original_titles": [
+    {
+      "id": "F-AD8B-01",
+      "title": "Answer-pack data model entirely missing (gt.answer_packs, gt.answer_pack_entries, gt.answer_pack_links; one_active_pack index; two-approver activation; pack immutability triggers)"
+    },
+    {
+      "id": "F-AD8B-02",
+      "title": "gt.candidate_bugs and the unplanned-bug queue (/challenges/:id/candidate-bugs) missing"
+    },
+    {
+      "id": "F-AD8B-03",
+      "title": "Mid-event correction protocol (patch E.3) not implemented: no impact-preview dry run, no two-approver approval, no announcement preview/leak guard, no timing guard, no activation, no rescore job (JOB-09), no correction ID"
+    },
+    {
+      "id": "F-AD8B-04",
+      "title": "unplanned_valid decision regenerates review items in a loop with no terminal state"
+    },
+    {
+      "id": "F-CKLA-07",
+      "title": "No post-freeze ground-truth correction path with impact preview (GT-05a S1, RS-01a)"
+    },
+    {
+      "id": "F-CKLA-20",
+      "title": "Unplanned-defect audit workflow missing (CH-06a S2)"
+    },
+    {
+      "id": "F-CKLB-19",
+      "title": "Unplanned-finding promotion and rescoring runs do not exist"
+    },
+    {
+      "id": "F-BSP-07",
+      "title": "Unplanned-bug promotion has no endpoint and no deterministic rescore"
+    },
+    {
+      "id": "F-AD8B-05",
+      "title": "Ledger origin discriminator (patch R-33) missing"
+    }
+  ],
+  "problem": "The GT schema has bugs, flags, revisions, aliases, locations and test cases but no answer_packs, candidate_bugs or correction entity. A reviewer can choose unplanned_valid, but it merely changes status to needs_review and enqueues create_review_item again. There is no candidate decision queue, impact preview, two-person correction activation or deterministic rescore job.",
+  "impact": "A valid but unkeyed defect cannot be safely promoted and scored mid-event. Corrections require manual SQL or manual score adjustments, with no reproducible affected-team preview or reversal chain.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/migrations: gt schema tables",
+      "backend/app/routers/review.py: unplanned_valid mapping",
+      "backend/app/evaluator.py: create_review_item and score ledger paths",
+      "backend/app/routers/admin.py: ground truth and manual adjustment routes"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Add gt.candidate_bugs with links to submission, flag/report locations, reviewer rationale, status, rejection reason, origin and audit timestamps. A reviewer decision should create one pending candidate, not re-enqueue itself indefinitely."
+      },
+      {
+        "step": 2,
+        "action": "Add immutable versioned answer packs with entries keyed by award_unit_id, source/origin and challenge version; enforce one active pack per event/challenge with a partial unique index."
+      },
+      {
+        "step": 3,
+        "action": "Build a correction draft workflow: proposed change, reason, affected submissions/teams, score deltas, leaderboard preview and announcement preview. The preview must be read-only."
+      },
+      {
+        "step": 4,
+        "action": "Require two distinct approvers plus step-up to activate a correction. Apply timing guard near the stage end with an explicit emergency override."
+      },
+      {
+        "step": 5,
+        "action": "Enqueue an idempotent rescore job under a correction_id. Append ledger reversals and replacement awards; never update/delete historical ledger rows. Publish a new leaderboard snapshot and audit every phase."
+      }
+    ],
+    "acceptance_criteria": [
+      "An unplanned_valid decision creates one candidate row and reaches a terminal state.",
+      "A correction preview has no side effects and returns deterministic affected-team/delta data.",
+      "Two different approvers are required to activate.",
+      "Rescore is idempotent and ledger history is append-only, with reversal links."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [
+    "Ledger reversal semantics",
+    "Evaluator deterministic replay",
+    "Two-person approval policy"
+  ]
+}

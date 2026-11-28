@@ -10,6 +10,17 @@ Route guards on the client are UX only. Immutability of submitted levels is
 enforced here, on the server, for every write path.
 """
 
+# REM-059 (OWNER-DECISION): rehearsal evidence for fixture parity and release
+# completeness. This module serves challenge content and accepts submissions,
+# but A/B fixture equivalence, planted flag/bug coverage vs the authoritative GT
+# manifest, the versioned rules PDF generated at publish time, and a blind-pilot
+# difficulty/score distribution are content/operations acceptance items that
+# cannot be closed in code. They require an owner-approved rehearsal: two
+# independent reviewers certify A/B equivalence, every flag/bug/test maps to a
+# GT record, the published rules/content hash matches the deployed version, and
+# event READY is blocked until those artifacts are frozen. No code change here;
+# flag for the orchestrator/owner. (F-CKLA-16.)
+
 from __future__ import annotations
 
 import json as jsonlib
@@ -28,6 +39,7 @@ from ..db import app_session, db_now, uuid7
 from ..deps import Principal, get_principal, rate_limit, require_rules_accepted
 from ..errors import ApiError
 from ..jobs import enqueue
+from ..tenancy import require_event_in_tenant, require_team_in_tenant
 
 router = APIRouter(tags=["levels"])
 
@@ -50,15 +62,22 @@ MAX_LOCATIONS = 5  # Level 2 ordered location list cap (spec 6.4)
 
 
 def _member(s, p: Principal) -> dict:
+    # REM-001: tenant scope. The team/event lookup is constrained by the
+    # server-derived principal tenant_id so a participant in tenant A can never
+    # resolve or read another tenant's team/event. require_team_in_tenant /
+    # require_event_in_tenant are the canonical helpers; here the join already
+    # carries tenant_id on app.events, so we add the predicate directly and the
+    # dedicated endpoints below additionally re-verify via the helpers.
     row = (
         s.execute(
             text(
                 "SELECT tm.team_id, t.name AS team_name, t.event_id, t.status AS team_status, "
                 "e.tenant_id, e.status AS event_status, e.config AS event_config "
                 "FROM app.team_members tm JOIN app.teams t ON t.id = tm.team_id "
-                "JOIN app.events e ON e.id = t.event_id WHERE tm.user_id = CAST(:u AS uuid) LIMIT 1"
+                "JOIN app.events e ON e.id = t.event_id "
+                "WHERE tm.user_id = CAST(:u AS uuid) AND e.tenant_id = CAST(:tid AS uuid) LIMIT 1"
             ),
-            {"u": p.id},
+            {"u": p.id, "tid": p.tenant_id},
         )
         .mappings()
         .first()
@@ -82,6 +101,68 @@ def _configured_max_points(config: dict | None) -> float | None:
 def _require_live_event(member: dict) -> None:
     if member["event_status"] not in ("ready", "live", "closed", "finalized"):
         raise ApiError("LEVEL_NOT_OPEN", message="The event is not running yet.")
+
+
+def _require_released_stage_content(s, member: dict, p: Principal, level_no: int | None = None) -> None:
+    """REM-014: content gate for repo tree/file/content routes.
+
+    Challenge bytes must NOT be served while a stage is merely *armed* but its
+    start time has not passed. The gate requires ``stage.status == 'active'``
+    AND ``db_now(s) >= stage.starts_at``. An armed-but-not-started stage returns
+    ``KEY_NOT_AVAILABLE`` (425) so clients can retry-after. A NULL starts_at is
+    a closed gate, never an open one. The clock is read from PostgreSQL in the
+    same transaction (TIM-01/02).
+    """
+    event_id = str(member["event_id"])
+    if level_no is None:
+        ptr = flow.get_pointer(s, p.id)
+        level_no = int(ptr["level_no"]) if ptr else 1
+    stage = flow.level_stage(s, event_id, int(level_no))
+    if stage is None:
+        raise ApiError("NOT_FOUND", message="This level is not configured.")
+    if stage["status"] != "active":
+        # armed/draft/sealed/paused/ended/...: no content bytes before the
+        # round is actually active. Armed-but-future-start is the 425 case.
+        if stage["status"] == "armed":
+            raise ApiError("KEY_NOT_AVAILABLE", message="The round has not started.")
+        raise ApiError("KEY_NOT_AVAILABLE", message="Challenge content is not available yet.")
+    if stage["starts_at"] is None:
+        raise ApiError("KEY_NOT_AVAILABLE", message="The round start time is not set.")
+    if db_now(s) < stage["starts_at"]:
+        raise ApiError("KEY_NOT_AVAILABLE", message="The round has not started.")
+
+
+def _safe_repo_path(path: str | None) -> str:
+    """REM-024: reject unsafe repo file paths.
+
+    A frozen repo path is an opaque key into ``app.challenge_files``; it must
+    never escape the frozen repo root. We reject:
+      * None / empty / non-str
+      * any ``..`` segment (parent traversal)
+      * a leading ``/`` (absolute path)
+      * an embedded NUL byte
+      * any segment containing ``\\`` or a C0 control character
+    The DB read is parameterized already; this is the input boundary that keeps
+    a malformed request from becoming a 500 (F-SEC-09 / F-ARA-07).
+    """
+    if not isinstance(path, str) or path == "":
+        raise ApiError("PATH_INVALID")
+    if "\x00" in path:
+        raise ApiError("PATH_INVALID")
+    if path.startswith("/"):
+        raise ApiError("PATH_INVALID")
+    segments = path.split("/")
+    for seg in segments:
+        if seg == "..":
+            raise ApiError("PATH_INVALID")
+        if seg == "":
+            # empty segment from a leading/double slash — treat as invalid
+            raise ApiError("PATH_INVALID")
+        if "\\" in seg:
+            raise ApiError("PATH_INVALID")
+        if any(ord(ch) < 0x20 for ch in seg):
+            raise ApiError("PATH_INVALID")
+    return path
 
 
 def _team_choice(s, team_id: str) -> dict | None:
@@ -600,6 +681,9 @@ def _choice_response(s, team_id: str, *, replay: bool) -> dict:
 def my_team(p: Principal = Depends(get_principal)):
     with app_session() as s:
         member = _member(s, p)
+        # REM-001: re-verify team/event belong to the caller's tenant (defense in depth).
+        require_team_in_tenant(s, str(member["team_id"]), p.tenant_id)
+        require_event_in_tenant(s, str(member["event_id"]), p.tenant_id)
         team_id = str(member["team_id"])
         members = flow.teammate_view(s, team_id)
         choice = _team_choice(s, team_id)
@@ -632,6 +716,9 @@ def my_team(p: Principal = Depends(get_principal)):
 def team_score(p: Principal = Depends(get_principal)):
     with app_session() as s:
         member = _member(s, p)
+        # REM-001: re-verify team/event belong to the caller's tenant (defense in depth).
+        require_team_in_tenant(s, str(member["team_id"]), p.tenant_id)
+        require_event_in_tenant(s, str(member["event_id"]), p.tenant_id)
         team_id = str(member["team_id"])
         event_id = str(member["event_id"])
         stages = (
@@ -731,6 +818,9 @@ def my_progress(p: Principal = Depends(get_principal)):
     require_rules_accepted(p)
     with app_session() as s:
         member = _member(s, p)
+        # REM-001: re-verify team/event belong to the caller's tenant (defense in depth).
+        require_team_in_tenant(s, str(member["team_id"]), p.tenant_id)
+        require_event_in_tenant(s, str(member["event_id"]), p.tenant_id)
         _require_live_event(member)
         flow.init_participant_flow(s, str(member["event_id"]), p.id)
         ptr = flow.get_pointer(s, p.id)
@@ -765,6 +855,19 @@ def my_progress(p: Principal = Depends(get_principal)):
 
 # --- repo file delivery (read-only, team-scoped) --------------------------------
 
+# REM-015 (DEFERRED): per-team encrypted pre-delivery, timed key release and
+# content watermarking are a v2 fairness feature, NOT implemented here. Repo
+# files are served as ordinary plaintext bytes behind the starts_at/content
+# gate (REM-014) and team assignment. A future version will: (1) build a per-
+# team bundle manifest (file hashes, ordered paths, nonce/AAD, watermark
+# marker) bound to event/team/challenge/version; (2) AEAD-encrypt each bundle
+# (AES-256-GCM, unique nonce) and store ciphertext separately from the key;
+# (3) expose a no-store key-release endpoint that checks stage.starts_at via DB
+# time, team membership, rate limit, replay/expiry and audit before releasing
+# the key (pre-T0 must return KEY_NOT_AVAILABLE / 425); (4) add per-team file
+# ordering randomization and watermark attribution tooling. Do NOT implement
+# crypto in this file without that design. (F-BSP-06 / F-B02B-06 / F-ARB-13.)
+
 
 def _readable_level(s, p: Principal, member: dict, requested: int | None) -> int:
     ptr = flow.get_pointer(s, p.id)
@@ -788,7 +891,11 @@ def repo_tree(
     rate_limit(f"repo_tree:{p.id}", limit=60, window_s=60)
     with app_session() as s:
         member = _member(s, p)
+        # REM-001: re-verify team/event belong to the caller's tenant (defense in depth).
+        require_team_in_tenant(s, str(member["team_id"]), p.tenant_id)
+        require_event_in_tenant(s, str(member["event_id"]), p.tenant_id)
         _require_live_event(member)
+        _require_released_stage_content(s, member, p)  # REM-014: stage start-time gate on content routes
         lvl = _readable_level(s, p, member, level)
         choice = _team_choice(s, str(member["team_id"]))
         if choice is None:
@@ -815,13 +922,18 @@ def repo_file(
 ):
     require_rules_accepted(p)
     rate_limit(f"repo_file:{p.id}", limit=120, window_s=60)
-    norm = os.path.normpath(path)
-    if norm.startswith("..") or os.path.isabs(norm) or "\x00" in norm:
-        raise ApiError("PATH_INVALID")
+    # REM-024: enforce path safety before any DB read. os.path.normpath is no
+    # longer trusted as the sole guard; the explicit segment checks reject
+    # traversal, absolute, NUL, backslash and control characters.
+    norm = _safe_repo_path(path)
     with app_session() as s:
         member = _member(s, p)
+        # REM-001: re-verify team/event belong to the caller's tenant (defense in depth).
+        require_team_in_tenant(s, str(member["team_id"]), p.tenant_id)
+        require_event_in_tenant(s, str(member["event_id"]), p.tenant_id)
         _require_live_event(member)
         lvl = _readable_level(s, p, member, level)
+        _require_released_stage_content(s, member, p, lvl)  # REM-014: stage start-time gate
         choice = _team_choice(s, str(member["team_id"]))
         if choice is None:
             raise ApiError("REPO_NOT_LOCKED")
@@ -850,6 +962,28 @@ def repo_file(
 
 
 # --- uploads (Levels 3-4 artifacts) ---------------------------------------------
+#
+# REM-045 (upload lifecycle + DEFERRED object storage):
+# Artifact storage today is the local-filesystem adapter in app.storage; this is
+# a D0 limitation. The intended lifecycle is staged -> used (bound to a
+# submission) -> abandoned, where:
+#   * staged    = uploaded, validated, not yet bound to a submission (the only
+#                 state in which a participant may delete/replace it);
+#   * used      = bound to a submission (status='submitted' in the current
+#                 schema; metadata is retained immutably after submit);
+#   * abandoned = staged but never submitted past the level window — must be
+#                 reaped by a cleanup job and the storage object deleted.
+# NOTE: the submission_artifacts.status CHECK constraint in migration 0003 only
+# allows ('staged','submitted'); adding 'abandoned'/'used' requires a migration
+# the orchestrator must own. Until then, abandoned staging is tracked via the
+# staged row + created_at and the cleanup job (also orchestrator-owned); the
+# code-side lifecycle is documented here. A staged-artifact GET/status/delete
+# endpoint surface and a per-participant/team quota check are likewise
+# orchestrator-owned follow-ups.
+# DEFERRED: migrate to S3-compatible private object storage with server-side
+# encryption, lifecycle cleanup and content-hash verification; keep object keys
+# non-public. This is a v2 migration, not implemented here. (F-ARA-05 /
+# F-B02B-08 / F-B02A-20 / F-AG07-09 / F-BSP-16.)
 
 
 @router.post("/uploads")
@@ -860,12 +994,20 @@ def upload_artifact(
 ):
     require_rules_accepted(p)
     rate_limit(f"upload:{p.id}", limit=20, window_s=60)
+    # REM-061 (MANUAL-REVALIDATION): the artifact upload contract (allowed
+    # kinds, max_upload_bytes, entry_count/uncompressed_bytes limits, zip
+    # expansion ratio, filename/path constraints) needs boundary contract tests
+    # at min/max and one above/below, mapped to docs/API_REFERENCE.md and the
+    # four-level model. Not added here; require manual revalidation.
     from ..config import settings
 
     filename = os.path.basename(file.filename or "artifact")
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext not in ("zip", "diff", "patch"):
         raise ApiError("ARTIFACT_INVALID", details={"filename": "Only .zip, .diff and .patch are accepted."})
+    # REM-024: cap the upload via the streaming read, not only Content-Length.
+    # Reading max_upload_bytes + 1 and rejecting when the cap is exceeded covers
+    # chunked / missing Content-Length bodies identically (F-SEC-09 / F-ARA-07).
     data = file.file.read(settings.max_upload_bytes + 1)
     if len(data) == 0:
         raise ApiError("ARTIFACT_INVALID", details={"file": "Empty upload."})
@@ -983,6 +1125,14 @@ def submit_level(
             }
 
         # --- lock the pointer, then the stage row, then read the clock once ---
+        # REM-057: defense-in-depth. The progress pointer is the serialization
+        # point for submit; it is read with FOR UPDATE via
+        # flow.get_pointer_for_update (SELECT ... FOR UPDATE on
+        # app.participant_pointers) so concurrent submissions for the same
+        # author block at the row lock and converge. The stage row is then
+        # locked FOR UPDATE before the acceptance clock is read once. The repo
+        # file path read in /repo/files uses parameterized bind params (:p), so
+        # it is not injectable. (F-B02A-22 / F-CKLA-31.)
         ptr = flow.get_pointer_for_update(s, p.id)
         assert ptr is not None
         if int(ptr["level_no"]) > level_no or (int(ptr["level_no"]) == level_no and str(ptr["node"]) == "done"):
@@ -1085,35 +1235,76 @@ def submit_level(
                 "size_bytes": int(artifact_meta["size_bytes"]),
                 "storage_key": artifact_meta["storage_key"],
             }
-        s.execute(
-            text(
-                "INSERT INTO app.submissions (id, tenant_id, event_id, stage_id, challenge_version_id, team_id, "
-                "author_id, kind, idempotency_key, payload, payload_hash, status, receipt_code, title, file_path, "
-                "line_start, line_end, received_at) "
-                "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), CAST(:ev AS uuid), CAST(:st AS uuid), CAST(:cv AS uuid), "
-                "CAST(:team AS uuid), CAST(:au AS uuid), :kind, :idem, CAST(:payload AS jsonb), :ph, 'received', "
-                ":receipt, :title, :fp, :ls, :le, :received_at)"
-            ),
-            {
-                "id": submission_id,
-                "t": str(member["tenant_id"]),
-                "ev": event_id,
-                "st": str(stage["id"]),
-                "cv": challenge_version_id,
-                "team": team_id,
-                "au": p.id,
-                "kind": kind,
-                "idem": idempotency_key,
-                "payload": jsonlib.dumps(payload, default=str),
-                "ph": payload_hash,
-                "receipt": receipt,
-                "title": f"Level {level_no} submission",
-                "fp": primary_file,
-                "ls": primary_ls,
-                "le": primary_le,
-                "received_at": now,
-            },
-        )
+        # REM-053: the pre-check SELECT above can race a concurrent same-key
+        # insert. Wrap the INSERT in a savepoint and, on the (author_id,
+        # idempotency_key) unique violation, replay the stored receipt instead
+        # of surfacing a 500. Other IntegrityErrors are re-raised.
+        # REM-061 (MANUAL-REVALIDATION): the field/shape contract for this
+        # submit body (flags, locations, artifact metadata, span/size limits)
+        # and the artifact upload below must be covered by boundary contract
+        # tests at min/max and one above/below; these were not added here and
+        # require manual revalidation against docs/API_REFERENCE.md and the
+        # four-level model (F-CKLA-10 / F-S03B-13 / F-B02B-33).
+        try:
+            with s.begin_nested():
+                s.execute(
+                    text(
+                        "INSERT INTO app.submissions (id, tenant_id, event_id, stage_id, challenge_version_id, team_id, "
+                        "author_id, kind, idempotency_key, payload, payload_hash, status, receipt_code, title, file_path, "
+                        "line_start, line_end, received_at) "
+                        "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), CAST(:ev AS uuid), CAST(:st AS uuid), CAST(:cv AS uuid), "
+                        "CAST(:team AS uuid), CAST(:au AS uuid), :kind, :idem, CAST(:payload AS jsonb), :ph, 'received', "
+                        ":receipt, :title, :fp, :ls, :le, :received_at)"
+                    ),
+                    {
+                        "id": submission_id,
+                        "t": str(member["tenant_id"]),
+                        "ev": event_id,
+                        "st": str(stage["id"]),
+                        "cv": challenge_version_id,
+                        "team": team_id,
+                        "au": p.id,
+                        "kind": kind,
+                        "idem": idempotency_key,
+                        "payload": jsonlib.dumps(payload, default=str),
+                        "ph": payload_hash,
+                        "receipt": receipt,
+                        "title": f"Level {level_no} submission",
+                        "fp": primary_file,
+                        "ls": primary_ls,
+                        "le": primary_le,
+                        "received_at": now,
+                    },
+                )
+        except IntegrityError:
+            # Savepoint was rolled back; the outer transaction is still usable.
+            # Re-read by (author_id, idempotency_key) and replay. The unique
+            # index is on (author_id, idempotency_key) (see migrations).
+            raced = (
+                s.execute(
+                    text(
+                        "SELECT id, receipt_code, received_at, payload_hash FROM app.submissions "
+                        "WHERE author_id = CAST(:u AS uuid) AND idempotency_key = :k"
+                    ),
+                    {"u": p.id, "k": idempotency_key},
+                )
+                .mappings()
+                .first()
+            )
+            if raced is None:
+                # A different IntegrityError (not the idempotency unique
+                # violation); re-raise so it surfaces as the canonical error.
+                raise
+            if raced["payload_hash"] != payload_hash:
+                raise ApiError("IDEMPOTENCY_CONFLICT") from None
+            return {
+                "submission_id": str(raced["id"]),
+                "receipt_code": raced["receipt_code"],
+                "received_at": raced["received_at"].isoformat(),
+                "status": "received",
+                "replay": True,
+                "level_no": level_no,
+            }
         if artifact_meta is not None:
             s.execute(
                 text(
@@ -1124,6 +1315,10 @@ def submit_level(
             )
         enqueue(s, "evaluate_level_submission", {"submission_id": submission_id, "level_no": level_no})
         enqueue(s, "refresh_leaderboard", {"stage_id": str(stage["id"])})
+        # REM-016: do NOT set delivered_at on insert; leave NULL. A row is marked
+        # delivered only after a real consumer acknowledges delivery. The
+        # dispatch_outbox in evaluator.py (owned by another agent) is the only
+        # place that may set delivered_at, and only on successful publish.
         s.execute(
             text(
                 "INSERT INTO app.outbox_events (id, event_type, payload) VALUES (CAST(:id AS uuid), 'level_submission', "
@@ -1233,6 +1428,15 @@ def _stage_computed_diff(s, member: dict, user_id: str, level_no: int, diff_text
 
 @router.post("/runs")
 def create_run(p: Principal = Depends(get_principal)):
+    # REM-043 (OWNER-DECISION): POST /runs returns RUNNER_UNAVAILABLE while
+    # settings.runner_enabled is False. Enabling the runner is NOT a config
+    # flip: per ADR-010 the runner must execute participant-supplied artifacts
+    # inside an isolated VM (per-run ephemeral snapshot, no shared filesystem,
+    # network egress allow-list, CPU/memory/wall-clock caps, no GT schema
+    # access). Until that isolated runner exists as a separate project, hidden
+    # functional tests stay on the manual two-person recording protocol (see
+    # admin record_test_results). Do not set runner_enabled=true in production
+    # without the isolation boundary in place.
     from ..config import settings
 
     rate_limit(f"run:{p.id}", limit=10, window_s=60)

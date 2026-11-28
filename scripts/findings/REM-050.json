@@ -1,0 +1,120 @@
+{
+  "id": "REM-050",
+  "title": "Evaluator/review code is duplicated and the domain/service boundary is weak",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-QLT-02",
+    "F-QLT-04",
+    "F-QLT-05",
+    "F-QLT-10",
+    "F-QLT-12",
+    "F-QLT-18",
+    "F-QLT-23",
+    "F-QLT-24",
+    "F-B02A-13",
+    "F-QLT-25",
+    "F-BSP-18"
+  ],
+  "original_titles": [
+    {
+      "id": "F-QLT-02",
+      "title": "God routers: business logic, validation and raw SQL all inline; no service layer"
+    },
+    {
+      "id": "F-QLT-04",
+      "title": "Worker/domain module imports private helpers from a router (layering inversion)"
+    },
+    {
+      "id": "F-QLT-05",
+      "title": "__import__() antipattern in 12 places"
+    },
+    {
+      "id": "F-QLT-10",
+      "title": "Nine admin endpoints take untyped body: dict with hand-rolled validation"
+    },
+    {
+      "id": "F-QLT-12",
+      "title": "ORM model layer (~740 lines) is dead code duplicating the SQL schema"
+    },
+    {
+      "id": "F-QLT-18",
+      "title": "Frontend hand-copies the backend state machines"
+    },
+    {
+      "id": "F-QLT-23",
+      "title": "Function-level inline imports scattered across the backend"
+    },
+    {
+      "id": "F-QLT-24",
+      "title": "Backend runtime dependencies are lower-bound only with no lockfile"
+    },
+    {
+      "id": "F-B02A-13",
+      "title": "Tooling and structure deviations: no mypy --strict, single uvicorn (no Gunicorn workers), sync psycopg (no asyncpg), no lockfile, no boundaries CI"
+    },
+    {
+      "id": "F-QLT-25",
+      "title": "Challenge fixtures: intentional parallel implementations with manual parity maintenance"
+    },
+    {
+      "id": "F-BSP-18",
+      "title": "Backend dependencies not hash-pinned; no lockfile or scanning evidence"
+    }
+  ],
+  "problem": "Core business logic, raw SQL and validation remain concentrated in very large routers. Evaluator and evaluator_level duplicate award/review flow; matching.decide and decide_multi share duplicated scoring logic; some worker/domain modules import private router helpers. There is no strict backend type-check or dependency lockfile in the original audit scope.",
+  "impact": "Changes to high-churn modules have large regression/merge-conflict risk, policy is difficult to unit test without HTTP+DB, and dependency resolution can drift between builds.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/routers/admin.py",
+      "backend/app/routers/levels.py",
+      "backend/app/evaluator.py",
+      "backend/app/evaluator_level.py",
+      "backend/app/matching.py",
+      "backend/requirements.txt",
+      "frontend/tsconfig*.json"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Extract pure domain services for stage lifecycle, team/participant lifecycle, GT authoring, scoring/review application, rescore and exports. Routers should validate/authorize, call services and serialize responses."
+      },
+      {
+        "step": 2,
+        "action": "Create one evaluator application service that handles single-round and four-level submissions through strategy/config adapters; eliminate duplicated award/review code."
+      },
+      {
+        "step": 3,
+        "action": "Create one matcher core with explicit single/multi-location feature extraction and shared thresholds. Pin the matcher version in each evaluation record."
+      },
+      {
+        "step": 4,
+        "action": "Replace private router-helper imports with service/module dependencies and replace dynamic __import__ patterns with normal imports."
+      },
+      {
+        "step": 5,
+        "action": "Add strict typing in controlled increments (mypy/pyright or pyright-like checker) and generate a fully pinned dependency lockfile with vulnerability scanning."
+      }
+    ],
+    "acceptance_criteria": [
+      "Routers contain no scoring/ledger business logic.",
+      "Single and four-level evaluators share deterministic core.",
+      "Type checking and dependency audit run in CI.",
+      "A service-layer test can exercise domain rules without FastAPI request objects."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

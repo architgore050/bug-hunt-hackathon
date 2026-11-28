@@ -1,0 +1,85 @@
+{
+  "id": "REM-017",
+  "title": "Audit hash-chain writes can fork under concurrent writes and verification does not cover all scopes",
+  "severity": "HIGH",
+  "status": "confirmed",
+  "priority": "P1",
+  "source_ids": [
+    "F-CKLB-01",
+    "F-ARB-06",
+    "F-QLT-20",
+    "F-S03B-17",
+    "F-AG07-22"
+  ],
+  "original_titles": [
+    {
+      "id": "F-CKLB-01",
+      "title": "Audit hash chain can fork under concurrent same-scope writes"
+    },
+    {
+      "id": "F-ARB-06",
+      "title": "Audit hash-chain head not serialized per event scope"
+    },
+    {
+      "id": "F-QLT-20",
+      "title": "Concurrent audit writes can fork the hash chain, making audit_verify report a false break"
+    },
+    {
+      "id": "F-S03B-17",
+      "title": "Audit chain verification covers only global scope of the app DB; GT audit rows land in the separate GT database"
+    },
+    {
+      "id": "F-AG07-22",
+      "title": "Audit-chain verification is an admin endpoint, not a CI-enforced tool"
+    }
+  ],
+  "problem": "audit_write reads the latest hash for event_scope without locking a per-scope chain head. Concurrent transactions can read the same previous hash and append two entries. The verify endpoint invokes audit_verify with the default global scope, while writes use event, challenge, review and scoring scopes.",
+  "impact": "The append-only hash chain can become inconsistent under ordinary concurrent traffic, and a successful global verification can miss breaks in other scopes.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/audit.py: audit_write and audit_verify",
+      "backend/app/routers/admin.py: audit_chain_verify",
+      "backend/app/routers/admin.py and review.py: event-scoped writes"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Add audit.chain_heads with one row per event_scope and a foreign key/last_seq/last_hash. Ensure the head row is created atomically if absent."
+      },
+      {
+        "step": 2,
+        "action": "Inside the caller’s transaction, lock that scope’s head row FOR UPDATE (or use pg_advisory_xact_lock on a stable scope hash), read last_hash, insert entry and update head in the same transaction."
+      },
+      {
+        "step": 3,
+        "action": "Make sequence ordering scope-local and document how global, event, challenge, review and GT scopes map to verifiers."
+      },
+      {
+        "step": 4,
+        "action": "Change the verification endpoint to enumerate all scopes and return per-scope status plus a combined integrity result. Do not silently default to global only."
+      },
+      {
+        "step": 5,
+        "action": "Add a concurrent writer test with dozens of simultaneous inserts in one scope and a second test verifying all scopes after mixed writes."
+      }
+    ],
+    "acceptance_criteria": [
+      "Concurrent writes create one linear hash chain per scope.",
+      "Verification checks all active scopes and reports first break/scope.",
+      "A failed verification blocks finalization."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

@@ -1,0 +1,133 @@
+{
+  "id": "REM-031",
+  "title": "The custom editable workspace is not a full IDE and lacks several keyboard, navigation and accessibility affordances",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-ARA-14",
+    "F-CKLB-12",
+    "F-F01A-05",
+    "F-F01A-18",
+    "F-CKLA-12",
+    "F-S03A-12",
+    "F-S03A-14",
+    "F-F01B-19",
+    "F-F01B-06",
+    "F-F01B-04",
+    "F-F01B-05",
+    "F-S03A-11",
+    "F-S03A-13",
+    "F-F01A-19"
+  ],
+  "original_titles": [
+    {
+      "id": "F-ARA-14",
+      "title": "Bespoke read-only viewer instead of the specified Monaco editor"
+    },
+    {
+      "id": "F-CKLB-12",
+      "title": "Monaco editor entirely absent"
+    },
+    {
+      "id": "F-F01A-05",
+      "title": "Monaco editor absent; custom read-only line viewer instead"
+    },
+    {
+      "id": "F-F01A-18",
+      "title": "Workspace shortcut table and shortcut help dialog unimplemented"
+    },
+    {
+      "id": "F-CKLA-12",
+      "title": "Keyboard shortcut set and command palette missing (KBD-01 S2, KBD-03)"
+    },
+    {
+      "id": "F-S03A-12",
+      "title": "Workspace not resizable multi-pane; no min-viewport guidance, <1024 px notice, or unsupported-browser blocking notice"
+    },
+    {
+      "id": "F-S03A-14",
+      "title": "Keyboard shortcuts absent (no palette, quick-open, cross-file search, panel toggles, Alt+N, Ctrl+Enter, Alt+1-9, F8, ? help)"
+    },
+    {
+      "id": "F-F01B-19",
+      "title": "Lists and panes not virtualised or resizable; file tree lacks arrow-key navigation (C-14, C-15, C-41)"
+    },
+    {
+      "id": "F-F01B-06",
+      "title": "Foundation component gaps: Button loading/aria-busy and 40px target, counter live regions, tab keyboard nav, text-only StatusChip, markdown subset"
+    },
+    {
+      "id": "F-F01B-04",
+      "title": "Design token system diverges from 3.1/3.2 (names, no light theme, no override, contrast edge cases)"
+    },
+    {
+      "id": "F-F01B-05",
+      "title": "Motion tokens incomplete: single 120ms speed, linear easing, no 200/300ms or easing tokens"
+    },
+    {
+      "id": "F-S03A-11",
+      "title": "Dark-only theme: no light theme, selector, persistence, or system-preference detection"
+    },
+    {
+      "id": "F-S03A-13",
+      "title": "Most shared components missing: Toast, Dialog/ConfirmDialog, Select/Combobox, DataTable, Tabs/Tree/SplitPane, CodeView (Monaco), Skeleton, ConnectionIndicator"
+    },
+    {
+      "id": "F-F01A-19",
+      "title": "No unsupported-device gate (P-24) for execution pages (width>=1024 + pointer)"
+    }
+  ],
+  "problem": "The four-level workspace now supports editable L3/L4 content, tabs and upload/diff flow, but EditableEditor is a textarea with a line-number gutter, not Monaco. The audit’s complete IDE feature set (resizable panes, keyboard tree navigation, command palette, broader shortcuts, responsive execution gate, light theme and full design tokens) remains incomplete.",
+  "impact": "Participants may struggle with larger source trees, keyboard-only operation, small devices and code editing at event speed. Do not describe the current implementation as a full IDE.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "frontend/src/components/workspace/EditableEditor.tsx",
+      "frontend/src/pages/participant/LevelWorkspace.tsx",
+      "frontend/src/components/workspace/CodeViewer.tsx",
+      "frontend/src/App.tsx"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Prioritize core event-day workflows before adding visual complexity: multi-file tabs, keyboard navigation in the tree, quick-open/search, find-next, reported-line markers and explicit pane resizing."
+      },
+      {
+        "step": 2,
+        "action": "Evaluate Monaco versus a lighter editor. If Monaco is adopted, lazy-load it only for L3/L4, disable remote worker loading and test bundle size/memory on venue hardware."
+      },
+      {
+        "step": 3,
+        "action": "Add keyboard shortcut help and ensure every shortcut has an accessible button/menu alternative. Avoid intercepting browser/OS shortcuts without consent."
+      },
+      {
+        "step": 4,
+        "action": "Add responsive viewport/system checks for supported browsers and minimum width; show a blocking compatibility warning only where the workspace genuinely cannot be used."
+      },
+      {
+        "step": 5,
+        "action": "Run keyboard-only, screen-reader, contrast and low-resolution testing; add aria-live announcements for save, upload, submit and countdown changes."
+      }
+    ],
+    "acceptance_criteria": [
+      "L3/L4 can edit realistic-sized files with keyboard-only navigation.",
+      "All critical actions remain available without keyboard shortcuts.",
+      "Supported viewport/browser constraints are tested and documented.",
+      "Bundle/performance impact is measured before loading Monaco."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [],
+  "residual_risk_or_scope_note": "Monaco absence is a real specification deviation, but the prior “read-only viewer/no editable source submission” description is stale after the four-level UI merged."
+}

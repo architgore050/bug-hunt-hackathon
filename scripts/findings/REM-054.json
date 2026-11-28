@@ -1,0 +1,190 @@
+{
+  "id": "REM-054",
+  "title": "Frontend operational states, feedback components and accessibility affordances remain incomplete",
+  "severity": "MEDIUM",
+  "status": "partially_fixed",
+  "priority": "P3",
+  "source_ids": [
+    "F-AG07-18",
+    "F-F01A-14",
+    "F-F01B-07",
+    "F-F01B-08",
+    "F-F01B-09",
+    "F-F01B-11",
+    "F-F01B-15",
+    "F-S03A-16",
+    "F-S03A-17",
+    "F-S03A-20",
+    "F-S03A-21",
+    "F-S03A-25",
+    "F-S03A-26",
+    "F-CKLA-25",
+    "F-CKLA-26",
+    "F-CKLA-27",
+    "F-CKLA-28",
+    "F-CKLA-29",
+    "F-CKLA-13",
+    "F-S03B-07",
+    "F-F01B-03",
+    "F-F01A-22",
+    "F-F01A-23",
+    "F-F01B-21",
+    "F-F01B-22"
+  ],
+  "original_titles": [
+    {
+      "id": "F-AG07-18",
+      "title": "Admin FE hard rules unmet: prod banner, sensitive border, refresh cadence, pagination"
+    },
+    {
+      "id": "F-F01A-14",
+      "title": "No toast, no blocking modal, escalation at 10/2 min instead of 5/3/1, dead OfflineBanner, no catalog keys"
+    },
+    {
+      "id": "F-F01B-07",
+      "title": "No Modal, ConfirmModal or Toast components (C-07/C-08/C-09)"
+    },
+    {
+      "id": "F-F01B-08",
+      "title": "Event components missing/partial: no ProgressBar, no LevelCard/GateButton, countdown lacks onZero refetch and uses 2-min warning"
+    },
+    {
+      "id": "F-F01B-09",
+      "title": "No ConnectionIndicator or sync StatusChip in workspace header (C-28/C-29)"
+    },
+    {
+      "id": "F-F01B-11",
+      "title": "Participant page set incomplete: consent gate, activation/reset, dashboard elements, event details, team, system check, announcements, support, system pages"
+    },
+    {
+      "id": "F-F01B-15",
+      "title": "No copy catalog: all user-facing strings hard-coded inline"
+    },
+    {
+      "id": "F-S03A-16",
+      "title": "UI strings not externalized to message catalogs"
+    },
+    {
+      "id": "F-S03A-17",
+      "title": "No degraded/polling-fallback or kill-switch banner; polling is the only mode"
+    },
+    {
+      "id": "F-S03A-20",
+      "title": "No dedicated FAQ page/route; required topics (supported browsers, connection drop, workspace usage) missing"
+    },
+    {
+      "id": "F-S03A-21",
+      "title": "Status page missing entirely (no external host, component status, incidents, or maintenance)"
+    },
+    {
+      "id": "F-S03A-25",
+      "title": "Design token names deviate from spec set; fonts are static weights, not a variable font"
+    },
+    {
+      "id": "F-S03A-26",
+      "title": "Component-level deviations: Button lacks secondary/loading; ConfirmButton not typed-phrase; Countdown lacks role=timer and 10/5/1-min thresholds; StatusChip has no icon"
+    },
+    {
+      "id": "F-CKLA-25",
+      "title": "Workspace and leaderboard polish gaps (grouped S3)"
+    },
+    {
+      "id": "F-CKLA-26",
+      "title": "Countdown lacks role=timer and 5/1-minute announcements (CMP-09)"
+    },
+    {
+      "id": "F-CKLA-27",
+      "title": "Client rewrites catalog error wording (ERC-03 S2-part)"
+    },
+    {
+      "id": "F-CKLA-28",
+      "title": "Deadline UX lacks 'Time is up' banner and final summary (WS-11a S1-part)"
+    },
+    {
+      "id": "F-CKLA-29",
+      "title": "Login screen lacks show/hide toggle, routed account states, Turnstile (ATH-01b S3)"
+    },
+    {
+      "id": "F-CKLA-13",
+      "title": "Connection states and degraded banner not wired (CMP-14 S2, STP-04, WS-01d)"
+    },
+    {
+      "id": "F-S03B-07",
+      "title": "LB-03 workspace tour missing"
+    },
+    {
+      "id": "F-F01B-03",
+      "title": "Section 7 testing program essentially absent (no Vitest/RTL/Playwright/axe/MSW)"
+    },
+    {
+      "id": "F-F01A-22",
+      "title": "No copy catalog; all user-facing strings hardcoded inline"
+    },
+    {
+      "id": "F-F01A-23",
+      "title": "Error envelope lacks a 'Copy details' action"
+    },
+    {
+      "id": "F-F01B-21",
+      "title": "Leaderboard does not pin own team row; score card has no animation or live-region announce (C-24, C-25)"
+    },
+    {
+      "id": "F-F01B-22",
+      "title": "EXTRA/deviations worth recording: localStorage challenge-id memory, self-hosted fonts, inline confirm/receipt substitutions"
+    }
+  ],
+  "problem": "Some originally missing surfaces now exist: ProgressBar, LevelCard/Gate/GateButton, ConfirmModal, UploadDialog and 5/3/1-minute warnings. Remaining gaps include a reusable Toast/copy catalog, connection/degraded state, status/FAQ pages, some component keyboard/live-region details, event-page document titles/focus behavior, own-row leaderboard emphasis and a full production/sensitive-data admin banner.",
+  "impact": "Users can complete the core four-level flow, but network degradation, errors, accessibility state and operator context are not consistently communicated. The original “no modal/no progress UI” claim is stale; the remaining issue is incomplete integration and polish.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "partially_confirmed",
+    "evidence_paths": [
+      "frontend/src/components/event/Warnings.tsx",
+      "frontend/src/components/event/ProgressBar.tsx",
+      "frontend/src/components/event/ConfirmModal.tsx",
+      "frontend/src/components/chrome.tsx: OfflineBanner",
+      "frontend/src/ui/components.tsx",
+      "frontend/src/pages/participant/Leaderboard.tsx",
+      "frontend/src/pages/admin/*"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Inventory the remaining required states per route: offline, reconnecting, sync pending, save failed, session expired, maintenance, read-only and service degraded. Assign each a shared component and source of truth."
+      },
+      {
+        "step": 2,
+        "action": "Wire OfflineBanner/ConnectionIndicator to actual navigator state and API failures; distinguish “saved locally” from “saved on server”."
+      },
+      {
+        "step": 3,
+        "action": "Add reusable Toast/notification and copy-details controls with request id, error code and a non-sensitive diagnostics payload."
+      },
+      {
+        "step": 4,
+        "action": "Add keyboard/ARIA refinements: countdown role=timer, focus-to-heading after route navigation, keyboard-operable tabs/tree and live announcements for saved/submitted/score changes."
+      },
+      {
+        "step": 5,
+        "action": "Add page titles, own-team row pinning and clear loading/empty/error states. Add FAQ/status page only if the owner confirms they are required for this event."
+      }
+    ],
+    "acceptance_criteria": [
+      "Core status changes are announced to assistive technology.",
+      "Offline and degraded states are real, not decorative banners.",
+      "Required pages/components have keyboard and screen-reader regression tests."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [],
+  "residual_risk_or_scope_note": "Modal/focus trap and deadline warning gaps are partly fixed; do not reopen the old claim that these components are wholly absent."
+}

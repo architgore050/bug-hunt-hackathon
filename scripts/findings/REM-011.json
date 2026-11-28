@@ -1,0 +1,71 @@
+{
+  "id": "REM-011",
+  "title": "Rejecting an auto-awarded report does not reverse its evidence award or release the award claim",
+  "severity": "HIGH",
+  "status": "confirmed",
+  "priority": "P1",
+  "source_ids": [
+    "F-ARB-04",
+    "F-AG07-12"
+  ],
+  "original_titles": [
+    {
+      "id": "F-ARB-04",
+      "title": "Reviewer rejection does not reverse auto-awarded points or release the award claim"
+    },
+    {
+      "id": "F-AG07-12",
+      "title": "reverses_entry_id never used in production code paths"
+    }
+  ],
+  "problem": "The auto-matcher can claim an award unit and write evidence_report points before human review. The reject_invalid branch of apply_review_outcome only updates submission status to decided; it does not append a reversal entry or remove/release the award_claims row. reverses_entry_id is not used on this code path.",
+  "impact": "A report later rejected by a reviewer can keep its automatic points and block a legitimate report for the same award unit. Final scores remain wrong unless a manual adjustment is made.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/evaluator.py: evaluate_submission auto-accept path",
+      "backend/app/evaluator.py: apply_review_outcome reject_invalid branch",
+      "backend/app/scoring.py: claim_award_unit and add_ledger_entry",
+      "backend/migrations: app.award_claims and score_ledger_entries"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Fetch all award ledger entries for the submission and award_claims row inside the same transaction that records the final reject decision."
+      },
+      {
+        "step": 2,
+        "action": "Append a reversal ledger entry for each awarded component with points equal to the exact inverse and reverses_entry_id pointing to the original entry. Do not delete history."
+      },
+      {
+        "step": 3,
+        "action": "Release the award claim using a compare-and-delete/update predicate tied to the same submission_id; never release a claim that has been reassigned."
+      },
+      {
+        "step": 4,
+        "action": "Make the rejection handler idempotent so a retry cannot create duplicate reversals. Update submission status and audit the reviewer, original award ids and reversal ids atomically."
+      },
+      {
+        "step": 5,
+        "action": "Add integration tests: auto-match -> evidence award -> reviewer reject -> reversal -> another valid submission can claim the unit; repeat the job and verify no duplicate ledger entry."
+      }
+    ],
+    "acceptance_criteria": [
+      "Rejected reports have net zero score for the rejected award.",
+      "The award claim is available for a later valid submission.",
+      "The ledger remains append-only and reversals are traceable."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

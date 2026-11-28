@@ -1,0 +1,70 @@
+{
+  "id": "REM-018",
+  "title": "Audit checkpoints are not signed or anchored outside the primary database",
+  "severity": "HIGH",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-CKLB-02",
+    "F-ARB-07"
+  ],
+  "original_titles": [
+    {
+      "id": "F-CKLB-02",
+      "title": "No external signed audit checkpoints despite docstring claim"
+    },
+    {
+      "id": "F-ARB-07",
+      "title": "No external signed audit checkpoints"
+    }
+  ],
+  "problem": "audit.py implements an in-database hash chain but no periodic signed checkpoint export to independent storage. A database administrator who can rewrite all rows can recompute the chain.",
+  "impact": "The chain is tamper-evident only while the primary database itself remains trusted. A full DB compromise can rewrite evidence without an external anchor.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/audit.py docstring and implementation",
+      "docs/BACKUP_AND_RECOVERY.md",
+      "backend/worker.py"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Create a scheduled checkpoint job that reads each chain head and signs scope, seq, hash, timestamp and schema/version with a private key held outside the database."
+      },
+      {
+        "step": 2,
+        "action": "Write checkpoints to a separate account/bucket with append-only/object-lock retention and separate credentials. Do not store the signing private key in the DB or the same host."
+      },
+      {
+        "step": 3,
+        "action": "Record checkpoint id, signature, storage URI and verification outcome. Alert when the expected checkpoint interval is exceeded."
+      },
+      {
+        "step": 4,
+        "action": "Add a verifier that downloads the last checkpoint, verifies signature and compares the live chain prefix. Include restore drill validation."
+      },
+      {
+        "step": 5,
+        "action": "Correct the audit module docstring until the external checkpoint process is implemented and observed in production."
+      }
+    ],
+    "acceptance_criteria": [
+      "A database-only administrator cannot forge a valid external checkpoint.",
+      "A tampered chain prefix fails external verification.",
+      "Missing checkpoint intervals trigger an alert."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

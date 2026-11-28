@@ -1,0 +1,74 @@
+{
+  "id": "REM-001",
+  "title": "Tenant and active-event scoping is missing from the principal and several global selectors",
+  "severity": "HIGH",
+  "status": "confirmed",
+  "priority": "P0",
+  "source_ids": [
+    "F-AD8A-01",
+    "F-S03B-09"
+  ],
+  "original_titles": [
+    {
+      "id": "F-AD8A-01",
+      "title": "No tenant scoping in admin API; cross-tenant queries are not rejected (spec 1.6, patch E.4/R-36)"
+    },
+    {
+      "id": "F-S03B-09",
+      "title": "Event/stage resolution ignores the caller's event (latest-wins across all events)"
+    }
+  ],
+  "problem": "Principal has no tenant_id. Admin event creation selects the first tenant globally, many admin queries accept only an event_id, and state/auth/rules resolution selects the latest active event rather than the caller’s event. In a multi-tenant or multi-event deployment this can expose or mutate another tenant/event’s records.",
+  "impact": "Cross-tenant data disclosure, wrong-event rules acceptance, and cross-event stage/leaderboard state. The current seed appears single-tenant, which reduces immediate exploitability but does not make the data boundary correct.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/deps.py: Principal and get_principal",
+      "backend/app/routers/admin.py: create_event, participant/team/config and export query paths",
+      "backend/app/routers/state.py: round_state latest-stage query",
+      "backend/app/routers/auth.py: /me and accept_rules latest-event/team selection"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Add tenant_id to Principal and populate it from the joined app.users row in get_principal. Treat it as server-derived identity, never as a request parameter."
+      },
+      {
+        "step": 2,
+        "action": "Introduce shared query helpers such as require_event_in_tenant(session, event_id, principal.tenant_id) and require_stage_in_tenant(...). Apply them before every event/stage/team/challenge/participant/dispute/export/audit mutation and read."
+      },
+      {
+        "step": 3,
+        "action": "Change event creation to use principal.tenant_id instead of SELECT first tenant. Add tenant_id conditions to list/read/update/delete SQL and verify related objects belong to the same event and tenant."
+      },
+      {
+        "step": 4,
+        "action": "Require an explicit selected event context for /state, /me, rules acceptance, announcements and leaderboard. Do not resolve active event using ORDER BY created_at DESC globally."
+      },
+      {
+        "step": 5,
+        "action": "Add a second-tenant test fixture and attempt GET, PATCH, DELETE, export and participant registration using IDs from the other tenant. All cross-tenant attempts must return the same non-enumerating 404/403 policy."
+      }
+    ],
+    "acceptance_criteria": [
+      "Every admin query is tenant constrained at the DB predicate, not merely checked in the UI.",
+      "A second-tenant integration test proves cross-tenant reads and writes fail.",
+      "Two concurrent active events return their own state and rules to their own participants."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [
+    "Introduce tenant_id to Principal",
+    "Tenant-aware test fixtures and DB constraints"
+  ]
+}

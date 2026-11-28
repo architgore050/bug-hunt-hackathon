@@ -1,0 +1,81 @@
+{
+  "id": "REM-049",
+  "title": "Result/leaderboard product fields and ranking UX remain thinner than the stated specification",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-S03B-11",
+    "F-S03B-12",
+    "F-B02B-05",
+    "F-CKLA-24"
+  ],
+  "original_titles": [
+    {
+      "id": "F-S03B-11",
+      "title": "LBD-01: no own-row highlight/pin, search, pagination or provisional badge; live-mode constraints unenforced"
+    },
+    {
+      "id": "F-S03B-12",
+      "title": "RES-01/RES-02: rank, per-challenge totals, bugs missed, certificate and public results missing"
+    },
+    {
+      "id": "F-B02B-05",
+      "title": "/leaderboard has no since/304 conditional semantics"
+    },
+    {
+      "id": "F-CKLA-24",
+      "title": "Leaderboard snapshot served no-store instead of cacheable 10s (LBD-01c)"
+    }
+  ],
+  "problem": "The current result API returns a released total, component breakdown and ledger entries, but some specification fields such as rank, per-challenge totals, bugs missed and downloadable certificate are absent. Leaderboard is snapshot-driven and lacks conditional since/version responses; participant own-row emphasis/search/pagination are incomplete.",
+  "impact": "Participants may not have enough context to understand the result, and repeated polling can reload unchanged snapshots. This is mainly a product/UX completeness issue after the score correctness bug is fixed separately.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/routers/leaderboard.py",
+      "frontend/src/pages/participant/Results.tsx",
+      "frontend/src/pages/participant/Leaderboard.tsx",
+      "backend/app/evaluator.py: refresh_leaderboard"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Agree the result schema and data definitions: rank, challenge/level subtotals, penalties, bugs found/missed (if safe to disclose), tie-break result and certificate eligibility."
+      },
+      {
+        "step": 2,
+        "action": "Return leaderboard snapshot version and `since`/ETag semantics so clients can avoid full payload refresh when unchanged."
+      },
+      {
+        "step": 3,
+        "action": "Add participant own-team highlight, accessible ranking table, filters and pagination without revealing hidden feedback before release."
+      },
+      {
+        "step": 4,
+        "action": "Generate any certificate/export only after finalization and include the result snapshot/config hash."
+      },
+      {
+        "step": 5,
+        "action": "Add release-state tests proving no hidden ranking or matched bug detail leaks before allowed release."
+      }
+    ],
+    "acceptance_criteria": [
+      "Published result fields match the approved rules and reconcile to the score ledger.",
+      "Unchanged leaderboard versions avoid unnecessary payload transfer.",
+      "No pre-release result oracle is reintroduced."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

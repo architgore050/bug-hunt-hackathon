@@ -1,0 +1,68 @@
+REM-001	HIGH	P0	confirmed	Tenant and active-event scoping is missing from the principal and several global selectors
+REM-002	CRITICAL	P0	confirmed	Participant API process still holds the ground-truth database credential and exposes admin/GT routes
+REM-003	HIGH	P1	confirmed	Administrator authentication remains single-factor and same-origin; password re-entry is not MFA
+REM-004	HIGH	P1	partially_fixed	Participant first-password claim still trusts knowledge of the registered email address
+REM-005	HIGH	P1	confirmed	Event and stage lifecycle mutations lack consistent step-up, mandatory reason and two-person controls
+REM-006	HIGH	P1	confirmed	Finalization does not enforce review, dispute and audit-chain readiness gates
+REM-007	HIGH	P1	confirmed	Answer packs, candidate-bug escalation and mid-event correction/rescore protocol are absent
+REM-008	HIGH	P1	confirmed	Ground-truth bug authoring is only partially implemented and lacks canonical-file/line/anchor validation
+REM-009	CRITICAL	P0	confirmed	Pre-release team score endpoint exposes points and per-level components before feedback release
+REM-010	HIGH	P0	confirmed	Penalty entries are counted twice in participant result totals
+REM-011	HIGH	P1	confirmed	Rejecting an auto-awarded report does not reverse its evidence award or release the award claim
+REM-012	HIGH	P1	confirmed	Reviewer second-review and unplanned-valid decisions can dead-end or requeue items incorrectly
+REM-013	HIGH	P1	confirmed	Automatic matching is enabled without a measured blind-validation precision gate or complete evaluation provenance
+REM-014	HIGH	P1	confirmed	Challenge content is readable while a stage is armed before its actual start time
+REM-015	HIGH	P2	confirmed	Per-team encrypted pre-delivery, timed key release and content watermarking are not implemented
+REM-016	HIGH	P1	confirmed	Transactional outbox rows are marked delivered without any delivery and no SSE consumer exists
+REM-017	HIGH	P1	confirmed	Audit hash-chain writes can fork under concurrent writes and verification does not cover all scopes
+REM-018	HIGH	P2	confirmed	Audit checkpoints are not signed or anchored outside the primary database
+REM-019	HIGH	P1	confirmed	No automated base backups, WAL archiving or measured restore rehearsal
+REM-020	HIGH	P1	confirmed	Capacity, load, fault and external monitoring evidence is still unexecuted
+REM-021	MEDIUM	P2	confirmed	Worker scheduling and queue operations lack leader election, per-kind controls and long-job heartbeat
+REM-022	MEDIUM	P2	confirmed	In-memory rate limiting is per process, resets on restart and does not send Retry-After
+REM-023	MEDIUM	P2	confirmed	API contracts, response envelopes and client-version compatibility are inconsistent
+REM-024	MEDIUM	P2	confirmed	Request-body limits trust Content-Length and several error/input boundaries are insufficiently defensive
+REM-025	HIGH	P1	confirmed	Production startup does not fail closed on development secrets or insecure runtime configuration
+REM-026	MEDIUM	P2	confirmed	Security response headers and cookie hardening are incomplete
+REM-027	MEDIUM	P2	partially_fixed	Admin/reviewer console coverage remains incomplete despite the new core pages
+REM-028	MEDIUM	P2	confirmed	Admin lists and audit views lack cursor pagination, filters and consistent totals
+REM-029	MEDIUM	P2	partially_fixed	GT data and review authoring need richer operator tooling and stricter schema alignment
+REM-030	HIGH	P1	partially_fixed	Offline submission outbox is missing even though local IndexedDB draft persistence now exists
+REM-031	MEDIUM	P2	confirmed	The custom editable workspace is not a full IDE and lacks several keyboard, navigation and accessibility affordances
+REM-032	MEDIUM	P2	confirmed	Frontend quality gates remain thin: strict TypeScript, browser-level E2E, accessibility and error boundaries are missing
+REM-033	MEDIUM	P2	confirmed	Auth refresh coordination is only per tab and session UX does not signal cross-device revocation
+REM-034	MEDIUM	P1	confirmed	Announcements are not scoped by event or audience at read time and lack pagination
+REM-035	MEDIUM	P1	confirmed	Deployment artifacts and production separation have not been proven at the target hosting environment
+REM-036	MEDIUM	P2	confirmed	Runtime feature flags and operator emergency controls are environment-only or incomplete
+REM-037	MEDIUM	P1	confirmed	Participant consent/privacy notices and proctoring/integrity disclosures are incomplete or inconsistent
+REM-038	MEDIUM	P2	partially_fixed	Terms and operations documentation still contradict the merged account and four-level product behavior
+REM-039	LOW	P3	confirmed	Local IST formatting is hard-coded and ignores each event’s configured timezone
+REM-041	MEDIUM	P2	needs_owner_decision	Team size, disqualification/suspension and operator policy inputs are not fully enforced by the product
+REM-042	MEDIUM	P3	deferred_by_design	The practice environment and isolated rehearsal flow are not implemented
+REM-043	HIGH	P1	partially_fixed	Hidden functional tests are still manual because the runner and test-case execution path are disabled
+REM-044	MEDIUM	P2	confirmed	Privacy-preserving challenge anti-collusion and integrity operations are absent
+REM-045	MEDIUM	P2	confirmed	The app still uses local filesystem artifact storage and has incomplete upload lifecycle APIs
+REM-046	MEDIUM	P1	needs_owner_decision	Team-size enforcement, published rules and event readiness values require owner sign-off
+REM-047	MEDIUM	P1	needs_owner_decision	Challenge fixture contains an additional untracked XSS sink and Option B has unplanned public admin/auth surfaces
+REM-048	MEDIUM	P2	confirmed	Dispute handling lacks time bounds, independence controls, idempotency and participant status notification
+REM-049	MEDIUM	P2	confirmed	Result/leaderboard product fields and ranking UX remain thinner than the stated specification
+REM-050	MEDIUM	P2	confirmed	Evaluator/review code is duplicated and the domain/service boundary is weak
+REM-051	MEDIUM	P2	confirmed	Challenge lifecycle and score ledger schema lack some immutability, origin and provenance invariants
+REM-052	LOW	P3	partially_fixed	Runtime API and operational documentation still contains endpoint/schema and process-lifecycle drift
+REM-053	HIGH	P1	partially_fixed	Concurrent same-key submissions can race into an unhandled uniqueness error
+REM-054	MEDIUM	P3	partially_fixed	Frontend operational states, feedback components and accessibility affordances remain incomplete
+REM-055	MEDIUM	P2	confirmed	Conditional polling, ETag/version checks and state freshness are not consistently implemented
+REM-056	MEDIUM	P2	confirmed	Runtime error/logging and health signals are incomplete for incident diagnosis
+REM-057	MEDIUM	P2	confirmed	Database defense-in-depth and lock/quota invariants are incomplete
+REM-058	MEDIUM	P2	confirmed	CTF flag submissions do not consistently share the report caps and cooldown policy
+REM-059	MEDIUM	P1	needs_owner_decision	Challenge/content and result workflows still need rehearsal evidence for fixture parity and release completeness
+REM-061	MEDIUM	P2	needs_manual_revalidation	Dispute, review and submission schemas have additional workflow/field-rule deviations requiring contract tests
+REM-062	MEDIUM	P2	needs_manual_revalidation	The review/leaderboard release and scoring pipeline has unresolved terminal-state and time semantics
+REM-064	LOW	P3	needs_owner_decision	Some public/operator requirements (FAQ, status page, accommodation form and certificates) are not fully delivered
+REM-070	MEDIUM	P2	confirmed	Graceful shutdown must stop accepting work, drain active requests and release/expire owned leases
+REM-071	MEDIUM	P2	confirmed	Release-feedback processing performs repeated GT/session and stage-max queries in an N+1 pattern
+REM-072	LOW	P3	confirmed	Argon2 password verification needs resource bounds under login/step-up bursts
+REM-073	MEDIUM	P2	needs_manual_revalidation	Pre-event system check should validate the actual participant device/network requirements and block unsafe entry
+REM-075	LOW	P3	confirmed	The API has no minimum-client-version gate and static runtime config/asset rollout policy is incomplete
+REM-078	MEDIUM	P2	confirmed	Session revocation updates refresh tokens without checking session ownership
+REM-079	LOW	P3	needs_manual_revalidation	API schema and endpoint deviations still require a concrete owner-to-contract mapping

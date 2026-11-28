@@ -1,0 +1,88 @@
+{
+  "id": "REM-035",
+  "title": "Deployment artifacts and production separation have not been proven at the target hosting environment",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P1",
+  "source_ids": [
+    "F-ARA-03",
+    "F-ARB-11",
+    "F-AG07-23",
+    "F-B02B-10",
+    "F-CKLB-22"
+  ],
+  "original_titles": [
+    {
+      "id": "F-ARA-03",
+      "title": "D1 deployment artifacts do not exist (compose, Caddy, cloudflared, Pages routing, systemd)"
+    },
+    {
+      "id": "F-ARB-11",
+      "title": "No D1 deployment artifacts (Compose/Caddy/cloudflared) or ARM64 build validation"
+    },
+    {
+      "id": "F-AG07-23",
+      "title": "Ops/content readiness incomplete: runbooks unrehearsed, content not keyed by (stage, repo option), no compose.lock"
+    },
+    {
+      "id": "F-B02B-10",
+      "title": "Cloudflare Access assertion, ADMIN_AUTH_MODE and staging/prod boot refusal missing"
+    },
+    {
+      "id": "F-CKLB-22",
+      "title": "practice and integrity schemas absent; role DDL not in migrations"
+    }
+  ],
+  "problem": "D1 deployment plan is explicitly marked execution UNRUN. The audit notes missing Compose/Caddy/cloudflared/Pages/systemd and ARM64 build validation. GitHub CI validates application code but does not prove the target VM, edge, TLS, firewall, service restart or Cloudflare Access configuration.",
+  "impact": "A repo that passes CI may still fail to deploy securely or recover under the actual event environment. The same-origin/admin-plane risks and database role separation are not validated in a real deployment.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "docs/RELEASE_PLAN_D1.md",
+      "docs/DEPLOYMENT_RUNBOOK.md",
+      "docs/LOAD_TEST_REPORT.md",
+      "backend/app/config.py",
+      "scripts/*"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Create reproducible deployment definitions for API, worker, PostgreSQL, frontend/static hosting and reverse proxy; pin image digests and dependency lockfiles."
+      },
+      {
+        "step": 2,
+        "action": "Document network boundaries: participant API cannot route to GT DB; admin API is behind access proxy; worker/GT connections have dedicated credentials."
+      },
+      {
+        "step": 3,
+        "action": "Add health/readiness probes, graceful shutdown, restart policy, resource limits, firewall rules, TLS/HSTS and secret mounts."
+      },
+      {
+        "step": 4,
+        "action": "Build and test on the target architecture (including ARM64 if that is the production VM), and record package/image provenance."
+      },
+      {
+        "step": 5,
+        "action": "Perform a clean-host deployment rehearsal, database migration/restore drill, TLS/header scan, admin access test and rollback exercise. Store logs and sign-off."
+      }
+    ],
+    "acceptance_criteria": [
+      "Fresh deployment works from documented commands without manual hidden steps.",
+      "Admin access proxy and DB network isolation are demonstrated from the deployed environment.",
+      "Rollback and restore are timed and recorded."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [],
+  "residual_risk_or_scope_note": "Repository inspection cannot prove Cloudflare, firewall, VM, TLS or production secret settings. These require a real deployment review."
+}

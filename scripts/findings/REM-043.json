@@ -1,0 +1,62 @@
+{
+  "id": "REM-043",
+  "title": "Hidden functional tests are still manual because the runner and test-case execution path are disabled",
+  "severity": "HIGH",
+  "status": "partially_fixed",
+  "priority": "P1",
+  "source_ids": [
+    "F-PRP-02"
+  ],
+  "original_titles": [
+    {
+      "id": "F-PRP-02",
+      "title": "Predefined and hidden functional tests are manual-only; no automated testing of repaired apps"
+    }
+  ],
+  "problem": "The participant source-code/artifact workflow is now available, but POST /runs is unavailable and GT test cases are not automatically executed in the submission pipeline. Admin records tests_passed/tests_total manually through the ground-truth test-results endpoint.",
+  "impact": "The proposal’s hidden-test evaluation cannot be demonstrated as automated. Manual test scoring is more error-prone and depends on an operator checklist.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "partially_confirmed",
+    "evidence_paths": [
+      "backend/app/config.py: runner_enabled=false",
+      "backend/app/routers/levels.py: /runs returns RUNNER_UNAVAILABLE",
+      "backend/app/routers/admin.py: record_test_results",
+      "backend/app/models_gt.py: gt_test_cases"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "For the current event, explicitly define a manual test protocol and a two-person recording/check process; keep raw test evidence linked to each submission."
+      },
+      {
+        "step": 2,
+        "action": "For future automated testing, implement the isolated runner as a separate project and build a versioned test-case manifest in GT."
+      },
+      {
+        "step": 3,
+        "action": "Record each test result with test_case_id, test-suite version/hash, runner image digest, run id, output hash and actor; do not accept only aggregate passed/total values."
+      },
+      {
+        "step": 4,
+        "action": "Add idempotent result ingestion and an audit trail so repeated submissions cannot double-award functional-test points."
+      }
+    ],
+    "acceptance_criteria": [
+      "Current event manual testing has a documented, reproducible checklist and dual verification.",
+      "Any future automated run is isolated and produces per-test evidence."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [],
+  "residual_risk_or_scope_note": "The four-level artifact submission surface is fixed; the unimplemented part is execution/hidden-test automation."
+}

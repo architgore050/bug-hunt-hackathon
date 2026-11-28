@@ -1,0 +1,67 @@
+{
+  "id": "REM-029",
+  "title": "GT data and review authoring need richer operator tooling and stricter schema alignment",
+  "severity": "MEDIUM",
+  "status": "partially_fixed",
+  "priority": "P2",
+  "source_ids": [
+    "F-AD8B-08"
+  ],
+  "original_titles": [
+    {
+      "id": "F-AD8B-08",
+      "title": "weight_multiplier (patch R-31) missing from the bug model"
+    }
+  ],
+  "problem": "A minimal GT bug-create UI and flag CRUD UI now exist, and flag secrets are not returned. However, the bug page lacks full GT read/edit/revision and preview workflows. Schema concepts such as weight_multiplier, typed origin, canonical fields and alternative-location aliases remain deviated from the referenced spec.",
+  "impact": "Organizers cannot confidently inspect and revise the complete GT dataset through an auditable UI. Schema divergence can make score semantics or export contracts ambiguous.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "partially_confirmed",
+    "evidence_paths": [
+      "frontend/src/pages/admin/GroundTruthBugs.tsx",
+      "frontend/src/pages/admin/GroundTruthFlags.tsx",
+      "backend/app/models_gt.py",
+      "backend/migrations/*gt*",
+      "backend/app/routers/admin.py: BugIn/FlagIn"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Resolve the normative data model with the event owner: canonical file, locations/anchors, award unit, root-cause group, origin, weight multiplier, aliases and test-case fields."
+      },
+      {
+        "step": 2,
+        "action": "Create migration/model changes with explicit CHECK constraints and foreign keys; preserve historical GT revisions rather than editing frozen versions in place."
+      },
+      {
+        "step": 3,
+        "action": "Add GT bug list/detail/edit/version compare and change reason UI, plus an audit-on-view record for sensitive answer-key data."
+      },
+      {
+        "step": 4,
+        "action": "Add dry-run matchability and overlap preview using the same matcher version as the evaluator."
+      },
+      {
+        "step": 5,
+        "action": "Add schema conformance tests and fixture import tests that fail if any seeded anchor/path is missing or silently skipped."
+      }
+    ],
+    "acceptance_criteria": [
+      "Every GT entry is readable and editable through the approved authoring flow before freeze.",
+      "Schema constraints match the accepted spec or a written waiver.",
+      "Freeze fails on missing/invalid anchors and records a validation report."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

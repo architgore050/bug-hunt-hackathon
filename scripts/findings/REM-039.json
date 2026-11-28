@@ -1,0 +1,86 @@
+{
+  "id": "REM-039",
+  "title": "Local IST formatting is hard-coded and ignores each event’s configured timezone",
+  "severity": "LOW",
+  "status": "confirmed",
+  "priority": "P3",
+  "source_ids": [
+    "F-AD8A-15",
+    "F-F01A-24",
+    "F-S03A-23",
+    "F-S03B-27",
+    "F-ARA-12",
+    "F-CKLB-24"
+  ],
+  "original_titles": [
+    {
+      "id": "F-AD8A-15",
+      "title": "Timestamps hardcoded to IST; no UTC tooltip; event timezone column ignored"
+    },
+    {
+      "id": "F-F01A-24",
+      "title": "Time zone hardcoded to Asia/Kolkata with literal 'IST' instead of the event's zone"
+    },
+    {
+      "id": "F-S03A-23",
+      "title": "UI timezone formatter hard-codes Asia/Kolkata instead of taking the event timezone"
+    },
+    {
+      "id": "F-S03B-27",
+      "title": "Scheduling/timezone handling thinner than specified (no T-minus calendar, IST hardcoded)"
+    },
+    {
+      "id": "F-ARA-12",
+      "title": "Clock offset estimated from a single sample instead of lowest-RTT multi-sample"
+    },
+    {
+      "id": "F-CKLB-24",
+      "title": "Clock offset estimated from a single sample"
+    }
+  ],
+  "problem": "frontend/src/lib/format.ts hard-codes Asia/Kolkata and appends literal IST. Event records include timezone, but the formatter does not receive it. Clock offset is estimated from a single sample.",
+  "impact": "Events in other zones display incorrect wall-clock dates/times and daylight-saving/offset behavior is not represented. Single-sample clock sync can produce avoidable countdown drift under network latency.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "frontend/src/lib/format.ts",
+      "frontend/src/pages/admin/Setup.tsx: event timezone display",
+      "backend/app/models_app.py: Event.timezone",
+      "frontend/src/lib/event-session.ts"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Change date/time formatting helpers to accept an IANA timezone from the selected event. Use UTC for machine serialization and event timezone only for display."
+      },
+      {
+        "step": 2,
+        "action": "Expose timezone as part of event/session context and pass it into every schedule, deadline, announcement and admin timestamp formatter."
+      },
+      {
+        "step": 3,
+        "action": "Use multiple server-time samples and select the lowest-RTT sample to estimate clock offset; periodically resync on visibility/online transitions."
+      },
+      {
+        "step": 4,
+        "action": "Add tests for Asia/Kolkata plus a DST-observing zone, midnight boundaries, events with different zones and countdown behavior under latency."
+      }
+    ],
+    "acceptance_criteria": [
+      "Two events in different zones display their respective local time.",
+      "Countdown uses server-anchored time and remains stable after tab wake/network reconnect."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

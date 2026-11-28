@@ -1,0 +1,116 @@
+{
+  "id": "REM-005",
+  "title": "Event and stage lifecycle mutations lack consistent step-up, mandatory reason and two-person controls",
+  "severity": "HIGH",
+  "status": "confirmed",
+  "priority": "P1",
+  "source_ids": [
+    "F-AD8A-02",
+    "F-ARA-24",
+    "F-CKLA-06",
+    "F-CKLA-08",
+    "F-CKLA-18",
+    "F-AG07-10",
+    "F-B02B-32",
+    "F-F01B-17",
+    "F-S03B-23",
+    "F-B02B-11",
+    "F-AG07-13"
+  ],
+  "original_titles": [
+    {
+      "id": "F-AD8A-02",
+      "title": "Irreversible finalization and other destructive lifecycle transitions lack step-up and reason"
+    },
+    {
+      "id": "F-ARA-24",
+      "title": "Sensitive organizer operations (stage control, release, time adjust, ledger correction) skip step-up"
+    },
+    {
+      "id": "F-CKLA-06",
+      "title": "Finalization gate absent: release not blocked by pending reviews, disputes, or audit-chain verification (RS-03a S1)"
+    },
+    {
+      "id": "F-CKLA-08",
+      "title": "Round controls neither broadcast nor typed-confirmation protected (LV-02a S1)"
+    },
+    {
+      "id": "F-CKLA-18",
+      "title": "Time adjustments unbounded, no two-person approval (LV-06a S2, ACC-05a)"
+    },
+    {
+      "id": "F-AG07-10",
+      "title": "Live-operation reasons not enforced at >= 10 characters"
+    },
+    {
+      "id": "F-B02B-32",
+      "title": "Reviewer decision reason not required; stage-control reason min length unenforced"
+    },
+    {
+      "id": "F-F01B-17",
+      "title": "Admin UI rules partial: reasons not required for event transitions/dispute resolution, read-only kill switches, no sensitive-data banner, direct-download exports, unpaginated tables"
+    },
+    {
+      "id": "F-S03B-23",
+      "title": "Pause UX partial: no full-width banner, inputs remain editable"
+    },
+    {
+      "id": "F-B02B-11",
+      "title": "Event config edits do not require step-up"
+    },
+    {
+      "id": "F-AG07-13",
+      "title": "Force-advance playbook not implemented (no adjusted_by/adjusted_reason)"
+    }
+  ],
+  "problem": "set_event_status, control_stage, release_results and time_adjustment use require_organizer rather than a recent step-up dependency. Event status accepts a raw status dict with no reason field; stage control only checks that reason is non-empty; release reason defaults; time adjustments allow ±86400 seconds and have no two-approver policy. The UI uses a two-click ConfirmButton in some places but not typed intent or a mandatory audited reason for every destructive transition.",
+  "impact": "A stolen organizer session can close/finalize an event, pause/extend/end stages or change participant time without fresh authentication or a sufficiently meaningful explanation. An accidental operator click can become an irreversible event record.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/routers/admin.py: set_event_status, control_stage, release_results, time_adjustment",
+      "frontend/src/pages/admin/Dashboard.tsx: transition, stageAction, release",
+      "backend/app/deps.py: step_up_verified"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Define a mutation matrix: low-risk configuration/read operations, operational stage control, and irreversible actions (finalize, archive, publish, release, scoring correction). Document permitted roles for each."
+      },
+      {
+        "step": 2,
+        "action": "Replace dict bodies with Pydantic request models. Require reason length 10-500, an explicit action, and a typed confirmation phrase for close/finalize/archive/release where appropriate."
+      },
+      {
+        "step": 3,
+        "action": "Apply step_up_verified to irreversible actions and sensitive time/score operations. Consider two independent approvers for finalization, large time extensions, disqualification and post-release correction."
+      },
+      {
+        "step": 4,
+        "action": "Write the state change, transition row, announcement/outbox event and audit entry in one database transaction with a correlation/action id."
+      },
+      {
+        "step": 5,
+        "action": "Add API tests proving organizer without step-up is rejected, empty/short reason is rejected, typed phrase mismatch is rejected, and valid operations create matching transition/audit/announcement records."
+      }
+    ],
+    "acceptance_criteria": [
+      "No irreversible event/stage/score operation succeeds without the specified role, step-up and reason.",
+      "Two-approver operations reject the same approver twice and record both identities.",
+      "The participant announcement becomes visible atomically with the operation."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [],
+  "residual_risk_or_scope_note": "PR #59 added step-up to staff/participant registration, team creation/moves/removal, reset, ground-truth changes and manual score adjustment. It did not consistently protect event status, stage control, result release, disputes or time adjustment."
+}

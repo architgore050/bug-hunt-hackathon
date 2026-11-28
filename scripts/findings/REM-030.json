@@ -1,0 +1,117 @@
+{
+  "id": "REM-030",
+  "title": "Offline submission outbox is missing even though local IndexedDB draft persistence now exists",
+  "severity": "HIGH",
+  "status": "partially_fixed",
+  "priority": "P1",
+  "source_ids": [
+    "F-CKLA-02",
+    "F-F01A-01",
+    "F-ARA-10",
+    "F-CKLB-13",
+    "F-AG07-15",
+    "F-F01B-10",
+    "F-S03B-06",
+    "F-BSP-14",
+    "F-F01A-12",
+    "F-F01A-15",
+    "F-F01A-13"
+  ],
+  "original_titles": [
+    {
+      "id": "F-CKLA-02",
+      "title": "Offline outbox with in-order idempotent replay missing (WS-08a S1)"
+    },
+    {
+      "id": "F-F01A-01",
+      "title": "Offline persistence stack (IndexedDB bhctf-v1, outbox, local drafts) entirely missing"
+    },
+    {
+      "id": "F-ARA-10",
+      "title": "No IndexedDB draft buffer or unsent queue; the four-state UI contract is unmet"
+    },
+    {
+      "id": "F-CKLB-13",
+      "title": "No IndexedDB draft buffer or offline submission queue"
+    },
+    {
+      "id": "F-AG07-15",
+      "title": "Offline resilience and sync-state UX requirements not implemented"
+    },
+    {
+      "id": "F-F01B-10",
+      "title": "DraftSync partial: 3s interval only, no merge prompt on 409, no pagehide/sendBeacon flush, no local persistence (C-55)"
+    },
+    {
+      "id": "F-S03B-06",
+      "title": "Workspace core UX gaps: no Monaco, no multi-tab, no command palette, no offline outbox"
+    },
+    {
+      "id": "F-BSP-14",
+      "title": "No IndexedDB draft queue, offline resubmission, or React error boundaries"
+    },
+    {
+      "id": "F-F01A-12",
+      "title": "Draft sync: 3s fixed interval, no pagehide/sendBeacon flush, conflict auto-discards local edits, no status chips"
+    },
+    {
+      "id": "F-F01A-15",
+      "title": "No connection indicator in the workspace header (5 states)"
+    },
+    {
+      "id": "F-F01A-13",
+      "title": "Idempotency key discarded on failed attempt, breaking the stability guarantee"
+    }
+  ],
+  "problem": "LevelWorkspace now saves drafts to IndexedDB and synchronizes a versioned server draft, but there is no durable IndexedDB outbox for submit operations. The idempotency key is held in a component ref, so it survives in-page retry but not reload/tab crash. OfflineBanner exists but is not connected as a full queued-submit state machine.",
+  "impact": "A network loss after the server accepted a submission but before the client receives the receipt can leave the participant uncertain. If the page reloads, the same idempotency key may be lost and the user may create a new request.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "partially_confirmed",
+    "evidence_paths": [
+      "frontend/src/lib/persistence.ts: workspace store only",
+      "frontend/src/pages/participant/LevelWorkspace.tsx: idemKeyRef and submit flow",
+      "frontend/src/lib/api-levels.ts: submitLevelWithKey",
+      "frontend/src/components/chrome.tsx: OfflineBanner"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Extend IndexedDB with an outbox store keyed by stable mutation id and scoped to user/event/route. Persist exact payload hash, idempotency key, queued_at, attempt count and last error."
+      },
+      {
+        "step": 2,
+        "action": "Persist the submission record before the network request. On response 202, atomically mark it acknowledged and store the receipt; on timeout/network error keep it queued with the same key."
+      },
+      {
+        "step": 3,
+        "action": "Flush queued mutations in order when online and on application resume, with exponential backoff and a bounded concurrency policy. Never generate a new key for an ambiguous existing mutation."
+      },
+      {
+        "step": 4,
+        "action": "Show durable UI states: saved locally, syncing, submitted/receipt confirmed, conflict, failed-needs-action. Show an exact pending count and provide a safe retry path."
+      },
+      {
+        "step": 5,
+        "action": "Add browser tests for lost response after server commit, reload before receipt, offline queue order, repeated flush and per-user logout cleanup."
+      }
+    ],
+    "acceptance_criteria": [
+      "An accepted submission survives tab reload/network loss without duplicate creation.",
+      "The same Idempotency-Key is reused until a definitive server response.",
+      "The participant sees an accurate queued/pending count and receipt after reconnection."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [],
+  "residual_risk_or_scope_note": "The old claim that no IndexedDB/local draft persistence exists is fixed. The remaining defect is specifically durable offline mutation queue and cross-reload idempotency."
+}

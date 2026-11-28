@@ -1,0 +1,93 @@
+{
+  "id": "REM-046",
+  "title": "Team-size enforcement, published rules and event readiness values require owner sign-off",
+  "severity": "MEDIUM",
+  "status": "needs_owner_decision",
+  "priority": "P1",
+  "source_ids": [
+    "F-PRP-05",
+    "F-PRP-08",
+    "F-PRP-10",
+    "F-PRP-11",
+    "F-PRP-03",
+    "F-BSP-12"
+  ],
+  "original_titles": [
+    {
+      "id": "F-PRP-05",
+      "title": "Production schedule and level windows are not configured (synthetic dev windows only)"
+    },
+    {
+      "id": "F-PRP-08",
+      "title": "Per-level score weights, tie-break and penalty policy remain provisional"
+    },
+    {
+      "id": "F-PRP-10",
+      "title": "Level 3 side-quest content and Level 4 rubric are wired but empty (owner input pending)"
+    },
+    {
+      "id": "F-PRP-11",
+      "title": "Option B challenge is a development fixture; production A/B packages pending equivalence certification"
+    },
+    {
+      "id": "F-PRP-03",
+      "title": "CTF quest variety under-delivered: no planted token in Git history; only 2 flags vs 100-pt cap"
+    },
+    {
+      "id": "F-BSP-12",
+      "title": "A/B variant equivalence unvalidated and self-selected per team"
+    }
+  ],
+  "problem": "Seed data explicitly uses synthetic level windows and development challenge fixtures. Production schedule, final per-level score weights/tie-break/penalty rules, level 3 side quest, level 4 rubric and A/B challenge parity remain organizer/owner inputs. Published team size of 4-5 is not clearly enforced by current roster mutations.",
+  "impact": "The event can be technically functional but still unfair or not ready because schedule/content/scoring are provisional. A/B challenge differences or team-size mismatch affect comparative fairness.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "scope_or_policy_check",
+    "evidence_paths": [
+      "backend/seed.py: synthetic schedule and dev fixture content",
+      "docs/KNOWN_GAPS_AND_OWNER_DECISIONS.md",
+      "docs/REQUIREMENTS_RECONCILIATION.md",
+      "docs/LOAD_TEST_REPORT.md",
+      "backend/app/routers/admin.py: team/participant creation"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Approve exact event schedule and timezone, each level start/end/grace window and the run-of-show; configure the production event rather than relying on seed times."
+      },
+      {
+        "step": 2,
+        "action": "Approve score weights, tie-breaks, penalty caps, partial credit and dispute correction policy. Store a frozen versioned config and test its hash."
+      },
+      {
+        "step": 3,
+        "action": "Provide final A/B challenge repositories and ground truth; have two independent reviewers compare bug count, severity, locations, hidden tests and difficulty."
+      },
+      {
+        "step": 4,
+        "action": "Complete Level 3 side-quest content and Level 4 rubric/reviewer allocation. Remove development fixtures from production seed."
+      },
+      {
+        "step": 5,
+        "action": "Enforce min/max team size and roster lock timing in the backend, or publish an explicit exception. Add readiness checklist items that block READY until owner inputs are supplied."
+      }
+    ],
+    "acceptance_criteria": [
+      "All production schedule and scoring fields are approved and frozen.",
+      "A/B challenge parity is independently certified.",
+      "Team size enforcement matches published rules.",
+      "No development fixture or synthetic window is used for a live event."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

@@ -1,0 +1,67 @@
+{
+  "id": "REM-059",
+  "title": "Challenge/content and result workflows still need rehearsal evidence for fixture parity and release completeness",
+  "severity": "MEDIUM",
+  "status": "needs_owner_decision",
+  "priority": "P1",
+  "source_ids": [
+    "F-CKLA-16"
+  ],
+  "original_titles": [
+    {
+      "id": "F-CKLA-16",
+      "title": "Rules PDF not generated at publish time (PUB-02b S2)"
+    }
+  ],
+  "problem": "The Option B fixture is described as mirroring Option A, but the repo audit flags that equivalence is not independently certified and CTF quest/token variety is below the target. Rules PDF/content publishing artifacts are also not fully automated. These are content/operations acceptance items rather than core backend defects.",
+  "impact": "Unequal challenge difficulty or incomplete flags can produce unfair outcomes. A rules document or answer pack that is not versioned at publish time can diverge from what participants accepted.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "scope_or_policy_check",
+    "evidence_paths": [
+      "backend/seed.py: challenge fixture and GT seeds",
+      "docs/CHALLENGE_DESIGN_AND_GROUND_TRUTH.md",
+      "docs/COMPETITION_RULES.md",
+      "docs/EVENT_OPERATIONS_PLAYBOOK.md",
+      "docs/RELEASE_PLAN_D1.md"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Run independent challenge review on both repository variants using a fixed rubric: defect count, severity, location density, root-cause diversity, test coverage, runtime behavior and solve-time estimate."
+      },
+      {
+        "step": 2,
+        "action": "Reconcile every planted flag/bug and hidden test to the authoritative GT manifest; make any token-in-history or additional flag quest explicit in the published scoring design."
+      },
+      {
+        "step": 3,
+        "action": "Generate a versioned rules PDF and challenge manifest from the same source/config used by the API; store content hash and acceptance version."
+      },
+      {
+        "step": 4,
+        "action": "Conduct a blind pilot with teams who did not author the challenge and record observed difficulty/score distribution. Adjust only through a versioned owner-approved revision."
+      },
+      {
+        "step": 5,
+        "action": "Block READY until final content packages, reviewer approvals, score policy and rules artifacts are frozen."
+      }
+    ],
+    "acceptance_criteria": [
+      "Two independent reviewers certify A/B equivalence.",
+      "All flags/bugs/tests map to an authoritative GT record.",
+      "Published rules/content hash matches the accepted and deployed version."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

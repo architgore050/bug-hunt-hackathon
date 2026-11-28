@@ -1,0 +1,83 @@
+{
+  "id": "REM-044",
+  "title": "Privacy-preserving challenge anti-collusion and integrity operations are absent",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-CKLA-03",
+    "F-S03A-01",
+    "F-S03B-04",
+    "F-CKLB-21"
+  ],
+  "original_titles": [
+    {
+      "id": "F-CKLA-03",
+      "title": "Integrity console and signal catalogue entirely missing (IN-01..IN-06, SIG-01..SIG-05)"
+    },
+    {
+      "id": "F-S03A-01",
+      "title": "integrity_officer role and integrity console absent; audit-log row cannot be satisfied"
+    },
+    {
+      "id": "F-S03B-04",
+      "title": "Integrity subsystem missing: signals, telemetry endpoint, console, integrity_officer role"
+    },
+    {
+      "id": "F-CKLB-21",
+      "title": "Integrity module and console entirely absent"
+    }
+  ],
+  "problem": "There is no distinct integrity_officer role, integrity console, signal catalogue or telemetry ingestion/analyser workflow. The current roles fold integrity activity into reviewer/organizer. Watermarking and file-order shuffling are also not implemented.",
+  "impact": "The event lacks structured evidence for suspected collusion, answer leakage or coordinated probing, and no two-officer disqualification process exists.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/models_app.py: role values",
+      "backend/app/config.py: telemetry_enabled",
+      "backend/app/routers/*: absence of integrity router",
+      "frontend/src/App.tsx: role routes",
+      "docs/PRIVACY_NOTICE.md"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Define a minimal signal catalogue and data minimization policy with an explicit retention period. Do not collect process/screen telemetry unless the owner/legal review approves it and participants are clearly informed."
+      },
+      {
+        "step": 2,
+        "action": "Add a separate integrity_officer role with scoped read/write permissions and immutable case records; prevent that role from editing GT or scoring."
+      },
+      {
+        "step": 3,
+        "action": "Implement batched telemetry ingestion with rate limits and a 202 response, plus background analysis that creates cases rather than automatically disqualifying users."
+      },
+      {
+        "step": 4,
+        "action": "Build a case console for dismiss, warn, investigate, propose penalty and propose disqualification. Require two distinct officers for disqualification/reinstatement."
+      },
+      {
+        "step": 5,
+        "action": "Add audit evidence links and tests that reviewers cannot resolve integrity cases and integrity officers cannot edit answer keys."
+      }
+    ],
+    "acceptance_criteria": [
+      "A separate role and scope matrix exists.",
+      "All signals have purpose, consent/disclosure and retention policy.",
+      "Disqualification requires two officers and is appealable under the published rules."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [],
+  "residual_risk_or_scope_note": "If integrity telemetry is not used for this event, record a formal scope waiver and remove misleading readiness claims."
+}

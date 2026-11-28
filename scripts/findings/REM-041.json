@@ -1,0 +1,87 @@
+{
+  "id": "REM-041",
+  "title": "Team size, disqualification/suspension and operator policy inputs are not fully enforced by the product",
+  "severity": "MEDIUM",
+  "status": "needs_owner_decision",
+  "priority": "P2",
+  "source_ids": [
+    "F-PRP-04",
+    "F-PRP-06",
+    "F-PRP-07",
+    "F-AD8A-05",
+    "F-S03A-27"
+  ],
+  "original_titles": [
+    {
+      "id": "F-PRP-04",
+      "title": "Team size 4-5 is published but never enforced by code"
+    },
+    {
+      "id": "F-PRP-06",
+      "title": "No operator surface to disqualify or suspend a team"
+    },
+    {
+      "id": "F-PRP-07",
+      "title": "No participant self-registration or team-join flow (fully organizer-driven)"
+    },
+    {
+      "id": "F-AD8A-05",
+      "title": "Fine-grained admin roles (author, ground-truth, operator, content editor, super admin, integrity officer, auditor) not implemented"
+    },
+    {
+      "id": "F-S03A-27",
+      "title": "Manual score adjustment is admin-only while the matrix allows organizer for rescoring/finalization"
+    }
+  ],
+  "problem": "The product operates with organizer-managed teams and participants. The audit says the published 4-5 team size is not enforced, no team disqualification/suspension surface exists, self-registration/team join is absent, and fine-grained roles are not implemented. These are policy questions as well as code gaps.",
+  "impact": "Organizers may create teams outside the published size/eligibility rules or lack a controlled process for suspension/disqualification. Adding self-registration or more roles without an owner decision could weaken the deliberate organizer-controlled registration model.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "scope_or_policy_check",
+    "evidence_paths": [
+      "backend/app/routers/admin.py: team create and participant registration",
+      "backend/app/models_app.py: team membership and roles",
+      "frontend/src/pages/admin/Participants.tsx",
+      "docs/COMPETITION_RULES.md",
+      "docs/KNOWN_GAPS_AND_OWNER_DECISIONS.md"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Obtain owner decisions for minimum/maximum team size, whether roster changes are allowed after start, and the disqualification/suspension policy."
+      },
+      {
+        "step": 2,
+        "action": "Encode chosen limits at participant registration and roster mutation endpoints inside a transaction locking the team/event capacity row."
+      },
+      {
+        "step": 3,
+        "action": "Add an audited team/user lifecycle state machine with reason, actor, timestamp, appeal/reinstatement policy and two-person approval for disqualification."
+      },
+      {
+        "step": 4,
+        "action": "Keep public self-registration disabled unless the owner explicitly approves it; if approved, add invite/claim proof that does not reintroduce email-only takeover."
+      },
+      {
+        "step": 5,
+        "action": "Add tests for team size boundaries, concurrent roster changes, locked roster, suspension effects on login/submission and audited reinstatement."
+      }
+    ],
+    "acceptance_criteria": [
+      "Published team-size rules match backend enforcement.",
+      "Suspension/disqualification transitions are auditable, reversible only by approved policy and cannot be self-issued.",
+      "No ambiguous self-registration route exists without explicit owner approval."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

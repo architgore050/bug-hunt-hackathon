@@ -1,0 +1,77 @@
+{
+  "id": "REM-015",
+  "title": "Per-team encrypted pre-delivery, timed key release and content watermarking are not implemented",
+  "severity": "HIGH",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-BSP-06",
+    "F-B02B-06",
+    "F-ARB-13"
+  ],
+  "original_titles": [
+    {
+      "id": "F-BSP-06",
+      "title": "No per-team watermarking, file-order shuffling, or similarity/timing analysis"
+    },
+    {
+      "id": "F-B02B-06",
+      "title": "Repo content watermarking missing"
+    },
+    {
+      "id": "F-ARB-13",
+      "title": "Round-based delivery model replaced by 4-level flow; no encrypted bundle or watermarking"
+    }
+  ],
+  "problem": "Current challenge files are stored and served as ordinary database-backed plaintext. There is no per-team encrypted bundle, timed key endpoint, file-order shuffle or per-team watermark manifest. These are distinct from the simpler starts_at access gate above.",
+  "impact": "A user with authorized file access can copy and redistribute the same challenge bytes without team-specific attribution. The system has no cryptographic prefetch-with-T0-release mechanism.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/routers/challenges.py",
+      "backend/app/routers/levels.py: repo file routes",
+      "backend/app/storage.py",
+      "backend/app/config.py"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Define the bundle manifest per team, challenge version and stage, containing file hashes, ordered paths, nonce/AAD metadata and a unique watermark marker that does not change executable semantics."
+      },
+      {
+        "step": 2,
+        "action": "Encrypt each bundle using an AEAD construction (for example AES-256-GCM with unique nonce per bundle); store ciphertext separately from the key and bind AAD to event/team/challenge/version."
+      },
+      {
+        "step": 3,
+        "action": "Implement a no-store key-release endpoint that checks stage starts_at using DB time, participant team membership, rate limit, replay/expiry and audit record before releasing the decryption key."
+      },
+      {
+        "step": 4,
+        "action": "Add deterministic file ordering randomization per team and watermark verification tooling for leaked copies. Keep original canonical files in the restricted GT authoring domain."
+      },
+      {
+        "step": 5,
+        "action": "Test ciphertext integrity, wrong-team key denial, pre-T0 425 response, rate limiting, replay denial and watermark attribution."
+      }
+    ],
+    "acceptance_criteria": [
+      "No key is released before the stage start.",
+      "Bundle keys cannot decrypt another team’s bundle.",
+      "Manifest hashes verify all files and watermark is attributable without altering app behaviour."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [],
+  "residual_risk_or_scope_note": "This is a specification-level fairness enhancement. If the event intentionally relies on access gating only, record an owner-approved scope waiver."
+}

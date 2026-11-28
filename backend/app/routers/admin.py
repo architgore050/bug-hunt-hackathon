@@ -17,7 +17,7 @@ import hashlib
 import json
 from contextlib import contextmanager
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -25,13 +25,89 @@ from sqlalchemy.exc import IntegrityError
 from .. import security
 from ..audit import audit_verify, audit_write
 from ..config import settings
-from ..db import app_session, gt_session, health_probe, uuid7
+from ..db import app_engine, app_session, gt_session, health_probe, uuid7
 from ..deps import Principal, require_organizer, step_up_verified
 from ..errors import ApiError
 from ..jobs import enqueue
 from ..scoring import add_ledger_entry
+from ..tenancy import (
+    require_challenge_in_tenant,
+    require_dispute_in_tenant,
+    require_event_in_tenant,
+    require_stage_in_tenant,
+    require_submission_in_tenant,
+    require_team_in_tenant,
+    require_tenant,
+)
 
 router = APIRouter(tags=["admin"])
+
+
+# Owner sign-off notes that are NOT closed by code alone. They are surfaced
+# here so the readiness/health endpoints and reviewers see the open item.
+# OWNER-DECISION (REM-046): the published team-size cap (4-5) and per-event
+# override need owner sign-off before a live event. Default to 4 until that
+# decision lands; teams larger than the cap are rejected at create/register time.
+DEFAULT_MAX_TEAM_SIZE = 4
+
+
+def _require_reason(reason: str | None) -> str:
+    """Non-empty reason helper for lifecycle mutations (REM-005).
+
+    A blank reason is rejected with ``REASON_REQUIRED``. Length is bounded so a
+    reason is meaningful but not a free-form essay.
+    """
+    if reason is None or not reason.strip():
+        raise ApiError("REASON_REQUIRED")
+    reason = reason.strip()
+    if len(reason) < 3 or len(reason) > 500:
+        raise ApiError("REASON_REQUIRED", details={"reason": "Reason must be 3..500 characters."})
+    return reason
+
+
+def _max_team_size_for_event(event_config: dict | None) -> int:
+    """Resolve the per-event max team size from config, defaulting to the
+    published provisional cap (REM-046)."""
+    try:
+        cap = int(((event_config or {}).get("features") or {}).get("max_team_size", DEFAULT_MAX_TEAM_SIZE))
+    except (TypeError, ValueError):
+        cap = DEFAULT_MAX_TEAM_SIZE
+    return cap if cap > 0 else DEFAULT_MAX_TEAM_SIZE
+
+
+def _finalize_preflight(session, event_id: str) -> tuple[bool, list[str]]:
+    """Compute blocking conditions for event finalization (REM-006).
+
+    Returns ``(ok, blockers)``. Blockers are human-readable reason strings used
+    in the ``FINALIZE_BLOCKED`` / ``RELEASE_BLOCKED`` error details. The caller
+    must rerun this inside the finalization transaction; a preview is not a
+    substitute because a blocker can appear between preview and commit.
+    """
+    blockers: list[str] = []
+    open_reviews = session.execute(
+        text(
+            "SELECT count(*) FROM app.review_items ri "
+            "JOIN app.submissions s ON s.id = ri.submission_id "
+            "WHERE s.event_id = CAST(:e AS uuid) AND ri.status IN ('open','in_review')"
+        ),
+        {"e": event_id},
+    ).scalar_one()
+    if int(open_reviews) > 0:
+        blockers.append(f"{int(open_reviews)} open review items")
+    open_disputes = session.execute(
+        text(
+            "SELECT count(*) FROM app.disputes d "
+            "JOIN app.submissions s ON s.id = d.submission_id "
+            "WHERE s.event_id = CAST(:e AS uuid) AND d.status = 'open'"
+        ),
+        {"e": event_id},
+    ).scalar_one()
+    if int(open_disputes) > 0:
+        blockers.append(f"{int(open_disputes)} open disputes")
+    verify = audit_verify(session)
+    if not verify.get("intact", True):
+        blockers.append("audit chain verification failed")
+    return (len(blockers) == 0, blockers)
 
 
 # --- events -------------------------------------------------------------------
@@ -50,9 +126,9 @@ class EventIn(BaseModel):
 @router.post("/admin/events", status_code=201)
 def create_event(body: EventIn, request: Request, p: Principal = Depends(require_organizer)):
     with app_session() as s:
-        tenant = s.execute(text("SELECT id FROM app.tenants ORDER BY created_at LIMIT 1")).first()
-        if tenant is None:
-            raise ApiError("VALIDATION_ERROR", details={"tenant": "No tenant exists. Run the seed script."})
+        # Tenant identity is server-derived from the principal (REM-001); never
+        # accept it from the request body and never fall back to "first tenant".
+        tenant_id = require_tenant(s, p.tenant_id)
         ev_id = str(uuid7())
         s.execute(
             text(
@@ -61,7 +137,7 @@ def create_event(body: EventIn, request: Request, p: Principal = Depends(require
             ),
             {
                 "id": ev_id,
-                "t": str(tenant[0]),
+                "t": tenant_id,
                 "slug": body.slug,
                 "name": body.name,
                 "dur": body.duration_minutes,
@@ -72,6 +148,9 @@ def create_event(body: EventIn, request: Request, p: Principal = Depends(require
                         "features": {
                             "runner_enabled": settings.runner_enabled,
                             "ai_assessment_enabled": settings.ai_assessment_enabled,
+                            # OWNER-DECISION (REM-046): published team-size cap
+                            # (4-5) requires owner sign-off; default 4 until then.
+                            "max_team_size": DEFAULT_MAX_TEAM_SIZE,
                         },
                         "scoring": {
                             "weights": {"functional_test": 0.5, "code_review": 0.3, "evidence_report": 0.2},
@@ -91,6 +170,7 @@ def create_event(body: EventIn, request: Request, p: Principal = Depends(require
             entity_type="event",
             entity_id=ev_id,
             request_id=request.state.request_id,
+            event_scope=f"event:{ev_id}",
         )
     return {"event_id": ev_id}
 
@@ -105,17 +185,34 @@ EVENT_TRANSITIONS = {
 }
 
 
+class EventStatusIn(BaseModel):
+    status: str
+    reason: str = Field(min_length=3, max_length=500)
+
+
 @router.post("/admin/events/{event_id}/status")
-def set_event_status(event_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
-    target = body.get("status")
+def set_event_status(
+    event_id: str,
+    body: EventStatusIn,
+    request: Request,
+    p: Principal = Depends(step_up_verified),
+):
+    # TWO-PERSON (REM-005): a second independent approver for irreversible
+    # transitions (close/finalize/archive) is deferred to v1; step-up + a
+    # mandatory audited reason is enforced here.
+    reason = _require_reason(body.reason)
+    target = body.status
     with app_session() as s:
-        cur = s.execute(
+        ev = require_event_in_tenant(s, event_id, p.tenant_id)
+        cur = ev["status"]
+        # Re-lock the event row inside this transaction for the transition.
+        cur_locked = s.execute(
             text("SELECT status FROM app.events WHERE id = CAST(:e AS uuid) FOR UPDATE"), {"e": event_id}
         ).first()
-        if cur is None:
-            raise ApiError("NOT_FOUND")
-        if target not in EVENT_TRANSITIONS.get(cur[0], set()):
-            raise ApiError("VALIDATION_ERROR", details={"transition": f"Cannot move from {cur[0]} to {target}."})
+        if cur_locked is not None:
+            cur = cur_locked[0]
+        if target not in EVENT_TRANSITIONS.get(cur, set()):
+            raise ApiError("VALIDATION_ERROR", details={"transition": f"Cannot move from {cur} to {target}."})
         if target == "live":
             # readiness gate: required items must be checked (ADM-EV-05)
             pending = s.execute(
@@ -132,6 +229,12 @@ def set_event_status(event_id: str, body: dict, request: Request, p: Principal =
                 ),
                 {"e": event_id},
             )
+        # REM-006: finalization readiness gate. Block the transition while any
+        # review item is open, a dispute is open, or the audit chain is broken.
+        if target == "finalized":
+            ok, blockers = _finalize_preflight(s, event_id)
+            if not ok:
+                raise ApiError("FINALIZE_BLOCKED", details={"reason": "; ".join(blockers), "blockers": blockers})
         s.execute(text("UPDATE app.events SET status=:st WHERE id = CAST(:e AS uuid)"), {"st": target, "e": event_id})
         audit_write(
             s,
@@ -141,7 +244,8 @@ def set_event_status(event_id: str, body: dict, request: Request, p: Principal =
             entity_type="event",
             entity_id=event_id,
             request_id=request.state.request_id,
-            details={"from": cur[0], "to": target},
+            event_scope=f"event:{event_id}",
+            details={"from": cur, "to": target, "reason": reason},
         )
     return {"ok": True, "status": target}
 
@@ -153,7 +257,7 @@ class ConfigIn(BaseModel):
 
 
 @router.post("/admin/events/{event_id}/config")
-def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal = Depends(require_organizer)):
+def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal = Depends(step_up_verified)):
     """New config revision with reason; publication freezes the snapshot (DAT-04)."""
     w = body.config.get("scoring", {}).get("weights", {})
     if w and abs(sum(float(v) for v in w.values()) - 1.0) > 0.001:
@@ -161,6 +265,7 @@ def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal 
     canonical = json.dumps(body.config, sort_keys=True, separators=(",", ":"))
     rule_set_hash = "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
     with app_session() as s:
+        require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
         ver = s.execute(
             text("SELECT COALESCE(MAX(version), 0) FROM app.event_config_revisions WHERE event_id = CAST(:e AS uuid)"),
             {"e": event_id},
@@ -197,6 +302,7 @@ def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal 
             entity_type="event",
             entity_id=event_id,
             request_id=request.state.request_id,
+            event_scope=f"event:{event_id}",
             details={"version": int(ver) + 1, "frozen": body.freeze, "reason": body.reason},
         )
     return {"ok": True, "rule_set_hash": rule_set_hash}
@@ -206,16 +312,7 @@ def revise_config(event_id: str, body: ConfigIn, request: Request, p: Principal 
 def list_config_revisions(event_id: str, p: Principal = Depends(require_organizer)):
     """Return current event config and the bounded immutable revision history."""
     with app_session() as s:
-        event = (
-            s.execute(
-                text("SELECT config, config_version FROM app.events WHERE id = CAST(:e AS uuid)"),
-                {"e": event_id},
-            )
-            .mappings()
-            .first()
-        )
-        if event is None:
-            raise ApiError("NOT_FOUND")
+        event = require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
         rows = (
             s.execute(
                 text(
@@ -236,18 +333,55 @@ def list_config_revisions(event_id: str, p: Principal = Depends(require_organize
 
 
 @router.get("/admin/events")
-def list_events(p: Principal = Depends(require_organizer)):
+def list_events(
+    p: Principal = Depends(require_organizer),
+    status: str | None = None,
+    limit: int = Query(default=100, ge=1, le=200),
+    cursor: str | None = None,
+):
+    """List events scoped to the caller's tenant (REM-001) with cursor pagination (REM-028)."""
     with app_session() as s:
+        tid = require_tenant(s, p.tenant_id)
+        clauses = ["e.tenant_id = CAST(:tid AS uuid)"]
+        binds: dict = {"tid": tid, "n": limit}
+        if status:
+            clauses.append("e.status = :status")
+            binds["status"] = status
+        if cursor:
+            # cursor is "<created_at_iso> <uuid>"; older rows only.
+            try:
+                cur_ts, cur_id = cursor.split(" ", 1)
+            except ValueError as err:
+                raise ApiError("VALIDATION_ERROR", details={"cursor": "Invalid cursor."}) from err
+            clauses.append("(e.created_at, e.id) < (CAST(:cts AS timestamptz), CAST(:cid AS uuid))")
+            binds["cts"] = cur_ts
+            binds["cid"] = cur_id
         rows = (
             s.execute(
                 text(
-                    "SELECT id, slug, name, status, starts_at, ends_at, timezone, max_participants, max_teams, rules_version, config_version FROM app.events ORDER BY created_at DESC"
-                )
+                    "SELECT e.id, e.slug, e.name, e.status, e.starts_at, e.ends_at, e.timezone, "
+                    "e.max_participants, e.max_teams, e.rules_version, e.config_version, "
+                    "e.created_at, e.id AS _cursor_id "
+                    "FROM app.events e WHERE "
+                    + " AND ".join(clauses)
+                    + " ORDER BY e.created_at DESC, e.id DESC LIMIT :n"
+                ),
+                binds,
             )
             .mappings()
             .all()
         )
-    return {"events": [dict(r) for r in rows]}
+        total = s.execute(
+            text("SELECT count(*) FROM app.events e WHERE e.tenant_id = CAST(:tid AS uuid)"), {"tid": tid}
+        ).scalar_one()
+    items = [dict(r) for r in rows]
+    next_cursor = None
+    if len(items) >= limit:
+        last = items[-1]
+        next_cursor = f"{last['created_at'].isoformat()} {last['_cursor_id']}"
+    for it in items:
+        it.pop("_cursor_id", None)
+    return {"events": items, "next_cursor": next_cursor, "total": int(total)}
 
 
 # --- stages -------------------------------------------------------------------
@@ -280,6 +414,7 @@ def create_stage(event_id: str, body: StageIn, request: Request, p: Principal = 
     canonical = json.dumps(cfg, sort_keys=True, separators=(",", ":"))
     rsh = "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
     with app_session() as s:
+        require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
         ordinal = s.execute(
             text("SELECT COALESCE(MAX(ordinal), 0) FROM app.stages WHERE event_id = CAST(:e AS uuid)"), {"e": event_id}
         ).scalar_one()
@@ -307,6 +442,7 @@ def create_stage(event_id: str, body: StageIn, request: Request, p: Principal = 
             entity_type="stage",
             entity_id=st_id,
             request_id=request.state.request_id,
+            event_scope=f"event:{event_id}",
             details={"rule_set_hash": rsh},
         )
     return {"stage_id": st_id, "rule_set_hash": rsh}
@@ -324,13 +460,24 @@ STAGE_TRANSITIONS = {
 }
 
 
+class StageControlIn(BaseModel):
+    action: str
+    reason: str = Field(min_length=3, max_length=500)
+    seconds: int | None = None
+
+
 @router.post("/admin/stages/{stage_id}/control")
-def control_stage(stage_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
+def control_stage(
+    stage_id: str,
+    body: StageControlIn,
+    request: Request,
+    p: Principal = Depends(step_up_verified),
+):
     """arm / start / pause / resume / extend / end - reason code required (ADM-LV-02)."""
-    action = body.get("action")
-    reason = body.get("reason", "")
-    if not reason:
-        raise ApiError("VALIDATION_ERROR", details={"reason": "A reason code is required for stage control."})
+    # TWO-PERSON (REM-005): a second independent approver for stage end / extend
+    # is deferred to v1; step-up + a mandatory audited reason is enforced here.
+    reason = _require_reason(body.reason)
+    action = body.action
     mapping = {
         "seal": ("draft", "sealed"),
         "arm": ("sealed", "armed"),
@@ -340,6 +487,8 @@ def control_stage(stage_id: str, body: dict, request: Request, p: Principal = De
         "end": ("active", "ended"),
     }
     with app_session() as s:
+        # REM-001 tenant scope: load the stage through its event's tenant.
+        st_row = require_stage_in_tenant(s, stage_id, p.tenant_id)
         st = (
             s.execute(
                 text("SELECT id, status, ends_at, starts_at FROM app.stages WHERE id = CAST(:s AS uuid) FOR UPDATE"),
@@ -392,7 +541,7 @@ def control_stage(stage_id: str, body: dict, request: Request, p: Principal = De
             else:
                 s.execute(text("UPDATE app.stages SET status='active' WHERE id = CAST(:s AS uuid)"), {"s": stage_id})
         elif action == "extend":
-            seconds = int(body.get("seconds", 0))
+            seconds = int(body.seconds or 0)
             if seconds <= 0 or seconds > 3600:
                 raise ApiError("VALIDATION_ERROR", details={"seconds": "1..3600"})
             s.execute(
@@ -425,17 +574,31 @@ def control_stage(stage_id: str, body: dict, request: Request, p: Principal = De
             entity_type="stage",
             entity_id=stage_id,
             request_id=request.state.request_id,
+            event_scope=f"event:{st_row['event_id']}",
             details={"reason": reason},
         )
     return {"ok": True, "action": action}
 
 
+class StageReleaseIn(BaseModel):
+    action: str = "release"
+    reason: str = Field(min_length=3, max_length=500)
+
+
 @router.post("/admin/stages/{stage_id}/release")
-def release_results(stage_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
+def release_results(
+    stage_id: str,
+    body: StageReleaseIn,
+    request: Request,
+    p: Principal = Depends(step_up_verified),
+):
     """ENDED -> EVALUATING -> RELEASED: publishes verdicts and leaderboard (ADM-RS-04)."""
-    action = body.get("action", "release")
-    reason = body.get("reason", "results release")
+    # TWO-PERSON (REM-005): a second approver for result release is deferred to
+    # v1; step-up + a mandatory audited reason is enforced here.
+    reason = _require_reason(body.reason)
+    action = body.action
     with app_session() as s:
+        st_row = require_stage_in_tenant(s, stage_id, p.tenant_id)  # REM-001 tenant scope
         st = s.execute(
             text("SELECT status FROM app.stages WHERE id = CAST(:s AS uuid) FOR UPDATE"), {"s": stage_id}
         ).first()
@@ -443,8 +606,14 @@ def release_results(stage_id: str, body: dict, request: Request, p: Principal = 
             raise ApiError("NOT_FOUND")
         if action == "evaluate" and st[0] != "ended":
             raise ApiError("VALIDATION_ERROR", details={"transition": "Stage must be ended first."})
-        if action == "release" and st[0] not in ("ended", "evaluating"):
-            raise ApiError("VALIDATION_ERROR", details={"transition": f"Cannot release from {st[0]}."})
+        if action == "release":
+            if st[0] not in ("ended", "evaluating"):
+                raise ApiError("VALIDATION_ERROR", details={"transition": f"Cannot release from {st[0]}."})
+            # REM-006: release readiness gate. Block while any review item is
+            # open, a dispute is open, or the audit chain is broken.
+            ok, blockers = _finalize_preflight(s, str(st_row["event_id"]))
+            if not ok:
+                raise ApiError("RELEASE_BLOCKED", details={"reason": "; ".join(blockers), "blockers": blockers})
         if action == "evaluate":
             s.execute(text("UPDATE app.stages SET status='evaluating' WHERE id = CAST(:s AS uuid)"), {"s": stage_id})
             enqueue(s, "release_feedback", {"stage_id": stage_id})
@@ -460,6 +629,7 @@ def release_results(stage_id: str, body: dict, request: Request, p: Principal = 
             entity_type="stage",
             entity_id=stage_id,
             request_id=request.state.request_id,
+            event_scope=f"event:{st_row['event_id']}",
             details={"reason": reason},
         )
     return {"ok": True}
@@ -484,18 +654,21 @@ def create_team(event_id: str, body: TeamIn, request: Request, p: Principal = De
     import secrets
 
     with app_session() as s:
-        ev = s.execute(
-            text("SELECT max_teams FROM app.events WHERE id = CAST(:e AS uuid) FOR UPDATE"),
+        ev = require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
+        # Re-read the row under FOR UPDATE for the capacity check.
+        ev_locked = s.execute(
+            text("SELECT max_teams, config FROM app.events WHERE id = CAST(:e AS uuid) FOR UPDATE"),
             {"e": event_id},
         ).first()
-        if ev is None:
+        if ev_locked is None:
             raise ApiError("NOT_FOUND")
+        max_teams = int(ev_locked[0] or ev["max_teams"])
         count = s.execute(
             text("SELECT count(*) FROM app.teams WHERE event_id = CAST(:e AS uuid)"),
             {"e": event_id},
         ).scalar_one()
-        if int(count) >= int(ev[0]):
-            raise ApiError("VALIDATION_ERROR", details={"capacity": f"Team cap ({ev[0]}) reached."})
+        if int(count) >= max_teams:
+            raise ApiError("VALIDATION_ERROR", details={"capacity": f"Team cap ({max_teams}) reached."})
         team_id = str(uuid7())
         join_code = secrets.token_hex(4).upper()
         s.execute(
@@ -512,6 +685,7 @@ def create_team(event_id: str, body: TeamIn, request: Request, p: Principal = De
             entity_type="team",
             entity_id=team_id,
             request_id=request.state.request_id,
+            event_scope=f"event:{event_id}",
         )
     return {"team_id": team_id, "join_code": join_code}
 
@@ -519,14 +693,7 @@ def create_team(event_id: str, body: TeamIn, request: Request, p: Principal = De
 @router.get("/admin/events/{event_id}/teams")
 def list_teams(event_id: str, p: Principal = Depends(require_organizer)):
     with app_session() as s:
-        if (
-            s.execute(
-                text("SELECT 1 FROM app.events WHERE id = CAST(:e AS uuid)"),
-                {"e": event_id},
-            ).first()
-            is None
-        ):
-            raise ApiError("NOT_FOUND")
+        require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
         rows = (
             s.execute(
                 text(
@@ -569,23 +736,40 @@ def register_event_participant(
     password_setup_required = True
     try:
         with app_session() as s:
-            event = (
+            require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
+            # Re-read under FOR UPDATE for capacity checks.
+            event_locked = (
                 s.execute(
-                    text("SELECT tenant_id, max_participants FROM app.events WHERE id = CAST(:e AS uuid) FOR UPDATE"),
+                    text(
+                        "SELECT tenant_id, max_participants, config FROM app.events WHERE id = CAST(:e AS uuid) FOR UPDATE"
+                    ),
                     {"e": event_id},
                 )
                 .mappings()
                 .first()
             )
-            if event is None:
+            if event_locked is None:
                 raise ApiError("NOT_FOUND")
 
-            team = s.execute(
-                text("SELECT event_id FROM app.teams WHERE id = CAST(:t AS uuid) FOR UPDATE"),
-                {"t": body.team_id},
-            ).first()
-            if team is None or str(team[0]) != event_id:
+            team = require_team_in_tenant(s, body.team_id, p.tenant_id)  # REM-001 tenant scope
+            if str(team["event_id"]) != event_id:
                 raise ApiError("VALIDATION_ERROR", details={"team_id": "Choose a team from this event."})
+            # Re-lock the team row for the membership insert.
+            s.execute(text("SELECT 1 FROM app.teams WHERE id = CAST(:t AS uuid) FOR UPDATE"), {"t": body.team_id})
+
+            # REM-046 team-size enforcement. The published cap (4-5) needs owner
+            # sign-off; default to 4 until that decision lands. Rejecting here
+            # keeps the roster fair regardless of the UI.
+            max_team_size = _max_team_size_for_event(event_locked["config"])
+            team_member_count = s.execute(
+                text("SELECT count(*) FROM app.team_members WHERE team_id = CAST(:t AS uuid)"),
+                {"t": body.team_id},
+            ).scalar_one()
+            if int(team_member_count) >= max_team_size:
+                raise ApiError(
+                    "VALIDATION_ERROR",
+                    details={"team_id": f"Team size cap ({max_team_size}) reached."},
+                )
 
             member_count = s.execute(
                 text(
@@ -594,10 +778,10 @@ def register_event_participant(
                 ),
                 {"e": event_id},
             ).scalar_one()
-            if int(member_count) >= int(event["max_participants"]):
+            if int(member_count) >= int(event_locked["max_participants"]):
                 raise ApiError(
                     "VALIDATION_ERROR",
-                    details={"capacity": f"Participant cap ({event['max_participants']}) reached."},
+                    details={"capacity": f"Participant cap ({event_locked['max_participants']}) reached."},
                 )
 
             existing = (
@@ -622,7 +806,7 @@ def register_event_participant(
                     ),
                     {
                         "id": user_id,
-                        "tenant": str(event["tenant_id"]),
+                        "tenant": str(event_locked["tenant_id"]),
                         "email": body.email.lower(),
                         "name": body.name,
                         "registration_id": str(uuid7())[:8],
@@ -630,7 +814,7 @@ def register_event_participant(
                 )
             else:
                 user_id = str(existing["id"])
-                if str(existing["tenant_id"]) != str(event["tenant_id"]) or existing["role"] != "participant":
+                if str(existing["tenant_id"]) != str(event_locked["tenant_id"]) or existing["role"] != "participant":
                     raise ApiError(
                         "VALIDATION_ERROR",
                         details={"email": "This email is already registered for a different account role or tenant."},
@@ -697,12 +881,12 @@ def reassign_event_participant(
     p: Principal = Depends(admin_step_up_verified),
 ):
     with app_session() as s:
-        target = s.execute(
-            text("SELECT event_id FROM app.teams WHERE id = CAST(:t AS uuid) FOR UPDATE"),
-            {"t": body.team_id},
-        ).first()
-        if target is None or str(target[0]) != event_id:
+        require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
+        team = require_team_in_tenant(s, body.team_id, p.tenant_id)  # REM-001 tenant scope
+        if str(team["event_id"]) != event_id:
             raise ApiError("VALIDATION_ERROR", details={"team_id": "Choose a team from this event."})
+        # Re-lock the target team row for the membership insert.
+        s.execute(text("SELECT 1 FROM app.teams WHERE id = CAST(:t AS uuid) FOR UPDATE"), {"t": body.team_id})
         current = s.execute(
             text(
                 "SELECT tm.team_id FROM app.team_members tm "
@@ -716,6 +900,18 @@ def reassign_event_participant(
         if current is None:
             raise ApiError("NOT_FOUND")
         if str(current[0]) != body.team_id:
+            # REM-046: enforce team-size cap on the destination team too.
+            ev = s.execute(text("SELECT config FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": event_id}).first()
+            max_team_size = _max_team_size_for_event(ev[0] if ev else None)
+            dest_count = s.execute(
+                text("SELECT count(*) FROM app.team_members WHERE team_id = CAST(:t AS uuid)"),
+                {"t": body.team_id},
+            ).scalar_one()
+            if int(dest_count) >= max_team_size:
+                raise ApiError(
+                    "VALIDATION_ERROR",
+                    details={"team_id": f"Team size cap ({max_team_size}) reached."},
+                )
             s.execute(
                 text("DELETE FROM app.team_members WHERE user_id = CAST(:u AS uuid) AND team_id = CAST(:t AS uuid)"),
                 {"u": user_id, "t": str(current[0])},
@@ -749,6 +945,7 @@ def remove_event_participant(
     p: Principal = Depends(admin_step_up_verified),
 ):
     with app_session() as s:
+        require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
         row = s.execute(
             text(
                 "SELECT tm.team_id FROM app.team_members tm "
@@ -808,10 +1005,14 @@ def admin_reset_user_password(
     if user_id == p.id:
         raise ApiError("VALIDATION_ERROR", details={"user_id": "Use another admin account to reset your own password."})
     with app_session() as s:
+        # REM-001 tenant scope: only reset users in the caller's tenant.
+        tid = require_tenant(s, p.tenant_id)
         user = (
             s.execute(
-                text("SELECT email FROM app.users WHERE id = CAST(:u AS uuid) FOR UPDATE"),
-                {"u": user_id},
+                text(
+                    "SELECT email FROM app.users WHERE id = CAST(:u AS uuid) AND tenant_id = CAST(:t AS uuid) FOR UPDATE"
+                ),
+                {"u": user_id, "t": tid},
             )
             .mappings()
             .first()
@@ -847,16 +1048,33 @@ def admin_reset_user_password(
 
 
 @router.get("/admin/events/{event_id}/participants")
-def list_participants(event_id: str, p: Principal = Depends(require_organizer)):
+def list_participants(
+    event_id: str,
+    p: Principal = Depends(require_organizer),
+    limit: int = Query(default=100, ge=1, le=200),
+    cursor: str | None = None,
+    email: str | None = None,
+    team_id: str | None = None,
+):
+    """Tenant-scoped participant roster (REM-001) with cursor pagination (REM-028)."""
     with app_session() as s:
-        if (
-            s.execute(
-                text("SELECT 1 FROM app.events WHERE id = CAST(:e AS uuid)"),
-                {"e": event_id},
-            ).first()
-            is None
-        ):
-            raise ApiError("NOT_FOUND")
+        require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
+        clauses = ["t.event_id = CAST(:e AS uuid)", "u.role = 'participant'"]
+        binds: dict = {"e": event_id, "n": limit}
+        if email:
+            clauses.append("lower(u.email) LIKE :email")
+            binds["email"] = f"%{email.lower()}%"
+        if team_id:
+            clauses.append("t.id = CAST(:team_id AS uuid)")
+            binds["team_id"] = team_id
+        if cursor:
+            try:
+                cur_email, cur_id = cursor.split("\t", 1)
+            except ValueError as err:
+                raise ApiError("VALIDATION_ERROR", details={"cursor": "Invalid cursor."}) from err
+            clauses.append("(u.email, u.id) > (:cemail, CAST(:cid AS uuid))")
+            binds["cemail"] = cur_email
+            binds["cid"] = cur_id
         rows = (
             s.execute(
                 text(
@@ -864,15 +1082,30 @@ def list_participants(event_id: str, p: Principal = Depends(require_organizer)):
                     "(u.password_hash IS NOT NULL) AS password_set, u.created_at "
                     "FROM app.team_members tm JOIN app.teams t ON t.id = tm.team_id "
                     "JOIN app.users u ON u.id = tm.user_id "
-                    "WHERE t.event_id = CAST(:e AS uuid) AND u.role = 'participant' "
-                    "ORDER BY u.email LIMIT 500"
+                    "WHERE " + " AND ".join(clauses) + " ORDER BY u.email, u.id LIMIT :n"
                 ),
-                {"e": event_id},
+                binds,
             )
             .mappings()
             .all()
         )
-    return {"participants": [dict(r) for r in rows]}
+    items = [dict(r) for r in rows]
+    next_cursor = None
+    if len(items) >= limit:
+        last = items[-1]
+        next_cursor = f"{last['email']}\t{last['id']}"
+    # Total is the count of all rows matching the non-cursor filters only.
+    total_clauses = [c for c in clauses if c != "(u.email, u.id) > (:cemail, CAST(:cid AS uuid))"]
+    total_binds = {k: v for k, v in binds.items() if k in {"e", "email", "team_id"}}
+    with app_session() as s:
+        total = s.execute(
+            text(
+                "SELECT count(*) FROM app.team_members tm JOIN app.teams t ON t.id = tm.team_id "
+                "JOIN app.users u ON u.id = tm.user_id WHERE " + " AND ".join(total_clauses)
+            ),
+            total_binds,
+        ).scalar_one()
+    return {"participants": items, "next_cursor": next_cursor, "total": int(total)}
 
 
 # --- challenges ----------------------------------------------------------------
@@ -888,14 +1121,7 @@ class ChallengeIn(BaseModel):
 def list_challenge_versions(event_id: str, p: Principal = Depends(require_organizer)):
     """List safe challenge metadata without participant content or ground-truth secrets."""
     with app_session() as s:
-        if (
-            s.execute(
-                text("SELECT 1 FROM app.events WHERE id = CAST(:e AS uuid)"),
-                {"e": event_id},
-            ).first()
-            is None
-        ):
-            raise ApiError("NOT_FOUND")
+        require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
         rows = (
             s.execute(
                 text(
@@ -914,6 +1140,7 @@ def list_challenge_versions(event_id: str, p: Principal = Depends(require_organi
 @router.post("/admin/events/{event_id}/challenges", status_code=201)
 def create_challenge(event_id: str, body: ChallengeIn, request: Request, p: Principal = Depends(step_up_verified)):
     with app_session() as s:
+        require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
         cid = str(uuid7())
         s.execute(
             text(
@@ -953,12 +1180,8 @@ async def upload_files(
     text_content = content.decode("utf-8", errors="replace")
     line_count = text_content.count("\n") + 1
     with app_session() as s:
-        cv = s.execute(
-            text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid)"), {"c": challenge_id}
-        ).first()
-        if cv is None:
-            raise ApiError("NOT_FOUND")
-        if cv[0] not in ("draft", "reviewed"):
+        cv = require_challenge_in_tenant(s, challenge_id, p.tenant_id)  # REM-001 tenant scope
+        if cv["status"] not in ("draft", "reviewed"):
             raise ApiError("GROUND_TRUTH_LOCKED")
         s.execute(
             text(
@@ -1000,7 +1223,7 @@ async def upload_files(
             entity_id=challenge_id,
             request_id=request.state.request_id,
             details={"path": norm},
-            event_scope="challenge",
+            event_scope=f"event:{cv['event_id']}",
         )
     return {"ok": True, "path": norm, "line_count": line_count}
 
@@ -1022,13 +1245,14 @@ def _lang_for(path: str) -> str:
 @router.post("/admin/challenges/{challenge_id}/freeze")
 def freeze_challenge(challenge_id: str, request: Request, p: Principal = Depends(step_up_verified)):
     with app_session() as s:
-        cv = s.execute(
+        cv = require_challenge_in_tenant(s, challenge_id, p.tenant_id)  # REM-001 tenant scope
+        cv_locked = s.execute(
             text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid) FOR UPDATE"),
             {"c": challenge_id},
         ).first()
-        if cv is None:
+        if cv_locked is None:
             raise ApiError("NOT_FOUND")
-        if cv[0] not in ("draft", "reviewed"):
+        if cv_locked[0] not in ("draft", "reviewed"):
             raise ApiError("GROUND_TRUTH_LOCKED")
         files = s.execute(
             text("SELECT sha256 FROM app.challenge_files WHERE challenge_version_id = CAST(:c AS uuid) ORDER BY path"),
@@ -1052,29 +1276,40 @@ def freeze_challenge(challenge_id: str, request: Request, p: Principal = Depends
             entity_id=challenge_id,
             request_id=request.state.request_id,
             details={"content_hash": content_hash},
-            event_scope="challenge",
+            event_scope=f"event:{cv['event_id']}",
         )
     return {"ok": True, "content_hash": content_hash}
 
 
+class ChallengePublishIn(BaseModel):
+    stage_id: str
+
+
 @router.post("/admin/challenges/{challenge_id}/publish")
-def publish_challenge(challenge_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
-    stage_id = body.get("stage_id")
+def publish_challenge(
+    challenge_id: str, body: ChallengePublishIn, request: Request, p: Principal = Depends(step_up_verified)
+):
+    stage_id = body.stage_id
     if not stage_id:
         raise ApiError("VALIDATION_ERROR", details={"stage_id": "Required."})
     with app_session() as s:
-        cv = (
+        cv = require_challenge_in_tenant(s, challenge_id, p.tenant_id)  # REM-001 tenant scope
+        cv_locked = (
             s.execute(
-                text("SELECT status, event_id FROM app.challenge_versions WHERE id = CAST(:c AS uuid) FOR UPDATE"),
+                text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid) FOR UPDATE"),
                 {"c": challenge_id},
             )
             .mappings()
             .first()
         )
-        if cv is None:
+        if cv_locked is None:
             raise ApiError("NOT_FOUND")
-        if cv["status"] not in ("sealed",):
+        if cv_locked["status"] not in ("sealed",):
             raise ApiError("GROUND_TRUTH_LOCKED")
+        # REM-001: the stage must belong to the same event (and tenant).
+        stage = require_stage_in_tenant(s, stage_id, p.tenant_id)
+        if str(stage["event_id"]) != str(cv["event_id"]):
+            raise ApiError("VALIDATION_ERROR", details={"stage_id": "Stage must belong to the challenge's event."})
         s.execute(
             text(
                 "UPDATE app.challenge_versions SET status='published', published_at=now() WHERE id = CAST(:c AS uuid)"
@@ -1096,12 +1331,24 @@ def publish_challenge(challenge_id: str, body: dict, request: Request, p: Princi
             entity_id=challenge_id,
             request_id=request.state.request_id,
             details={"stage_id": stage_id},
-            event_scope="challenge",
+            event_scope=f"event:{cv['event_id']}",
         )
     return {"ok": True}
 
 
 # --- ground truth (gt_admin session; step-up required) -------------------------
+
+
+class GtLocationIn(BaseModel):
+    file_path: str = Field(min_length=1, max_length=500)
+    line_start: int = Field(ge=1)
+    line_end: int = Field(ge=1)
+    is_primary: bool = True
+
+
+class GtAliasIn(BaseModel):
+    keyword: str = Field(min_length=1, max_length=120)
+    weight: float = Field(default=1.0, gt=0, le=10.0)
 
 
 class BugIn(BaseModel):
@@ -1113,14 +1360,60 @@ class BugIn(BaseModel):
     root_cause_group: str
     explanation: str
     fix_guidance: str | None = None
-    locations: list[dict] = Field(default_factory=list, max_length=8)
-    aliases: list[dict] = Field(default_factory=list, max_length=12)
+    locations: list[GtLocationIn] = Field(default_factory=list, max_length=8)
+    aliases: list[GtAliasIn] = Field(default_factory=list, max_length=12)
+
+
+def _compute_anchor_hash(file_path: str, line_start: int, line_end: int) -> str:
+    """Stable canonical anchor for a GT location (REM-008).
+
+    The anchor is sha256 of ``file_path|line_start|line_end`` so a frozen bug
+    can be re-validated against the same canonical coordinates after a
+    challenge revision. The full source-context hash (surrounding lines) is a
+    future refinement tracked in REM-008 step 3.
+    """
+    material = f"{file_path}|{int(line_start)}|{int(line_end)}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
 @router.post("/admin/challenges/{challenge_id}/ground-truth/bugs", status_code=201)
 def add_bug(challenge_id: str, body: BugIn, request: Request, p: Principal = Depends(step_up_verified)):
     """Writes ground truth via the gt_admin role only (DAT-03)."""
-    with _editable_challenge_lock(challenge_id), gt_session() as gts:
+    # REM-008: validate every location against the challenge's uploaded files.
+    # The file must exist in app.challenge_files and the line range must fit
+    # inside its line_count. We compute a canonical anchor_hash for each
+    # location so a revision can re-verify the bug is still anchored.
+    with app_session() as s:
+        require_challenge_in_tenant(s, challenge_id, p.tenant_id)  # REM-001 tenant scope
+        file_rows = (
+            s.execute(
+                text("SELECT path, line_count FROM app.challenge_files WHERE challenge_version_id = CAST(:c AS uuid)"),
+                {"c": challenge_id},
+            )
+            .mappings()
+            .all()
+        )
+    file_index: dict[str, int] = {str(r["path"]): int(r["line_count"]) for r in file_rows}
+    for loc in body.locations:
+        if loc.line_end < loc.line_start:
+            raise ApiError("VALIDATION_ERROR", details={"locations": "line_end must be >= line_start."})
+        line_count = file_index.get(loc.file_path)
+        if line_count is None:
+            raise ApiError(
+                "VALIDATION_ERROR",
+                details={"locations": f"file_path '{loc.file_path}' is not part of this challenge."},
+            )
+        if loc.line_start < 1 or loc.line_end > line_count:
+            raise ApiError(
+                "VALIDATION_ERROR",
+                details={
+                    "locations": (
+                        f"line range {loc.line_start}-{loc.line_end} is out of bounds for "
+                        f"'{loc.file_path}' (file has {line_count} lines)."
+                    )
+                },
+            )
+    with _editable_challenge_lock(challenge_id, p.tenant_id), gt_session() as gts:
         bug_id = str(uuid7())
         gts.execute(
             text(
@@ -1141,17 +1434,20 @@ def add_bug(challenge_id: str, body: BugIn, request: Request, p: Principal = Dep
             },
         )
         for loc in body.locations:
+            anchor = _compute_anchor_hash(loc.file_path, loc.line_start, loc.line_end)
             gts.execute(
                 text(
-                    "INSERT INTO gt.gt_locations (id, bug_id, file_path, line_start, line_end, is_primary) VALUES (CAST(:id AS uuid), CAST(:b AS uuid), :fp, :ls, :le, :prim)"
+                    "INSERT INTO gt.gt_locations (id, bug_id, file_path, line_start, line_end, is_primary, anchor_hash) "
+                    "VALUES (CAST(:id AS uuid), CAST(:b AS uuid), :fp, :ls, :le, :prim, :ah)"
                 ),
                 {
                     "id": str(uuid7()),
                     "b": bug_id,
-                    "fp": loc["file_path"],
-                    "ls": loc["line_start"],
-                    "le": loc["line_end"],
-                    "prim": loc.get("is_primary", True),
+                    "fp": loc.file_path,
+                    "ls": loc.line_start,
+                    "le": loc.line_end,
+                    "prim": loc.is_primary,
+                    "ah": anchor,
                 },
             )
         for al in body.aliases:
@@ -1159,7 +1455,7 @@ def add_bug(challenge_id: str, body: BugIn, request: Request, p: Principal = Dep
                 text(
                     "INSERT INTO gt.gt_aliases (id, bug_id, keyword, weight) VALUES (CAST(:id AS uuid), CAST(:b AS uuid), :kw, :w)"
                 ),
-                {"id": str(uuid7()), "b": bug_id, "kw": al["keyword"], "w": al.get("weight", 1.0)},
+                {"id": str(uuid7()), "b": bug_id, "kw": al.keyword, "w": al.weight},
             )
         audit_write(
             gts,
@@ -1194,14 +1490,7 @@ class FlagPatchIn(BaseModel):
 def list_ground_truth_flags(challenge_id: str, p: Principal = Depends(step_up_verified)):
     """Return editable flag metadata only; neither plaintext codes nor hashes are exposed."""
     with app_session() as s:
-        if (
-            s.execute(
-                text("SELECT 1 FROM app.challenge_versions WHERE id = CAST(:c AS uuid)"),
-                {"c": challenge_id},
-            ).first()
-            is None
-        ):
-            raise ApiError("NOT_FOUND")
+        require_challenge_in_tenant(s, challenge_id, p.tenant_id)  # REM-001 tenant scope
     with gt_session() as gts:
         rows = (
             gts.execute(
@@ -1219,9 +1508,14 @@ def list_ground_truth_flags(challenge_id: str, p: Principal = Depends(step_up_ve
 
 
 @contextmanager
-def _editable_challenge_lock(challenge_id: str):
-    """Hold the challenge row lock until the isolated ground-truth write completes."""
+def _editable_challenge_lock(challenge_id: str, tenant_id: str | None):
+    """Hold the challenge row lock until the isolated ground-truth write completes.
+
+    Tenant-scoped (REM-001): the challenge must belong to the caller's tenant
+    or this raises a non-enumerating 404 before any GT write.
+    """
     with app_session() as s:
+        require_challenge_in_tenant(s, challenge_id, tenant_id)  # REM-001 tenant scope
         challenge = s.execute(
             text("SELECT status FROM app.challenge_versions WHERE id = CAST(:c AS uuid) FOR UPDATE"),
             {"c": challenge_id},
@@ -1237,7 +1531,7 @@ def _editable_challenge_lock(challenge_id: str):
 def add_flag(challenge_id: str, body: FlagIn, request: Request, p: Principal = Depends(step_up_verified)):
     from ..security import flag_code_hash
 
-    with _editable_challenge_lock(challenge_id):
+    with _editable_challenge_lock(challenge_id, p.tenant_id):
         try:
             with gt_session() as gts:
                 duplicate_key = gts.execute(
@@ -1296,7 +1590,7 @@ def update_ground_truth_flag(
         raise ApiError("VALIDATION_ERROR", details={"body": "Provide at least one field to update."})
     if any(value is None for value in changes.values()):
         raise ApiError("VALIDATION_ERROR", details={"body": "Fields may be omitted, but cannot be null."})
-    with _editable_challenge_lock(challenge_id):
+    with _editable_challenge_lock(challenge_id, p.tenant_id):
         try:
             with gt_session() as gts:
                 current = (
@@ -1361,20 +1655,35 @@ def update_ground_truth_flag(
         return {"ok": True, "flag_id": flag_id}
 
 
+class TestResultsIn(BaseModel):
+    submission_id: str
+    tests_passed: int = Field(ge=0)
+    tests_total: int = Field(gt=0)
+
+
 @router.post("/admin/challenges/{challenge_id}/ground-truth/test-results")
-def record_test_results(challenge_id: str, body: dict, request: Request, p: Principal = Depends(step_up_verified)):
+def record_test_results(
+    challenge_id: str, body: TestResultsIn, request: Request, p: Principal = Depends(step_up_verified)
+):
     """Organizer records offline functional-test results per submission (ADR-019):
     {submission_id, tests_passed, tests_total} -> enqueues ledger application."""
-    sub_id = body.get("submission_id")
-    passed = int(body.get("tests_passed", 0))
-    total = int(body.get("tests_total", 0))
-    if not sub_id or total <= 0 or passed < 0 or passed > total:
-        raise ApiError("VALIDATION_ERROR", details={"tests": "Provide submission_id, tests_passed, tests_total."})
+    if body.tests_passed > body.tests_total:
+        raise ApiError("VALIDATION_ERROR", details={"tests": "tests_passed cannot exceed tests_total."})
     with app_session() as s:
+        cv = require_challenge_in_tenant(s, challenge_id, p.tenant_id)  # REM-001 tenant scope
+        # REM-001: the submission must belong to this challenge and tenant.
+        sub = require_submission_in_tenant(s, body.submission_id, p.tenant_id)
+        if str(sub["challenge_version_id"]) != challenge_id:
+            raise ApiError("VALIDATION_ERROR", details={"submission_id": "Submission is not for this challenge."})
         enqueue(
             s,
             "apply_test_results",
-            {"submission_id": sub_id, "tests_passed": passed, "tests_total": total, "actor_id": p.id},
+            {
+                "submission_id": body.submission_id,
+                "tests_passed": body.tests_passed,
+                "tests_total": body.tests_total,
+                "actor_id": p.id,
+            },
         )
         audit_write(
             s,
@@ -1382,12 +1691,70 @@ def record_test_results(challenge_id: str, body: dict, request: Request, p: Prin
             actor_role=p.role,
             action="scoring.test_results_recorded",
             entity_type="submission",
-            entity_id=sub_id,
+            entity_id=body.submission_id,
             request_id=request.state.request_id,
-            details={"passed": passed, "total": total},
-            event_scope="scoring",
+            details={"passed": body.tests_passed, "total": body.tests_total},
+            event_scope=f"event:{cv['event_id']}",
         )
     return {"ok": True}
+
+
+# Submissions that are past the live evaluation pipeline and may be re-run by
+# an admin rescore operation (REM-007). Anything still pending review or in a
+# non-terminal auto state must be finished first.
+SUBMISSION_TERMINAL_STATES = frozenset(
+    {"matched_auto", "duplicate", "rejected_auto", "decided", "ledgered", "disputed"}
+)
+
+
+class RescoreIn(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+
+
+# ANSWER-PACK (REM-007): a full immutable answer-pack data model
+# (gt.answer_packs / gt.answer_pack_entries / one-active-pack index /
+# two-approver activation / correction_id rescore job) is deferred. The rescore
+# path below re-runs the existing evaluator against the current gt_revisions of
+# the challenge, which is the deterministic replay the answer-pack pipeline
+# would invoke; the per-pack versioning/audit surface is the remaining gap.
+@router.post("/admin/submissions/{submission_id}/rescore", status_code=202)
+def rescore_submission(submission_id: str, body: RescoreIn, request: Request, p: Principal = Depends(step_up_verified)):
+    """Re-run evaluation for a terminal submission and record an audit entry (REM-007).
+
+    The submission must be in a terminal state (matched_auto / duplicate /
+    rejected_auto / decided / ledgered / disputed). Non-terminal submissions
+    are still being processed by the live pipeline and are rejected with
+    ``RESCORE_NOT_AVAILABLE`` so an admin cannot race the evaluator.
+    """
+    reason = _require_reason(body.reason)
+    with app_session() as s:
+        sub = require_submission_in_tenant(s, submission_id, p.tenant_id)  # REM-001 tenant scope
+        if sub["status"] not in SUBMISSION_TERMINAL_STATES:
+            raise ApiError(
+                "RESCORE_NOT_AVAILABLE",
+                details={"status": sub["status"]},
+            )
+        # Reset the submission to a re-evaluatable state and re-enqueue the
+        # deterministic evaluator. The evaluator is idempotent for already-awarded
+        # units (claim_award_unit deduplicates on award_unit_id), so a re-run is
+        # safe; ledger history stays append-only.
+        s.execute(
+            text("UPDATE app.submissions SET status='received', matched_bug_code=NULL WHERE id = CAST(:s AS uuid)"),
+            {"s": submission_id},
+        )
+        enqueue(s, "evaluate_submission", {"submission_id": submission_id})
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="scoring.rescore_requested",
+            entity_type="submission",
+            entity_id=submission_id,
+            request_id=request.state.request_id,
+            event_scope=f"event:{sub['event_id']}",
+            details={"reason": reason, "prior_status": sub["status"]},
+        )
+    return {"ok": True, "submission_id": submission_id}
 
 
 # --- live ops -------------------------------------------------------------------
@@ -1403,6 +1770,7 @@ def create_announcement(
     event_id: str, body: AnnouncementIn, request: Request, p: Principal = Depends(require_organizer)
 ):
     with app_session() as s:
+        require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
         s.execute(
             text(
                 "INSERT INTO app.announcements (id, event_id, severity, body, created_by) VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :sev, :b, CAST(:u AS uuid))"
@@ -1417,34 +1785,43 @@ def create_announcement(
             entity_type="event",
             entity_id=event_id,
             request_id=request.state.request_id,
+            event_scope=f"event:{event_id}",
             details={"severity": body.severity},
         )
     return {"ok": True}
 
 
+class TimeAdjustmentIn(BaseModel):
+    stage_id: str
+    delta_seconds: int
+    reason_code: str = Field(default="OTHER", pattern="^(ACCOMMODATION|OUTAGE|DEVICE_FAILURE|OTHER)$")
+    reason: str = Field(min_length=3, max_length=500)
+    user_id: str | None = None
+
+
 @router.post("/admin/events/{event_id}/time-adjustment")
-def time_adjustment(event_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
-    stage_id = body.get("stage_id")
-    delta = int(body.get("delta_seconds", 0))
-    reason_code = body.get("reason_code", "OTHER")
-    user_id = body.get("user_id")
-    if not stage_id or delta == 0:
-        raise ApiError("VALIDATION_ERROR", details={"adjustment": "stage_id and nonzero delta_seconds required."})
-    if reason_code not in ("ACCOMMODATION", "OUTAGE", "DEVICE_FAILURE", "OTHER"):
-        raise ApiError("VALIDATION_ERROR", details={"reason_code": "ACCOMMODATION|OUTAGE|DEVICE_FAILURE|OTHER"})
-    if abs(delta) > 86400:
+def time_adjustment(
+    event_id: str,
+    body: TimeAdjustmentIn,
+    request: Request,
+    p: Principal = Depends(step_up_verified),
+):
+    # TWO-PERSON (REM-005): a second approver for large time extensions is
+    # deferred to v1; step-up + a mandatory audited reason is enforced here.
+    reason = _require_reason(body.reason)
+    if body.delta_seconds == 0:
+        raise ApiError("VALIDATION_ERROR", details={"adjustment": "nonzero delta_seconds required."})
+    if abs(body.delta_seconds) > 86400:
         raise ApiError(
             "VALIDATION_ERROR",
             details={"delta_seconds": "Time adjustments must be within +/- 86400 seconds."},
         )
     with app_session() as s:
-        stage = s.execute(
-            text("SELECT 1 FROM app.stages WHERE id = CAST(:s AS uuid) AND event_id = CAST(:e AS uuid)"),
-            {"s": stage_id, "e": event_id},
-        ).first()
-        if stage is None:
+        require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
+        stage = require_stage_in_tenant(s, body.stage_id, p.tenant_id)  # REM-001 tenant scope
+        if str(stage["event_id"]) != event_id:
             raise ApiError("VALIDATION_ERROR", details={"stage_id": "Stage must belong to the selected event."})
-        if user_id:
+        if body.user_id:
             participant = s.execute(
                 text(
                     "SELECT 1 FROM app.team_members tm "
@@ -1453,7 +1830,7 @@ def time_adjustment(event_id: str, body: dict, request: Request, p: Principal = 
                     "WHERE tm.user_id = CAST(:u AS uuid) AND t.event_id = CAST(:e AS uuid) "
                     "AND u.role = 'participant'"
                 ),
-                {"u": user_id, "e": event_id},
+                {"u": body.user_id, "e": event_id},
             ).first()
             if participant is None:
                 raise ApiError(
@@ -1464,7 +1841,14 @@ def time_adjustment(event_id: str, body: dict, request: Request, p: Principal = 
             text(
                 "INSERT INTO app.time_adjustments (id, stage_id, user_id, delta_seconds, reason_code, created_by) VALUES (CAST(:id AS uuid), CAST(:s AS uuid), CAST(:u AS uuid), :d, :r, CAST(:by AS uuid))"
             ),
-            {"id": str(uuid7()), "s": stage_id, "u": user_id, "d": delta, "r": reason_code, "by": p.id},
+            {
+                "id": str(uuid7()),
+                "s": body.stage_id,
+                "u": body.user_id,
+                "d": body.delta_seconds,
+                "r": body.reason_code,
+                "by": p.id,
+            },
         )
         audit_write(
             s,
@@ -1472,9 +1856,15 @@ def time_adjustment(event_id: str, body: dict, request: Request, p: Principal = 
             actor_role=p.role,
             action="stage.time_adjustment",
             entity_type="stage",
-            entity_id=stage_id,
+            entity_id=body.stage_id,
             request_id=request.state.request_id,
-            details={"delta_seconds": delta, "reason_code": reason_code},
+            event_scope=f"event:{event_id}",
+            details={
+                "delta_seconds": body.delta_seconds,
+                "reason_code": body.reason_code,
+                "reason": reason,
+                "user_id": body.user_id,
+            },
         )
     return {"ok": True}
 
@@ -1483,6 +1873,7 @@ def time_adjustment(event_id: str, body: dict, request: Request, p: Principal = 
 def live_ops(event_id: str, p: Principal = Depends(require_organizer)):
     """Control-room view with REAL state (ADM-LV-01); no fabricated indicators."""
     with app_session() as s:
+        require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
         counts = s.execute(
             text("SELECT status, count(*) FROM app.submissions WHERE event_id = CAST(:e AS uuid) GROUP BY status"),
             {"e": event_id},
@@ -1539,6 +1930,7 @@ def live_ops(event_id: str, p: Principal = Depends(require_organizer)):
 @router.get("/admin/events/{event_id}/readiness")
 def readiness(event_id: str, p: Principal = Depends(require_organizer)):
     with app_session() as s:
+        require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
         rows = (
             s.execute(
                 text(
@@ -1552,17 +1944,21 @@ def readiness(event_id: str, p: Principal = Depends(require_organizer)):
     return {"items": [dict(r) for r in rows]}
 
 
+class ReadinessIn(BaseModel):
+    state: str = Field(default="checked", pattern="^(checked|unchecked|na)$")
+
+
 @router.post("/admin/events/{event_id}/readiness/{key}")
-def set_readiness(event_id: str, key: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
-    state = body.get("state", "checked")
-    if state not in ("checked", "unchecked", "na"):
-        raise ApiError("VALIDATION_ERROR")
+def set_readiness(
+    event_id: str, key: str, body: ReadinessIn, request: Request, p: Principal = Depends(require_organizer)
+):
     with app_session() as s:
+        require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
         s.execute(
             text(
                 "UPDATE app.readiness_items SET state=CAST(:st AS varchar), checked_at=CASE WHEN CAST(:st AS varchar)='checked' THEN now() ELSE NULL END WHERE event_id = CAST(:e AS uuid) AND key = :k"
             ),
-            {"st": state, "e": event_id, "k": key},
+            {"st": body.state, "e": event_id, "k": key},
         )
         audit_write(
             s,
@@ -1572,48 +1968,90 @@ def set_readiness(event_id: str, key: str, body: dict, request: Request, p: Prin
             entity_type="event",
             entity_id=event_id,
             request_id=request.state.request_id,
-            details={"key": key, "state": state},
+            event_scope=f"event:{event_id}",
+            details={"key": key, "state": body.state},
         )
     return {"ok": True}
 
 
 @router.get("/admin/audit/verify")
 def audit_chain_verify(p: Principal = Depends(require_organizer)):
+    # REM-017: audit_verify now walks ALL scopes by default (the audit.py core
+    # is fixed); the admin endpoint just surfaces the combined result.
     with app_session() as s:
         result = audit_verify(s)
     return result
 
 
 @router.get("/admin/audit")
-def audit_log(p: Principal = Depends(require_organizer), limit: int = 100, action: str | None = None):
+def audit_log(
+    p: Principal = Depends(require_organizer),
+    limit: int = Query(default=100, ge=1, le=200),
+    cursor: str | None = None,
+    action: str | None = None,
+    actor_id: str | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+):
+    """Cursor-paginated audit log (REM-028) with filters (REM-028).
+
+    The audit chain is global; tenant isolation of audit reads is enforced by
+    requiring the organizer role, which is itself tenant-bound. A per-tenant
+    audit filter is a future refinement.
+    """
+    clauses: list[str] = []
+    binds: dict = {"n": limit}
+    total_clauses: list[str] = []
+    total_binds: dict = {}
+    if action:
+        clauses.append("action = :action")
+        binds["action"] = action
+        total_clauses.append("action = :action")
+        total_binds["action"] = action
+    if actor_id:
+        clauses.append("actor_id = CAST(:actor_id AS uuid)")
+        binds["actor_id"] = actor_id
+        total_clauses.append("actor_id = CAST(:actor_id AS uuid)")
+        total_binds["actor_id"] = actor_id
+    if entity_type:
+        clauses.append("entity_type = :entity_type")
+        binds["entity_type"] = entity_type
+        total_clauses.append("entity_type = :entity_type")
+        total_binds["entity_type"] = entity_type
+    if entity_id:
+        clauses.append("entity_id = CAST(:entity_id AS uuid)")
+        binds["entity_id"] = entity_id
+        total_clauses.append("entity_id = CAST(:entity_id AS uuid)")
+        total_binds["entity_id"] = entity_id
+    if cursor:
+        try:
+            cur_seq = int(cursor)
+        except ValueError as err:
+            raise ApiError("VALIDATION_ERROR", details={"cursor": "Invalid cursor."}) from err
+        clauses.append("seq < :cur_seq")
+        binds["cur_seq"] = cur_seq
+    where_sql = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    total_where_sql = ("WHERE " + " AND ".join(total_clauses)) if total_clauses else ""
     with app_session() as s:
-        if action:
-            rows = (
-                s.execute(
-                    text(
-                        "SELECT seq, ts, actor_role, action, entity_type, entity_id, request_id, details FROM audit.entries WHERE action = :a ORDER BY seq DESC LIMIT :n"
-                    ),
-                    {"a": action, "n": min(limit, 500)},
-                )
-                .mappings()
-                .all()
+        rows = (
+            s.execute(
+                text(
+                    "SELECT seq, ts, actor_role, action, entity_type, entity_id, request_id, details "
+                    f"FROM audit.entries {where_sql} ORDER BY seq DESC LIMIT :n"
+                ),
+                binds,
             )
-        else:
-            rows = (
-                s.execute(
-                    text(
-                        "SELECT seq, ts, actor_role, action, entity_type, entity_id, request_id, details FROM audit.entries ORDER BY seq DESC LIMIT :n"
-                    ),
-                    {"n": min(limit, 500)},
-                )
-                .mappings()
-                .all()
-            )
-    return {"entries": [dict(r) for r in rows]}
+            .mappings()
+            .all()
+        )
+        total = s.execute(text(f"SELECT count(*) FROM audit.entries {total_where_sql}"), total_binds).scalar_one()
+    items = [dict(r) for r in rows]
+    next_cursor = str(items[-1]["seq"]) if items and len(items) >= limit else None
+    return {"entries": items, "next_cursor": next_cursor, "total": int(total)}
 
 
 @router.get("/admin/events/{event_id}/export/{kind}")
-def export_csv(event_id: str, kind: str, p: Principal = Depends(require_organizer)):
+def export_csv(event_id: str, kind: str, request: Request, p: Principal = Depends(require_organizer)):
     if kind not in ("results", "submissions", "ledger"):
         raise ApiError("VALIDATION_ERROR", details={"kind": "results|submissions|ledger"})
     import csv
@@ -1623,6 +2061,7 @@ def export_csv(event_id: str, kind: str, p: Principal = Depends(require_organize
     writer = csv.writer(buf)
     created_by = p.id
     with app_session() as s:
+        require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
         if kind == "results":
             writer.writerow(["team_id", "team_name", "score"])
             rows = s.execute(
@@ -1692,6 +2131,7 @@ def export_csv(event_id: str, kind: str, p: Principal = Depends(require_organize
                     ]
                 )
     content = buf.getvalue()
+    content_hash = hashlib.sha256(content.encode()).hexdigest()
     with app_session() as s:
         s.execute(
             text(
@@ -1702,9 +2142,20 @@ def export_csv(event_id: str, kind: str, p: Principal = Depends(require_organize
                 "e": event_id,
                 "k": f"{kind}_csv",
                 "c": content,
-                "h": __import__("hashlib").sha256(content.encode()).hexdigest(),
+                "h": content_hash,
                 "u": created_by,
             },
+        )
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="event.exported",
+            entity_type="event",
+            entity_id=event_id,
+            request_id=request.state.request_id,
+            event_scope=f"event:{event_id}",
+            details={"kind": kind, "content_hash": content_hash},
         )
     return {"filename": f"{kind}_{event_id[:8]}.csv", "content": content}
 
@@ -1713,33 +2164,92 @@ def export_csv(event_id: str, kind: str, p: Principal = Depends(require_organize
 
 
 @router.get("/admin/disputes")
-def list_disputes(p: Principal = Depends(require_organizer)):
+def list_disputes(
+    p: Principal = Depends(require_organizer),
+    limit: int = Query(default=100, ge=1, le=200),
+    cursor: str | None = None,
+    status: str | None = None,
+    event_id: str | None = None,
+    team_id: str | None = None,
+):
+    """Tenant-scoped dispute list (REM-001) with cursor pagination (REM-028)."""
     with app_session() as s:
+        tid = require_tenant(s, p.tenant_id)
+        clauses = ["sub.tenant_id = CAST(:tid AS uuid)"]
+        binds: dict = {"tid": tid, "n": limit}
+        if status:
+            clauses.append("d.status = :status")
+            binds["status"] = status
+        if event_id:
+            clauses.append("sub.event_id = CAST(:event_id AS uuid)")
+            binds["event_id"] = event_id
+        if team_id:
+            clauses.append("d.team_id = CAST(:team_id AS uuid)")
+            binds["team_id"] = team_id
+        if cursor:
+            try:
+                cur_ts, cur_id = cursor.split(" ", 1)
+            except ValueError as err:
+                raise ApiError("VALIDATION_ERROR", details={"cursor": "Invalid cursor."}) from err
+            clauses.append("(d.created_at, d.id) < (CAST(:cts AS timestamptz), CAST(:cid AS uuid))")
+            binds["cts"] = cur_ts
+            binds["cid"] = cur_id
         rows = (
             s.execute(
                 text(
-                    "SELECT d.id, d.status, d.statement, d.created_at, s.title, s.receipt_code, d.submission_id "
-                    "FROM app.disputes d JOIN app.submissions s ON s.id = d.submission_id ORDER BY d.created_at DESC"
-                )
+                    "SELECT d.id, d.status, d.statement, d.created_at, d.resolved_at, d.resolved_by, "
+                    "s.title, s.receipt_code, d.submission_id, d.id AS _cursor_id "
+                    "FROM app.disputes d JOIN app.submissions s ON s.id = d.submission_id "
+                    "WHERE " + " AND ".join(clauses) + " ORDER BY d.created_at DESC, d.id DESC LIMIT :n"
+                ),
+                binds,
             )
             .mappings()
             .all()
         )
-    return {"disputes": [dict(r) for r in rows]}
+        total_clauses = [c for c in clauses if not c.startswith("(d.created_at, d.id)")]
+        total_binds = {k: v for k, v in binds.items() if k in {"tid", "status", "event_id", "team_id"}}
+        total = s.execute(
+            text(
+                "SELECT count(*) FROM app.disputes d JOIN app.submissions s ON s.id = d.submission_id WHERE "
+                + " AND ".join(total_clauses)
+            ),
+            total_binds,
+        ).scalar_one()
+    items = [dict(r) for r in rows]
+    next_cursor = None
+    if len(items) >= limit:
+        last = items[-1]
+        next_cursor = f"{last['created_at'].isoformat()} {last['_cursor_id']}"
+    for it in items:
+        it.pop("_cursor_id", None)
+    return {"disputes": items, "next_cursor": next_cursor, "total": int(total)}
+
+
+class DisputeResolveIn(BaseModel):
+    outcome: str = Field(pattern="^(upheld|rejected)$")
+    resolution: str = Field(min_length=3, max_length=2000)
+    adjust_points: float | None = None
 
 
 @router.post("/admin/disputes/{dispute_id}/resolve")
-def resolve_dispute(dispute_id: str, body: dict, request: Request, p: Principal = Depends(require_organizer)):
-    outcome = body.get("outcome")  # upheld | rejected
-    resolution = body.get("resolution", "")
-    adjust_points = body.get("adjust_points")  # optional ledger adjustment for the team
-    if outcome not in ("upheld", "rejected"):
-        raise ApiError("VALIDATION_ERROR", details={"outcome": "upheld|rejected"})
+def resolve_dispute(
+    dispute_id: str,
+    body: DisputeResolveIn,
+    request: Request,
+    p: Principal = Depends(step_up_verified),
+):
+    # TWO-PERSON (REM-048): a second independent approver for material point
+    # changes is deferred to v1; step-up + a mandatory audited reason is
+    # enforced here. Re-resolution is rejected as idempotent.
     with app_session() as s:
-        d = (
+        d = require_dispute_in_tenant(s, dispute_id, p.tenant_id)  # REM-001 tenant scope
+        # Re-lock the dispute row inside this transaction.
+        d_locked = (
             s.execute(
                 text(
-                    "SELECT di.id, di.submission_id, di.team_id, di.status, s.stage_id "
+                    "SELECT di.id, di.submission_id, di.team_id, di.status, di.resolved_by, di.resolved_at, "
+                    "s.stage_id, s.event_id "
                     "FROM app.disputes di JOIN app.submissions s ON s.id = di.submission_id "
                     "WHERE di.id = CAST(:id AS uuid) FOR UPDATE"
                 ),
@@ -1748,39 +2258,47 @@ def resolve_dispute(dispute_id: str, body: dict, request: Request, p: Principal 
             .mappings()
             .first()
         )
-        if d is None:
+        if d_locked is None:
             raise ApiError("NOT_FOUND")
-        if d["status"] in ("upheld", "rejected"):
-            raise ApiError("VALIDATION_ERROR", details={"dispute": "Already resolved."})
+        if d_locked["status"] in ("upheld", "rejected"):
+            # REM-048 idempotency: a second resolve on the same dispute is a
+            # conflict, not a silent no-op, so the operator sees the prior
+            # resolution instead of believing a new one was applied.
+            raise ApiError(
+                "IDEMPOTENCY_CONFLICT",
+                details={
+                    "dispute_id": dispute_id,
+                    "status": d_locked["status"],
+                    "resolved_by": str(d_locked["resolved_by"]) if d_locked["resolved_by"] else None,
+                    "resolved_at": d_locked["resolved_at"].isoformat() if d_locked["resolved_at"] else None,
+                },
+            )
         s.execute(
             text(
-                "UPDATE app.disputes SET status=:o, resolution=:r, resolved_by=CAST(:u AS uuid), resolved_at=now() WHERE id = CAST(:id AS uuid)"
+                "UPDATE app.disputes SET status=:o, resolution=:r, resolved_by=CAST(:u AS uuid), resolved_at=now() "
+                "WHERE id = CAST(:id AS uuid)"
             ),
-            {"o": outcome, "r": resolution, "u": p.id, "id": dispute_id},
+            {"o": body.outcome, "r": body.resolution, "u": p.id, "id": dispute_id},
         )
-        if outcome == "upheld" and adjust_points:
+        if body.outcome == "upheld" and body.adjust_points:
             # rescoring via ledger adjustment (DAT-05): reversal + new entry
-            stage_id = str(d["stage_id"])
-            team_id = str(d["team_id"])
-            event_id = s.execute(
-                text("SELECT event_id FROM app.stages WHERE id = CAST(:s AS uuid)"), {"s": stage_id}
-            ).scalar_one()
-            tenant_id = s.execute(
-                text("SELECT tenant_id FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": str(event_id)}
-            ).scalar_one()
+            stage_id = str(d_locked["stage_id"])
+            team_id = str(d_locked["team_id"])
+            event_id = str(d_locked["event_id"])
+            tenant_id = d["tenant_id"]
             add_ledger_entry(
                 s,
                 tenant_id=str(tenant_id),
-                event_id=str(event_id),
+                event_id=event_id,
                 stage_id=stage_id,
                 team_id=team_id,
                 component="adjustment",
                 kind="adjustment",
-                points=float(adjust_points),
+                points=float(body.adjust_points),
                 reason_code="DISPUTE_UPHELD",
-                submission_id=str(d["submission_id"]),
+                submission_id=str(d_locked["submission_id"]),
                 actor_id=p.id,
-                note=f"Dispute {dispute_id[:8]} upheld: {resolution[:200]}",
+                note=f"Dispute {dispute_id[:8]} upheld: {body.resolution[:200]}",
             )
         audit_write(
             s,
@@ -1790,50 +2308,53 @@ def resolve_dispute(dispute_id: str, body: dict, request: Request, p: Principal 
             entity_type="dispute",
             entity_id=dispute_id,
             request_id=request.state.request_id,
-            details={"outcome": outcome},
+            event_scope=f"event:{d_locked['event_id']}",
+            details={
+                "outcome": body.outcome,
+                "resolution": body.resolution,
+                "adjust_points": body.adjust_points,
+            },
         )
     return {"ok": True}
 
 
+class ManualAdjustmentIn(BaseModel):
+    stage_id: str
+    team_id: str
+    points: float
+    reason: str = Field(min_length=3, max_length=1000)
+
+
 @router.post("/admin/adjustments")
-def manual_adjustment(body: dict, request: Request, p: Principal = Depends(admin_step_up_verified)):
+def manual_adjustment(body: ManualAdjustmentIn, request: Request, p: Principal = Depends(admin_step_up_verified)):
     """Admin-only manual score adjustment; requires recent password step-up."""
-    stage_id = body.get("stage_id")
-    team_id = body.get("team_id")
-    points = float(body.get("points", 0))
-    reason = body.get("reason", "")
-    if not stage_id or not team_id or not reason or points == 0:
-        raise ApiError("VALIDATION_ERROR", details={"adjustment": "stage_id, team_id, points, reason required."})
-    if abs(points) > 10000 or len(reason) > 1000:
+    if body.points == 0:
         raise ApiError(
-            "VALIDATION_ERROR", details={"adjustment": "Points must be within +/-10000 and reason <=1000 chars."}
+            "VALIDATION_ERROR", details={"adjustment": "stage_id, team_id, nonzero points, reason required."}
         )
+    if abs(body.points) > 10000:
+        raise ApiError("VALIDATION_ERROR", details={"adjustment": "Points must be within +/-10000."})
     with app_session() as s:
-        event_id = s.execute(
-            text("SELECT event_id FROM app.stages WHERE id = CAST(:s AS uuid)"), {"s": stage_id}
-        ).scalar_one_or_none()
-        if event_id is None:
-            raise ApiError("NOT_FOUND")
-        team_event = s.execute(
-            text("SELECT event_id FROM app.teams WHERE id = CAST(:t AS uuid)"), {"t": team_id}
-        ).scalar_one_or_none()
-        if str(team_event) != str(event_id):
+        stage = require_stage_in_tenant(s, body.stage_id, p.tenant_id)  # REM-001 tenant scope
+        team = require_team_in_tenant(s, body.team_id, p.tenant_id)  # REM-001 tenant scope
+        if str(team["event_id"]) != str(stage["event_id"]):
             raise ApiError("VALIDATION_ERROR", details={"team_id": "Team must belong to the stage event."})
+        event_id = str(stage["event_id"])
         tenant_id = s.execute(
-            text("SELECT tenant_id FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": str(event_id)}
+            text("SELECT tenant_id FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": event_id}
         ).scalar_one()
         add_ledger_entry(
             s,
             tenant_id=str(tenant_id),
-            event_id=str(event_id),
-            stage_id=stage_id,
-            team_id=team_id,
+            event_id=event_id,
+            stage_id=body.stage_id,
+            team_id=body.team_id,
             component="adjustment",
             kind="adjustment",
-            points=points,
+            points=body.points,
             reason_code="MANUAL",
             actor_id=p.id,
-            note=reason,
+            note=body.reason,
         )
         audit_write(
             s,
@@ -1841,16 +2362,22 @@ def manual_adjustment(body: dict, request: Request, p: Principal = Depends(admin
             actor_role=p.role,
             action="scoring.manual_adjustment",
             entity_type="team",
-            entity_id=team_id,
+            entity_id=body.team_id,
             request_id=request.state.request_id,
-            details={"points": points, "reason": reason},
-            event_scope="scoring",
+            details={"points": body.points, "reason": body.reason},
+            event_scope=f"event:{event_id}",
         )
     return {"ok": True}
 
 
 @router.get("/admin/system/health")
 def system_health(p: Principal = Depends(require_organizer)):
+    """Operational health signals for incident diagnosis (REM-056).
+
+    Surfaces job queue depth by status, oldest queued job age, outbox backlog,
+    dead-letter count, and DB pool pressure alongside the basic DB reachability
+    probe so an operator can tell an API-alive / worker-degraded split apart.
+    """
     probes = health_probe()
     with app_session() as s:
         jobs = s.execute(text("SELECT status, count(*) FROM app.jobs GROUP BY status")).all()
@@ -1859,10 +2386,39 @@ def system_health(p: Principal = Depends(require_organizer)):
                 "SELECT COALESCE(MIN(EXTRACT(epoch FROM (now() - created_at))), 0) FROM app.jobs WHERE status='queued'"
             )
         ).scalar_one()
+        outbox_depth = s.execute(text("SELECT count(*) FROM app.outbox_events WHERE delivered_at IS NULL")).scalar_one()
+        outbox_oldest = s.execute(
+            text(
+                "SELECT COALESCE(MIN(EXTRACT(epoch FROM (now() - created_at))), 0) "
+                "FROM app.outbox_events WHERE delivered_at IS NULL"
+            )
+        ).scalar_one()
+        review_backlog = s.execute(
+            text("SELECT count(*) FROM app.review_items WHERE status IN ('open','in_review')")
+        ).scalar_one()
+        open_disputes = s.execute(text("SELECT count(*) FROM app.disputes WHERE status='open'")).scalar_one()
+    # DB pool stats are cheap to read from the SQLAlchemy engine status; surface
+    # them so an operator can spot pool exhaustion without a separate metrics endpoint.
+    pool = app_engine.pool
+    pool_status = {
+        "size": getattr(pool, "size", lambda: None)(),
+        "checked_in": getattr(pool, "checkedin", lambda: None)(),
+        "checked_out": getattr(pool, "checkedout", lambda: None)(),
+        "overflow": getattr(pool, "overflow", lambda: None)(),
+    }
     return {
         "databases": {"app": probes["database_app"], "gt": probes["database_gt"]},
         "jobs": {r[0]: int(r[1]) for r in jobs},
+        "job_queue_depth": int((jobs and sum(int(r[1]) for r in jobs if r[0] == "queued")) or 0),
         "oldest_queued_job_age_s": int(oldest),
+        "outbox": {
+            "depth": int(outbox_depth),
+            "oldest_undelivered_age_s": int(outbox_oldest),
+        },
+        "review_backlog": int(review_backlog),
+        "open_disputes": int(open_disputes),
+        "db_pool": pool_status,
+        "clock": probes.get("clock"),
         "profile": settings.profile,
         "environment": settings.environment,
         "runner_enabled": settings.runner_enabled,

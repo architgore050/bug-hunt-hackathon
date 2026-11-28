@@ -1,0 +1,76 @@
+{
+  "id": "REM-048",
+  "title": "Dispute handling lacks time bounds, independence controls, idempotency and participant status notification",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-B02B-09",
+    "F-CKLA-11",
+    "F-F01B-12"
+  ],
+  "original_titles": [
+    {
+      "id": "F-B02B-09",
+      "title": "GET /receipts/{id} missing; POST dispute not idempotent; GET own disputes missing"
+    },
+    {
+      "id": "F-CKLA-11",
+      "title": "Disqualify/reinstate/merge with two-person approval missing (PT-04a S2)"
+    },
+    {
+      "id": "F-F01B-12",
+      "title": "Dispute submission lacks idempotency key, deadline countdown and status tracking (P-16)"
+    }
+  ],
+  "problem": "Dispute routes and organizer resolution exist, but participant dispute creation/idempotency/deadline/status UX is incomplete, and resolution can be handled by an organizer without an independence/two-person check. Reviewers cannot access the intended dispute surface.",
+  "impact": "Duplicate disputes, late disputes, conflicted resolutions or missing feedback can make score appeals difficult to trust.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/routers/admin.py: list_disputes and resolve_dispute",
+      "backend/app/models_app.py: disputes",
+      "frontend/src/pages/participant/* submission/dispute pages",
+      "frontend/src/pages/review/*"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Define dispute window and eligible grounds in the published competition rules. Enforce the deadline server-side using DB time."
+      },
+      {
+        "step": 2,
+        "action": "Add an Idempotency-Key to dispute creation and participant GET own disputes/status routes with cursor pagination."
+      },
+      {
+        "step": 3,
+        "action": "Separate dispute investigator/resolver permissions from the original reviewer and require a second approver for material point changes."
+      },
+      {
+        "step": 4,
+        "action": "Record a mandatory resolution reason, evidence links, adjustment ledger entry and notification/outbox event in one transaction."
+      },
+      {
+        "step": 5,
+        "action": "Test duplicate create, late create, conflicted reviewer, two-approver correction and result visibility after resolution."
+      }
+    ],
+    "acceptance_criteria": [
+      "A participant can file only within the published window and receives a durable receipt.",
+      "Resolution is independently authorized, reasoned and auditable.",
+      "Every status transition is visible to the participant."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

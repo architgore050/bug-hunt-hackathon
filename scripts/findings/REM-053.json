@@ -1,0 +1,77 @@
+{
+  "id": "REM-053",
+  "title": "Concurrent same-key submissions can race into an unhandled uniqueness error",
+  "severity": "HIGH",
+  "status": "partially_fixed",
+  "priority": "P1",
+  "source_ids": [
+    "F-CKLB-06",
+    "F-ARB-05",
+    "F-B02A-06"
+  ],
+  "original_titles": [
+    {
+      "id": "F-CKLB-06",
+      "title": "Concurrent same-key submissions return 500 instead of the stored receipt"
+    },
+    {
+      "id": "F-ARB-05",
+      "title": "Concurrent same-key idempotency requests race to an unhandled 500"
+    },
+    {
+      "id": "F-B02A-06",
+      "title": "Idempotency store not per spec: scoped (author,key) not (principal,route), no retention, missing on uploads, race yields 500"
+    }
+  ],
+  "problem": "The frontend retains an idempotency key for an in-page retry, but the backend submission path performs a SELECT followed by INSERT and does not catch a unique-constraint race. Concurrent requests with the same author/key can both pass the pre-check; one INSERT then raises IntegrityError and becomes a 500 rather than returning the stored receipt. Some other mutation classes (upload/dispute/admin) do not have a consistent per-route idempotency contract.",
+  "impact": "A client that times out after the server commit cannot be certain whether the request succeeded. A concurrent retry can return 500 and force the user to guess; component-only key persistence does not survive reload.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "partially_confirmed",
+    "evidence_paths": [
+      "backend/app/routers/submissions.py: idempotency pre-check and insert",
+      "backend/app/routers/levels.py: level submission idempotency pre-check and insert",
+      "frontend/src/pages/participant/LevelWorkspace.tsx: idemKeyRef",
+      "backend/migrations: unique author_id/idempotency_key indexes"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Move idempotency into a shared service with a unique key on principal_id + route/mutation type + key, plus request payload hash, created_at and expiry/retention."
+      },
+      {
+        "step": 2,
+        "action": "Use INSERT ... ON CONFLICT DO NOTHING (or catch IntegrityError in a savepoint) and then re-read the stored request. Return the original receipt when hashes match; return 409 IDEMPOTENCY_CONFLICT when they differ."
+      },
+      {
+        "step": 3,
+        "action": "Apply the same contract to level submissions, v1 submissions, disputes, uploads where mutation semantics require it, and high-impact admin mutations."
+      },
+      {
+        "step": 4,
+        "action": "Persist client keys in the offline outbox so reloads reuse the same key until a definitive response."
+      },
+      {
+        "step": 5,
+        "action": "Add a concurrency test sending at least five identical requests at once and a second test with same key/different payload."
+      }
+    ],
+    "acceptance_criteria": [
+      "Concurrent same-key calls converge to one receipt and one row, never 500.",
+      "Same key/different payload returns 409.",
+      "A retry after page reload uses the same stored key."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [],
+  "residual_risk_or_scope_note": "The PR #59 UI fix only preserves the key while the LevelWorkspace component remains mounted; server-side concurrency convergence and durable cross-reload storage are still unresolved."
+}

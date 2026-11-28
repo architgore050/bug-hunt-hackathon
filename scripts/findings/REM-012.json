@@ -1,0 +1,105 @@
+{
+  "id": "REM-012",
+  "title": "Reviewer second-review and unplanned-valid decisions can dead-end or requeue items incorrectly",
+  "severity": "HIGH",
+  "status": "confirmed",
+  "priority": "P1",
+  "source_ids": [
+    "F-QLT-16",
+    "F-CKLA-14",
+    "F-CKLB-18",
+    "F-F01B-18",
+    "F-S03B-14",
+    "F-S03B-15",
+    "F-AD8B-09",
+    "F-S03B-10",
+    "F-BSP-17"
+  ],
+  "original_titles": [
+    {
+      "id": "F-QLT-16",
+      "title": "Reviewer decision needs_second_review dead-ends the submission"
+    },
+    {
+      "id": "F-CKLA-14",
+      "title": "No auto double review, SLA/age timers, or capacity forecast (RV-04a/03b/01a/05a, RVC-01a S2)"
+    },
+    {
+      "id": "F-CKLB-18",
+      "title": "Review console lacks SLA timers, double review and calibration"
+    },
+    {
+      "id": "F-F01B-18",
+      "title": "Review workbench and disputes partial: no AI panel, ground-truth excerpt, run result or second reviewer (C-66, A-22, A-23)"
+    },
+    {
+      "id": "F-S03B-14",
+      "title": "Review queue: no matcher features/confidence/SLA, no automatic double review, decision possible without claim"
+    },
+    {
+      "id": "F-S03B-15",
+      "title": "Dispute resolution independence and participant notification unenforced"
+    },
+    {
+      "id": "F-AD8B-09",
+      "title": "Reviewer acceptance of a never-claimed report scores nothing (manual-decision gap)"
+    },
+    {
+      "id": "F-S03B-10",
+      "title": "SUB-01: no filters, no reviewer reason codes, dispute window not time-bounded"
+    },
+    {
+      "id": "F-BSP-17",
+      "title": "Review queue lacks SLA timers and blind double review"
+    }
+  ],
+  "problem": "record_decision maps needs_second_review to submission status in_review but then marks the review_items row decided. The queue only selects open/claimed rows, so the second review is not created. unplanned_valid sets submission to needs_review and enqueues create_review_item, while the original review item is marked decided; repeated re-queueing can loop. Decisions can also be recorded on an open, unclaimed item if no other reviewer has claimed it.",
+  "impact": "A report can disappear from the queue without a second reviewer, or cycle back to a queue with no explicit terminal decision. Manual reviewer decisions may be unauditable in terms of claim ownership and review separation.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/routers/review.py: record_decision, claim_item, review_queue",
+      "backend/app/evaluator.py: apply_review_outcome and create_review_item"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Model review workflow as explicit states: open, claimed, first_decided, second_review_required, second_claimed, terminal_decided, escalated. Make allowed transitions a single tested state machine."
+      },
+      {
+        "step": 2,
+        "action": "For needs_second_review, create a separate review assignment linked to the first decision and require a different reviewer id. Do not mark the only review item terminal before the new item exists."
+      },
+      {
+        "step": 3,
+        "action": "For unplanned_valid, create a candidate-bug escalation record with pending/rejected/accepted status, rather than creating the same review item again."
+      },
+      {
+        "step": 4,
+        "action": "Require the reviewer to own a current claim before decision, unless a documented organizer override is used. Store claim expiry and enforce it with DB time."
+      },
+      {
+        "step": 5,
+        "action": "Add SLA timestamps, queue age metrics, auto-escalation and calibration reporting. Test item state after every decision, two reviewers cannot be the same person, and retries are idempotent."
+      }
+    ],
+    "acceptance_criteria": [
+      "Every decision reaches one explicit terminal state or an explicit escalation state.",
+      "Second review uses a different reviewer.",
+      "No unplanned_valid loop exists.",
+      "Unclaimed decisions are rejected unless override is audited."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

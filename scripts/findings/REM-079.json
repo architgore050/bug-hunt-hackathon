@@ -1,0 +1,60 @@
+{
+  "id": "REM-079",
+  "title": "API schema and endpoint deviations still require a concrete owner-to-contract mapping",
+  "severity": "LOW",
+  "status": "needs_manual_revalidation",
+  "priority": "P3",
+  "source_ids": [
+    "F-B02B-29"
+  ],
+  "original_titles": [
+    {
+      "id": "F-B02B-29",
+      "title": "Public event shape/cache deviations; /content/event-details missing"
+    }
+  ],
+  "problem": "The audit reports public event response-shape and miscellaneous admin/ops path deviations. The current source has evolved and the exact required compatibility shapes are not defined in the source audit itself, so these should not be treated as confirmed bugs until the accepted OpenAPI/requirements contract is identified.",
+  "impact": "External consumers or participant pages may rely on a response/path shape that differs from the written contract.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "scope_or_policy_check",
+    "evidence_paths": [
+      "backend/app/routers/public.py",
+      "backend/app/routers/admin.py",
+      "docs/API_REFERENCE.md",
+      "docs/REQUIREMENTS_RECONCILIATION.md"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Identify the current normative API contract version and the concrete consumer that depends on each missing path/field."
+      },
+      {
+        "step": 2,
+        "action": "Compare current OpenAPI/runtime response with that contract and write a contract test for each deviation."
+      },
+      {
+        "step": 3,
+        "action": "If no active consumer or acceptance criterion requires the deviation, record an accepted ADR rather than adding a compatibility endpoint without purpose."
+      },
+      {
+        "step": 4,
+        "action": "If required, implement an alias/adapter with a deprecation period and update generated frontend types."
+      }
+    ],
+    "acceptance_criteria": [
+      "Each path/shape deviation is either covered by a contract test or signed off as accepted."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

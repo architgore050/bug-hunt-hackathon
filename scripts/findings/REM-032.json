@@ -1,0 +1,104 @@
+{
+  "id": "REM-032",
+  "title": "Frontend quality gates remain thin: strict TypeScript, browser-level E2E, accessibility and error boundaries are missing",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-QLT-03",
+    "F-F01A-03",
+    "F-F01A-06",
+    "F-CKLA-21",
+    "F-S03A-15",
+    "F-QLT-13",
+    "F-F01A-17",
+    "F-F01B-14"
+  ],
+  "original_titles": [
+    {
+      "id": "F-QLT-03",
+      "title": "TypeScript strict mode is disabled for the whole frontend"
+    },
+    {
+      "id": "F-F01A-03",
+      "title": "TypeScript not compiled in strict mode"
+    },
+    {
+      "id": "F-F01A-06",
+      "title": "Frontend test toolchain (Vitest/RTL/Playwright/axe/MSW) absent; one node:test SSR check"
+    },
+    {
+      "id": "F-CKLA-21",
+      "title": "No automated axe checks in CI (ACC-03 S2, ACC-01 tracking)"
+    },
+    {
+      "id": "F-S03A-15",
+      "title": "No automated axe checks in CI (and no recorded screen-reader pass)"
+    },
+    {
+      "id": "F-QLT-13",
+      "title": "Frontend coverage: a single SSR XSS test for 6,348 lines of UI"
+    },
+    {
+      "id": "F-F01A-17",
+      "title": "No React error boundary per route or panel"
+    },
+    {
+      "id": "F-F01B-14",
+      "title": "Page conventions unmet: static document title only, no focus-to-heading on route change"
+    }
+  ],
+  "problem": "CI now runs frontend build and 23 Node-based rendering/logic tests, so the original single-test claim is stale. However tsconfig files do not enable strict mode, test script remains node --test, and there is no Playwright/axe/screen-reader browser suite or route-level React error boundary.",
+  "impact": "A green TypeScript build does not prove route interaction, keyboard accessibility, cross-browser persistence or error recovery. Strict null/type issues can survive compilation.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "frontend/tsconfig.app.json",
+      "frontend/tsconfig.node.json",
+      "frontend/package.json",
+      "frontend/tests/*",
+      "frontend/src/App.tsx"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Enable strict:true first in the application config, then fix errors in small batches; add noUncheckedIndexedAccess after strict-mode errors are stable."
+      },
+      {
+        "step": 2,
+        "action": "Add component tests for auth guards, countdown thresholds, offline state, draft conflict, focus restoration, admin role controls and sensitive data hiding."
+      },
+      {
+        "step": 3,
+        "action": "Add Playwright journeys for participant first sign-in, four-level progression, draft restore, upload/diff submit, reviewer decision and admin correction workflow."
+      },
+      {
+        "step": 4,
+        "action": "Add axe-core automated checks for main routes and record a short manual keyboard/screen-reader pass for critical flows."
+      },
+      {
+        "step": 5,
+        "action": "Add route-level error boundaries with retry/reload behavior and capture sanitized diagnostics with request ids."
+      }
+    ],
+    "acceptance_criteria": [
+      "tsc -b passes with strict mode and no ignored unsafe errors.",
+      "Browser E2E covers the core four-level path and admin/reviewer workflows.",
+      "Axe CI has no critical/serious violations for required routes.",
+      "A rendering/runtime exception is contained to the route/panel and has a recovery path."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [],
+  "residual_risk_or_scope_note": "CI on the merged PR passed frontend quality and build, but that pipeline does not include the missing Playwright/axe requirements."
+}

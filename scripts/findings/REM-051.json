@@ -1,0 +1,92 @@
+{
+  "id": "REM-051",
+  "title": "Challenge lifecycle and score ledger schema lack some immutability, origin and provenance invariants",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-ARB-10",
+    "F-B02B-18",
+    "F-B02B-19",
+    "F-B02B-35",
+    "F-B02B-36",
+    "F-S03B-26"
+  ],
+  "original_titles": [
+    {
+      "id": "F-ARB-10",
+      "title": "Challenge lifecycle state machine partial; publication immutability not DB-enforced"
+    },
+    {
+      "id": "F-B02B-18",
+      "title": "Submission state machine has no append-only event log (app.submission_events)"
+    },
+    {
+      "id": "F-B02B-19",
+      "title": "Node pointer lacks version/adjusted_by/adjusted_reason; no organizer adjustment surface"
+    },
+    {
+      "id": "F-B02B-35",
+      "title": "Match decisions do not persist matcher_version/rule_set_hash and features"
+    },
+    {
+      "id": "F-B02B-36",
+      "title": "Ledger origin typing and CHECK(num_nonnulls=1) constraint missing"
+    },
+    {
+      "id": "F-S03B-26",
+      "title": "Challenge version lifecycle collapsed (no REVIEWED/ARCHIVED states)"
+    }
+  ],
+  "problem": "Some lifecycle/ledger requirements are implemented in application logic but not enforced by DB constraints. Challenge publication immutability, ledger origin typing, stable evaluation provenance and some pointer adjustment metadata are absent or partial.",
+  "impact": "A bug in an application path or manual SQL can bypass invariants and make ledger entries or challenge states difficult to interpret later.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/migrations/*",
+      "backend/app/models_gt.py",
+      "backend/app/scoring.py",
+      "backend/app/flow.py",
+      "backend/app/evaluator.py"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Translate the accepted lifecycle state machine into DB-enforced transition/immutability constraints or controlled stored procedures where practical."
+      },
+      {
+        "step": 2,
+        "action": "Add an explicit ledger origin discriminator with CHECK(num_nonnulls(...)=1) and foreign-key rules for exactly one source object."
+      },
+      {
+        "step": 3,
+        "action": "Record evaluator version, rule_set_hash, candidate-set hash and feature/provenance data for each machine decision."
+      },
+      {
+        "step": 4,
+        "action": "Add pointer adjustment fields actor_id, reason and version; enforce monotonic progression except a separately authorized audited adjustment."
+      },
+      {
+        "step": 5,
+        "action": "Write migration-level tests that attempt direct invalid updates/deletes and verify the database rejects them."
+      }
+    ],
+    "acceptance_criteria": [
+      "Invalid ledger origin combinations are rejected by PostgreSQL.",
+      "Frozen/published challenge data cannot be edited in place.",
+      "Every scoring decision can be traced to a versioned ruleset and evaluator."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

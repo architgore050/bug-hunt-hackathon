@@ -1,0 +1,112 @@
+{
+  "id": "REM-013",
+  "title": "Automatic matching is enabled without a measured blind-validation precision gate or complete evaluation provenance",
+  "severity": "HIGH",
+  "status": "confirmed",
+  "priority": "P1",
+  "source_ids": [
+    "F-ARB-08",
+    "F-CKLB-29",
+    "F-ARB-09",
+    "F-CKLB-15",
+    "F-S03B-20",
+    "F-QLT-08",
+    "F-QLT-09",
+    "F-BSP-05",
+    "F-B02B-22",
+    "F-CKLB-16"
+  ],
+  "original_titles": [
+    {
+      "id": "F-ARB-08",
+      "title": "Auto-accept enabled by default without the blind-validation gate"
+    },
+    {
+      "id": "F-CKLB-29",
+      "title": "Auto-accept is live without the 99% precision validation gate"
+    },
+    {
+      "id": "F-ARB-09",
+      "title": "Evaluator version never recorded; no evaluations entity"
+    },
+    {
+      "id": "F-CKLB-15",
+      "title": "Evaluation records lack engine version, ruleset hash and candidate set"
+    },
+    {
+      "id": "F-S03B-20",
+      "title": "Matching/scoring model deviates from spec 13.2/13.4"
+    },
+    {
+      "id": "F-QLT-08",
+      "title": "Evaluator logic copy-pasted between evaluator.py and evaluator_level.py"
+    },
+    {
+      "id": "F-QLT-09",
+      "title": "matching.decide and decide_multi duplicate the scoring/threshold logic"
+    },
+    {
+      "id": "F-BSP-05",
+      "title": "Wide-span reports score full location match; span width never weighted (shotgun padding viable)"
+    },
+    {
+      "id": "F-B02B-22",
+      "title": "Level-2 multi-location match rule deviates from spec"
+    },
+    {
+      "id": "F-CKLB-16",
+      "title": "No recorded-corpus determinism replay test in CI"
+    }
+  ],
+  "problem": "The evaluator automatically awards evidence points when a matcher returns accept_full. There is no persisted evaluation entity containing engine/matcher version, feature values, candidate set and decision provenance; the matching functions decide/decide_multi duplicate scoring logic. The audit also claims wide-span reports can obtain a full location score, which should be validated with a focused adversarial fixture.",
+  "impact": "A matcher regression or threshold drift can create incorrect awards without a documented precision measurement or exact replay evidence. Duplicated matcher logic can diverge between single- and multi-location decisions.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/evaluator.py: evaluate_submission",
+      "backend/app/evaluator_level.py: multi-flag evaluation",
+      "backend/app/matching.py: decide and decide_multi",
+      "backend/app/seed.py: matcher/scoring config"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Create a versioned evaluation record for every machine decision: matcher_version, ruleset hash, normalized input hash, candidate ids/version, feature vector, threshold, outcome, selected bug and timestamp."
+      },
+      {
+        "step": 2,
+        "action": "Build a curated blind-validation corpus with positive, negative, ambiguous, multi-location, wide-span and adversarial shotgun reports. Keep authoring/validation sets separate."
+      },
+      {
+        "step": 3,
+        "action": "Measure precision/recall by outcome and severity. Disable auto-accept unless the owner-approved precision threshold is met; route uncertain cases to human review."
+      },
+      {
+        "step": 4,
+        "action": "Refactor decide and decide_multi around a shared scorer so candidate ranking, thresholds and span penalties are consistent and centrally testable."
+      },
+      {
+        "step": 5,
+        "action": "Add deterministic replay tests that recompute decisions for the stored corpus under a pinned matcher version and assert exact output/ledger effects."
+      }
+    ],
+    "acceptance_criteria": [
+      "Auto-accept is disabled unless a recorded blind validation report meets the agreed precision threshold.",
+      "Every decision is replayable from stored engine/ruleset/candidate metadata.",
+      "Single- and multi-location tests use the same scoring semantics."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [],
+  "residual_risk_or_scope_note": "The PR CI passing 81 tests and E2E 46 checks does not prove matcher precision. A precision gate requires an independently labelled validation corpus."
+}

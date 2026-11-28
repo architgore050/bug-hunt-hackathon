@@ -1,0 +1,86 @@
+{
+  "id": "REM-045",
+  "title": "The app still uses local filesystem artifact storage and has incomplete upload lifecycle APIs",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-ARA-05",
+    "F-B02B-08",
+    "F-B02A-20",
+    "F-AG07-09",
+    "F-BSP-16"
+  ],
+  "original_titles": [
+    {
+      "id": "F-ARA-05",
+      "title": "Object storage is a local directory, not a private bucket"
+    },
+    {
+      "id": "F-B02B-08",
+      "title": "Upload lifecycle incomplete: validate/get/delete endpoints and status=ok submit gate missing"
+    },
+    {
+      "id": "F-B02A-20",
+      "title": "Only the filesystem storage adapter; no MinIO/S3 option despite spec pluggability"
+    },
+    {
+      "id": "F-AG07-09",
+      "title": "Staged uploads cannot be deleted before submit"
+    },
+    {
+      "id": "F-BSP-16",
+      "title": "Challenge upload has no file-count cap and the repo tree is not virtualized"
+    }
+  ],
+  "problem": "storage.py is a local-directory adapter. Uploads can be staged and submitted, but there is no full validate/get/delete lifecycle surface for stale staged artifacts. File-count/manifest limits and repository tree virtualization remain incomplete.",
+  "impact": "A single VM disk becomes a storage and availability failure domain; abandoned staged uploads may accumulate, and large repositories/uploads can produce UI/server load.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/storage.py",
+      "backend/app/routers/levels.py: upload_artifact and submission artifact queries",
+      "frontend/src/components/workspace/UploadDialog.tsx",
+      "frontend/src/components/workspace/CodeViewer.tsx"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Set explicit limits for artifact file count, compressed size, uncompressed size, nesting depth, per-file size, allowed file types and path traversal. Validate zip expansion ratios and symlink entries."
+      },
+      {
+        "step": 2,
+        "action": "Add staged artifact GET/status/delete endpoints bound to owner, level and state. Allow deletion only before submit; retain audit metadata after submit."
+      },
+      {
+        "step": 3,
+        "action": "Implement S3-compatible private object storage with server-side encryption, lifecycle cleanup and content hash verification. Keep object keys non-public."
+      },
+      {
+        "step": 4,
+        "action": "Add a cleanup job for expired staged uploads and a quota check per participant/team/event."
+      },
+      {
+        "step": 5,
+        "action": "Virtualize large repo/file trees and test large ZIP, zip-bomb, duplicate path, traversal, symlink, cross-user access and storage failure."
+      }
+    ],
+    "acceptance_criteria": [
+      "Artifacts cannot be read/deleted by another user.",
+      "Staged-but-not-submitted files can be deleted and expire automatically.",
+      "Private object storage is used in production or the local-storage D0 limitation is explicitly signed off."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

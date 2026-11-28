@@ -1,0 +1,60 @@
+{
+  "id": "REM-058",
+  "title": "CTF flag submissions do not consistently share the report caps and cooldown policy",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-ARB-18"
+  ],
+  "original_titles": [
+    {
+      "id": "F-ARB-18",
+      "title": "CTF flag submissions bypass caps and cooldowns"
+    }
+  ],
+  "problem": "The generic submission path branches CTF flags into verify_flag work before the same bug-report cap/cooldown controls, so flags can bypass limits applied to normal reports. The exact policy must distinguish per-flag max_awards from per-user/team submission rate limits.",
+  "impact": "A participant can brute-force flag submissions or generate disproportionate verification load even if flag awards are capped.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/routers/submissions.py: ctf_flag branch",
+      "backend/app/evaluator.py: verify_flag",
+      "backend/app/config.py: submission limits"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Define per-user, per-team, per-stage and per-IP flag submission caps independently from award max_awards."
+      },
+      {
+        "step": 2,
+        "action": "Apply cooldown/rate limits before enqueuing verify_flag and record failed attempts without revealing whether a particular flag key exists."
+      },
+      {
+        "step": 3,
+        "action": "Use idempotency and a unique submission record so duplicate/replayed flags cannot enqueue unbounded work."
+      },
+      {
+        "step": 4,
+        "action": "Add brute-force, duplicate, parallel and cross-team flag tests."
+      }
+    ],
+    "acceptance_criteria": [
+      "Flags obey a documented rate/cap policy.",
+      "Invalid flag attempts reveal no oracle and do not flood the worker queue."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

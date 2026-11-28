@@ -1,0 +1,109 @@
+{
+  "id": "REM-020",
+  "title": "Capacity, load, fault and external monitoring evidence is still unexecuted",
+  "severity": "HIGH",
+  "status": "confirmed",
+  "priority": "P1",
+  "source_ids": [
+    "F-CKLB-03",
+    "F-AG07-05",
+    "F-AG07-21",
+    "F-B02A-21",
+    "F-ARA-02",
+    "F-CKLB-23",
+    "F-ARB-12",
+    "F-CKLA-15",
+    "F-S03B-29"
+  ],
+  "original_titles": [
+    {
+      "id": "F-CKLB-03",
+      "title": "D1 load test never executed; every results cell UNRUN"
+    },
+    {
+      "id": "F-AG07-05",
+      "title": "Capacity work missing: no 200-user synthetic seed, no EXPLAIN plans, load test UNRUN"
+    },
+    {
+      "id": "F-AG07-21",
+      "title": "Integration evidence incomplete: no contract suite, no Playwright e2e, no fault tests, load UNRUN"
+    },
+    {
+      "id": "F-B02A-21",
+      "title": "Load target qualification pending at every N; tool cannot run the N=100/200 points"
+    },
+    {
+      "id": "F-ARA-02",
+      "title": "Load-test tool measures API only; no server-side vs end-to-end latency split"
+    },
+    {
+      "id": "F-CKLB-23",
+      "title": "No external monitoring, status page, alerting or external pen test"
+    },
+    {
+      "id": "F-ARB-12",
+      "title": "Observability signals below the required minimum"
+    },
+    {
+      "id": "F-CKLA-15",
+      "title": "No external status page (PUB-05a S2)"
+    },
+    {
+      "id": "F-S03B-29",
+      "title": "NFR instrumentation gaps: no OpenAPI contract tests, no axe a11y CI, thin metrics story"
+    }
+  ],
+  "problem": "LOAD_TEST_REPORT.md still has UNRUN in every results cell. The repo has scripts but no measured p50/p95/p99 results for API reads, submission burst, worker latency or four-level polling. There is no external monitoring/status page or demonstrated alert path.",
+  "impact": "The seeded 50-participant cap and performance targets are assumptions, not verified capacity. Failures during event start or submission burst could cause missed receipts, delayed evaluation or unusable UI.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "docs/LOAD_TEST_REPORT.md",
+      "scripts/load_test.py",
+      "docs/RELEASE_PLAN_D1.md",
+      "backend/app/routers/admin.py: system_health",
+      "backend/worker.py"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Fix and document the load test harness so it exercises the current four-level endpoints, real database locks, uploads, team score, leaderboard release and concurrent idempotent submissions."
+      },
+      {
+        "step": 2,
+        "action": "Run approved participant/teams profiles at 50, 100 and 200 synthetic users (or approved targets), with synchronized T0 and submission bursts. Record machine/container profile, data volume, commit and exact commands."
+      },
+      {
+        "step": 3,
+        "action": "Capture p50/p95/p99, 4xx/5xx, DB lock wait, pool saturation, queue lag, worker retry/dead-letter count and outbox delivery latency. Keep raw outputs attached."
+      },
+      {
+        "step": 4,
+        "action": "Add fault tests for DB restart, worker restart, lease expiry, network loss and refresh token recovery."
+      },
+      {
+        "step": 5,
+        "action": "Deploy external uptime/metrics/log alerts and an incident/status page; rehearse alert acknowledgement and escalation."
+      }
+    ],
+    "acceptance_criteria": [
+      "Report contains measured values, not UNRUN placeholders.",
+      "At approved cap, p95 targets and zero-5xx criteria pass.",
+      "Restart/fault drills recover with no duplicate scores or lost submissions.",
+      "External alert is triggered and acknowledged during a drill."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [],
+  "residual_risk_or_scope_note": "Current GitHub CI passed 81 pytest tests, 74.03% coverage and 46/46 live E2E checks, but that is not a load test or restore drill."
+}

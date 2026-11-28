@@ -1,0 +1,59 @@
+{
+  "id": "REM-010",
+  "title": "Penalty entries are counted twice in participant result totals",
+  "severity": "HIGH",
+  "status": "confirmed",
+  "priority": "P0",
+  "source_ids": [
+    "F-QLT-01",
+    "F-S03B-02"
+  ],
+  "original_titles": [
+    {
+      "id": "F-QLT-01",
+      "title": "Participant results totals double-count penalties"
+    },
+    {
+      "id": "F-S03B-02",
+      "title": "Participant results endpoint double-counts penalties"
+    }
+  ],
+  "problem": "my_results adds each penalty amount to penalties and also adds the same row to by_component, then computes total as sum(by_component.values()) + penalties. Negative penalties therefore reduce the returned total twice.",
+  "impact": "Any penalized team receives a displayed score that is lower than the ledger total by exactly the penalty amount.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/routers/leaderboard.py: my_results"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "When iterating ledger rows, add kind == penalty only to the penalties accumulator; do not include penalty rows in by_component, or alternatively compute total from the ledger once and expose the penalty subtotal separately."
+      },
+      {
+        "step": 2,
+        "action": "Define sign convention explicitly: penalties should be stored as negative values and total should be the sum of all ledger entries once."
+      },
+      {
+        "step": 3,
+        "action": "Add fixtures for zero penalty, one penalty, multiple penalties, positive bonus and adjustments; assert total == SQL SUM(points) for the team/stage."
+      }
+    ],
+    "acceptance_criteria": [
+      "The response total equals the authoritative ledger SUM exactly, including penalty cases.",
+      "The by_component breakdown plus separately reported penalties reconciles without double counting."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

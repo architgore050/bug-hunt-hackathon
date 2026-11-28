@@ -1,0 +1,70 @@
+{
+  "id": "REM-019",
+  "title": "No automated base backups, WAL archiving or measured restore rehearsal",
+  "severity": "HIGH",
+  "status": "confirmed",
+  "priority": "P1",
+  "source_ids": [
+    "F-ARB-02",
+    "F-CKLB-04"
+  ],
+  "original_titles": [
+    {
+      "id": "F-ARB-02",
+      "title": "No automated backup, WAL archiving, or tested restore"
+    },
+    {
+      "id": "F-CKLB-04",
+      "title": "No automated backups, WAL archiving or restore drill"
+    }
+  ],
+  "problem": "BACKUP_AND_RECOVERY.md documents manual pg_dump and explicitly states automated backups, WAL archiving and a restore script are absent. Load and deployment readiness docs are still UNRUN.",
+  "impact": "VM/storage loss can destroy submissions and scoring data since the last manual dump; advertised RPO/RTO are unproven.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "docs/BACKUP_AND_RECOVERY.md",
+      "docs/DEPLOYMENT_RUNBOOK.md",
+      "docs/RELEASE_PLAN_D1.md"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Choose a backup architecture: scheduled base backups plus continuous WAL archiving to a separate account/region or storage failure domain."
+      },
+      {
+        "step": 2,
+        "action": "Encrypt backups with keys managed separately from the VM and DB; define access for two custodians and test access recovery."
+      },
+      {
+        "step": 3,
+        "action": "Add automated archive continuity checks, backup freshness monitoring and alerts. Retain backup manifests and checksums."
+      },
+      {
+        "step": 4,
+        "action": "Automate restore to an isolated scratch DB, apply latest WAL, then run foreign-key, ledger reconciliation, audit-chain and submission-count checks."
+      },
+      {
+        "step": 5,
+        "action": "Run and time a full restore drill; record measured RPO/RTO, storage size, machine profile, run logs and sign-off."
+      }
+    ],
+    "acceptance_criteria": [
+      "Successful timed restore from backup + WAL to a scratch DB.",
+      "Measured RPO/RTO meet owner-approved targets.",
+      "Alert fires on missing/late archive segments."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

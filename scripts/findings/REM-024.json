@@ -1,0 +1,102 @@
+{
+  "id": "REM-024",
+  "title": "Request-body limits trust Content-Length and several error/input boundaries are insufficiently defensive",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-B02A-10",
+    "F-ARA-07",
+    "F-CKLB-25",
+    "F-SEC-09",
+    "F-B02A-18",
+    "F-SEC-10",
+    "F-AG07-08",
+    "F-QLT-06"
+  ],
+  "original_titles": [
+    {
+      "id": "F-B02A-10",
+      "title": "Phase-1 gaps: Content-Length-only body cap, no content-type check, no IP-level rate limit, unvalidated path IDs yield 500"
+    },
+    {
+      "id": "F-ARA-07",
+      "title": "Body-size limit trusts Content-Length only; malformed value yields 500 and chunked bodies skip the check"
+    },
+    {
+      "id": "F-CKLB-25",
+      "title": "Body-size limit only enforced when Content-Length is present"
+    },
+    {
+      "id": "F-SEC-09",
+      "title": "Upload/body size checks trust Content-Length and read-before-check"
+    },
+    {
+      "id": "F-B02A-18",
+      "title": "Body cap 512 KiB vs spec 1 MiB; 2 MiB response cap not enforced"
+    },
+    {
+      "id": "F-SEC-10",
+      "title": "Negative limit query params bypass result caps"
+    },
+    {
+      "id": "F-AG07-08",
+      "title": "Expected database failures surface as 500 INTERNAL_ERROR instead of 503"
+    },
+    {
+      "id": "F-QLT-06",
+      "title": "Unhandled API exceptions and job failures leave no server-side log"
+    }
+  ],
+  "problem": "The main middleware rejects oversized requests only when Content-Length is present. Chunked/missing length bodies are not streamed through a byte counter, malformed Content-Length conversion can throw, and several endpoints rely on raw dict parsing or unchecked numeric limits. Unexpected API exceptions are returned generically but are not logged with structured diagnostic context.",
+  "impact": "Large chunked requests can bypass the early cap, invalid inputs can become 500s, negative query limits may disable intended bounds, and operators may not have a request-correlated error trace.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/main.py: request_context_middleware",
+      "backend/app/errors.py: unhandled_error_handler",
+      "backend/app/routers/admin.py: raw dict bodies and limit queries",
+      "backend/app/routers/announcements.py: limit parameter",
+      "backend/app/routers/levels.py: uploads and file paths"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Implement an ASGI receive wrapper that counts actual bytes as the request body streams; enforce separate limits for JSON, multipart upload and artifact extraction regardless of Content-Length."
+      },
+      {
+        "step": 2,
+        "action": "Validate Content-Length as a non-negative integer and reject malformed values with 400/413, never a generic 500. Enforce Content-Type and supported encodings."
+      },
+      {
+        "step": 3,
+        "action": "Constrain every limit/offset/page parameter with lower and upper bounds; use parameterized SQL and reject negative values."
+      },
+      {
+        "step": 4,
+        "action": "Replace remaining raw dict bodies with strict Pydantic request models and validate UUIDs, numeric ranges, file paths, spans, list sizes and string lengths."
+      },
+      {
+        "step": 5,
+        "action": "Log unhandled exceptions with request_id, route, safe principal id/role and error class; never include passwords, tokens, challenge content or raw submissions."
+      }
+    ],
+    "acceptance_criteria": [
+      "Chunked and Content-Length requests are subject to identical body caps.",
+      "Malformed headers and negative query values return deterministic 4xx errors.",
+      "Every unhandled 500 has a structured request-correlated server log with secrets redacted."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

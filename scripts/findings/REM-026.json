@@ -1,0 +1,100 @@
+{
+  "id": "REM-026",
+  "title": "Security response headers and cookie hardening are incomplete",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-ARA-06",
+    "F-CKLB-11",
+    "F-BSP-04",
+    "F-ARB-19",
+    "F-SEC-08",
+    "F-B02B-26",
+    "F-B02B-37",
+    "F-F01A-20"
+  ],
+  "original_titles": [
+    {
+      "id": "F-ARA-06",
+      "title": "CSP, HSTS and Permissions-Policy are not deployed anywhere"
+    },
+    {
+      "id": "F-CKLB-11",
+      "title": "No CSP, HSTS or Permissions-Policy headers"
+    },
+    {
+      "id": "F-BSP-04",
+      "title": "No Content-Security-Policy header anywhere"
+    },
+    {
+      "id": "F-ARB-19",
+      "title": "No Content-Security-Policy header"
+    },
+    {
+      "id": "F-SEC-08",
+      "title": "No Content-Security-Policy or X-Frame-Options headers"
+    },
+    {
+      "id": "F-B02B-26",
+      "title": "HSTS missing; no __Secure- cookie prefix; Secure flag tied only to environment=='production'"
+    },
+    {
+      "id": "F-B02B-37",
+      "title": "CORS allow_credentials on all routes"
+    },
+    {
+      "id": "F-F01A-20",
+      "title": "No CSP defined (inline-script ban, worker-src) anywhere"
+    }
+  ],
+  "problem": "main.py adds nosniff and Referrer-Policy but does not set CSP, HSTS, X-Frame-Options/frame-ancestors or Permissions-Policy. CORS allow_credentials is enabled at application scope, and secure cookie behavior depends on environment configuration without a deployment assertion.",
+  "impact": "XSS in challenge fixtures or another future rendering defect has a larger impact without CSP; clickjacking and transport downgrade protections are not explicitly enforced.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/main.py: middleware and CORSMiddleware",
+      "backend/app/routers/auth.py: refresh cookie flags",
+      "frontend build: inline scripts and asset policy"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Define a production CSP with nonce/hash strategy; start with default-src self, object-src none, base-uri self, frame-ancestors none, form-action self and narrowly scoped connect-src/style-src/font-src."
+      },
+      {
+        "step": 2,
+        "action": "Set HSTS on HTTPS production responses with a tested max-age; use frame-ancestors in CSP and X-Frame-Options as a legacy fallback; add Permissions-Policy and X-Content-Type-Options."
+      },
+      {
+        "step": 3,
+        "action": "Split public CORS routes from authenticated routes where possible. Keep exact allowed origins and avoid credentials for public read-only routes."
+      },
+      {
+        "step": 4,
+        "action": "Use __Host-/__Secure- cookie prefixes where deployment permits; enforce Secure, HttpOnly, SameSite and host-only scope at production startup."
+      },
+      {
+        "step": 5,
+        "action": "Add header tests for success/error/redirect/static responses and a production staging scan."
+      }
+    ],
+    "acceptance_criteria": [
+      "Security headers are present on all production responses.",
+      "No wildcard credentialed CORS.",
+      "Refresh cookie attributes match production HTTPS requirements."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

@@ -1,0 +1,86 @@
+{
+  "id": "REM-033",
+  "title": "Auth refresh coordination is only per tab and session UX does not signal cross-device revocation",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-ARA-21",
+    "F-F01A-08",
+    "F-S03A-09",
+    "F-CKLA-30",
+    "F-F01A-09"
+  ],
+  "original_titles": [
+    {
+      "id": "F-ARA-21",
+      "title": "No Web Locks / BroadcastChannel serialization of refresh across tabs"
+    },
+    {
+      "id": "F-F01A-08",
+      "title": "No cross-tab refresh coordination (Web Locks / BroadcastChannel)"
+    },
+    {
+      "id": "F-S03A-09",
+      "title": "Sessions: no approximate location, no 'sign out other sessions', no session-revoked notice/state clear"
+    },
+    {
+      "id": "F-CKLA-30",
+      "title": "Session list lacks location; no session_revoked handling (ATH-05a S3)"
+    },
+    {
+      "id": "F-F01A-09",
+      "title": "Session-expired UX (P-23) and 'signed in on another device' variant missing"
+    }
+  ],
+  "problem": "frontend/src/lib/api.ts shares one refresh promise inside a single JS runtime. There is no Web Locks/BroadcastChannel coordination across tabs. Account UI lists/revokes a specific session but has no revoke-all operation or cross-device session-revoked notification; it exposes a truncated user-agent, not approximate device location.",
+  "impact": "Multiple tabs can concurrently rotate the same refresh token family, and a session revoked elsewhere may leave the other tab displaying stale authenticated state until its next request.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "frontend/src/lib/api.ts: refreshInFlight",
+      "frontend/src/lib/auth.tsx",
+      "frontend/src/pages/participant/Account.tsx",
+      "backend/app/routers/auth.py: my_sessions and revoke_session"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Use Web Locks (with a fallback BroadcastChannel protocol) to serialize refresh rotation across tabs. Broadcast refresh success, logout, session revocation and expiry events without broadcasting bearer tokens."
+      },
+      {
+        "step": 2,
+        "action": "On receiving a revocation event, clear in-memory access token and query cache, redirect to login and preserve only non-sensitive locally saved drafts."
+      },
+      {
+        "step": 3,
+        "action": "Add a server-side revoke-all-other-sessions endpoint scoped to the current user, with explicit confirmation and refresh-token-family revocation."
+      },
+      {
+        "step": 4,
+        "action": "If approximate location is added, derive it server-side from privacy-minimized IP metadata and disclose retention; do not expose raw IP addresses to participants."
+      },
+      {
+        "step": 5,
+        "action": "Add multi-tab tests with simultaneous 401s, one tab logout, password reset and server-side session revocation."
+      }
+    ],
+    "acceptance_criteria": [
+      "Two tabs do not race refresh rotation.",
+      "Revocation is reflected in every open tab promptly.",
+      "Revoke-other-sessions cannot target another user."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

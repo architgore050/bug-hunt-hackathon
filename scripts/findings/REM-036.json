@@ -1,0 +1,67 @@
+{
+  "id": "REM-036",
+  "title": "Runtime feature flags and operator emergency controls are environment-only or incomplete",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-AG07-11"
+  ],
+  "original_titles": [
+    {
+      "id": "F-AG07-11",
+      "title": "Kill switch is environment config, not an audited feature_flags row with cache invalidation"
+    }
+  ],
+  "problem": "runner_enabled, ai_assessment_enabled and telemetry_enabled are environment settings. There is no audited runtime feature_flags table with cache invalidation, and /health exposes DB status rather than full readiness/metrics/alerts. Operator kill switches and status page are incomplete.",
+  "impact": "Changing a feature flag can require restart/config access; operators have limited visibility into worker lag, dead jobs, queue age and incident status.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/config.py",
+      "backend/app/routers/admin.py: system_health",
+      "backend/app/main.py: /health",
+      "backend/worker.py",
+      "docs/DEPLOYMENT_RUNBOOK.md"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Define a small typed feature_flags table scoped to tenant/event with flag key, value, reason, actor, changed_at and expiry. Use a strict allow-list; never allow flags to grant permissions or expose GT."
+      },
+      {
+        "step": 2,
+        "action": "Add admin + step-up control for high-risk flags, with audit and cache invalidation/short TTL. Keep production boot defaults fail-closed."
+      },
+      {
+        "step": 3,
+        "action": "Add /readyz for dependencies and startup readiness, /metrics for safe service/queue metrics and worker heartbeat, and alert thresholds for job age/dead letters."
+      },
+      {
+        "step": 4,
+        "action": "Publish an operator status/incident page with maintenance mode and a manual fallback if the platform is unavailable."
+      },
+      {
+        "step": 5,
+        "action": "Test kill-switch propagation across API/worker instances and prove that disabling runner/AI does not disable submission or result access."
+      }
+    ],
+    "acceptance_criteria": [
+      "Critical feature flags change without an uncontrolled restart and every change is audited.",
+      "Readiness and metrics indicate API, DB and worker health separately.",
+      "An operator can communicate an incident without exposing private event data."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

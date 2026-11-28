@@ -1,0 +1,99 @@
+{
+  "id": "REM-003",
+  "title": "Administrator authentication remains single-factor and same-origin; password re-entry is not MFA",
+  "severity": "HIGH",
+  "status": "confirmed",
+  "priority": "P1",
+  "source_ids": [
+    "F-AD8A-03",
+    "F-CKLA-04",
+    "F-S03A-05",
+    "F-CKLB-08",
+    "F-BSP-11",
+    "F-AG07-14",
+    "F-S03A-06"
+  ],
+  "original_titles": [
+    {
+      "id": "F-AD8A-03",
+      "title": "No MFA on admin sign-in; first-login password-set enables takeover of invited staff accounts"
+    },
+    {
+      "id": "F-CKLA-04",
+      "title": "Admin plane shares participant origin; no MFA; no 60-min idle sessions (ADM-01a/ADM-01b S1)"
+    },
+    {
+      "id": "F-S03A-05",
+      "title": "Admin sign-in has no MFA, no Cloudflare Access, no 60-minute inactivity bound; step-up is password-only"
+    },
+    {
+      "id": "F-CKLB-08",
+      "title": "Admin access has no MFA; step-up is password re-entry only"
+    },
+    {
+      "id": "F-BSP-11",
+      "title": "Admin surface protected by password-only step-up; no MFA, no separate deployment or DB role"
+    },
+    {
+      "id": "F-AG07-14",
+      "title": "MFA absent; step-up is password re-entry only (documented waiver)"
+    },
+    {
+      "id": "F-S03A-06",
+      "title": "Login gaps: no show/hide toggle, no Turnstile after 3 failures, no Retry-After on lockout, silent oldest-session eviction, no activation redirect"
+    }
+  ],
+  "problem": "The staff login flow is the same password-based login used by other roles. step_up_verified checks the same password again for five minutes. There is no TOTP/WebAuthn factor, Cloudflare Access assertion, role-specific short idle expiry or separate admin origin.",
+  "impact": "A phished/reused organizer/admin password provides both initial access and the factor accepted by step-up. The session lasts up to the configured refresh TTL (three days) unless revoked. This is a residual high-impact risk because staff can change ground truth, teams, scoring and event state.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/routers/auth.py: login and step_up",
+      "backend/app/deps.py: step_up_verified",
+      "backend/app/config.py: access_token_ttl_s and refresh_token_ttl_s",
+      "backend/app/main.py: same app routes",
+      "frontend/src/App.tsx: /admin same SPA"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Add a staff-only MFA enrollment table with encrypted TOTP secret or WebAuthn credential public keys, recovery-code hashes and a state machine (enrolled, pending, revoked)."
+      },
+      {
+        "step": 2,
+        "action": "Require MFA at login for organizer/admin and bind MFA verification to the server-side session. Do not accept password re-entry as a second factor."
+      },
+      {
+        "step": 3,
+        "action": "For step-up, require a fresh WebAuthn assertion or TOTP challenge with anti-replay counter/time-step protection; record the proof timestamp and factor id on the session."
+      },
+      {
+        "step": 4,
+        "action": "Set staff-specific refresh inactivity to 60 minutes (or owner-approved duration), enforce maximum absolute session age, and rotate/revoke refresh-token families on password/MFA change."
+      },
+      {
+        "step": 5,
+        "action": "Deploy admin UI/API behind a separate hostname and interactive access proxy; add tests for missing, stale, replayed and wrong-user MFA challenges."
+      }
+    ],
+    "acceptance_criteria": [
+      "Staff without MFA cannot authenticate.",
+      "Step-up proof cannot be satisfied by password-only re-entry.",
+      "Refresh after 60 minutes inactivity fails for staff, while participant session policy remains separate.",
+      "MFA reset and recovery are audited and require independent verification."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [],
+  "residual_risk_or_scope_note": "The merged PR fixed the staff passwordless first-claim vulnerability and added step-up to selected sensitive routes, but did not implement MFA or a separate admin origin."
+}

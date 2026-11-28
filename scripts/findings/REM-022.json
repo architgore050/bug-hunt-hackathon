@@ -1,0 +1,106 @@
+{
+  "id": "REM-022",
+  "title": "In-memory rate limiting is per process, resets on restart and does not send Retry-After",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-AG07-07",
+    "F-ARA-08",
+    "F-ARB-15",
+    "F-B02B-24",
+    "F-SEC-07",
+    "F-CKLA-09",
+    "F-S03B-25",
+    "F-QLT-22",
+    "F-CKLB-09",
+    "F-BSP-10"
+  ],
+  "original_titles": [
+    {
+      "id": "F-AG07-07",
+      "title": "Rate limiting is in-process/in-memory and 429s lack a Retry-After header"
+    },
+    {
+      "id": "F-ARA-08",
+      "title": "In-process rate limiter resets on restart and multiplies per worker"
+    },
+    {
+      "id": "F-ARB-15",
+      "title": "Rate limiting is a per-process in-memory bucket"
+    },
+    {
+      "id": "F-B02B-24",
+      "title": "Rate limits: in-memory per-process only, several rows missing, values deviate"
+    },
+    {
+      "id": "F-SEC-07",
+      "title": "In-process rate limiter: per-worker limits, restart resets, unbounded key growth"
+    },
+    {
+      "id": "F-CKLA-09",
+      "title": "429 responses lack Retry-After header (ERC-02 S1-part, ATH-01c)"
+    },
+    {
+      "id": "F-S03B-25",
+      "title": "429s carry no Retry-After header; rate limiter is in-process"
+    },
+    {
+      "id": "F-QLT-22",
+      "title": "Invalid callable annotations and unbounded rate-limit bucket keys"
+    },
+    {
+      "id": "F-CKLB-09",
+      "title": "Rate limiting is in-process only; concurrency cap is dead config"
+    },
+    {
+      "id": "F-BSP-10",
+      "title": "Rate limiter is in-process only, resets on restart, and never evicts keys"
+    }
+  ],
+  "problem": "deps.rate_limit stores timestamp arrays in a process-local defaultdict. It resets on restart, is multiplied by worker/replica count and retains arbitrary keys. AUTH_RATE_LIMITED maps to 429 but the error handler does not add Retry-After.",
+  "impact": "Attackers can evade limits by hitting another worker or waiting for restart, and clients cannot reliably respect the server retry window. The bucket dictionary can grow with unbounded distinct keys.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/deps.py: _bucket and rate_limit",
+      "backend/app/errors.py: api_error_handler",
+      "backend/app/config.py: max_concurrent_requests_per_user"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Move rate-limit counters to a shared atomic store such as Redis or PostgreSQL. Use atomic increment/expiry or a token-bucket script so simultaneous requests cannot exceed the limit."
+      },
+      {
+        "step": 2,
+        "action": "Define limits by identity, IP, route class and account; bound the key cardinality and use privacy-safe hashed identifiers where appropriate."
+      },
+      {
+        "step": 3,
+        "action": "Return Retry-After and structured retry seconds for every 429 response; standardize the policy across login, step-up, uploads, repository search, flags and submissions."
+      },
+      {
+        "step": 4,
+        "action": "Add tests for concurrency, restart/reconnect, multi-worker behavior, expiry, spoofed headers and distinct-key floods."
+      }
+    ],
+    "acceptance_criteria": [
+      "The same quota is enforced across two API processes.",
+      "Restarting a worker does not reset rate limits.",
+      "All 429s contain a valid Retry-After header and stable error code."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

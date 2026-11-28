@@ -1,0 +1,95 @@
+{
+  "id": "REM-021",
+  "title": "Worker scheduling and queue operations lack leader election, per-kind controls and long-job heartbeat",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-CKLB-20",
+    "F-B02B-20",
+    "F-ARB-17",
+    "F-B02B-21",
+    "F-ARB-22",
+    "F-ARB-20",
+    "F-CKLB-27"
+  ],
+  "original_titles": [
+    {
+      "id": "F-CKLB-20",
+      "title": "No scheduler leader lock; auto-submit scan runs unguarded on every worker"
+    },
+    {
+      "id": "F-B02B-20",
+      "title": "Job queue: no dedupe_key, lease/heartbeat and backoff deviate from spec"
+    },
+    {
+      "id": "F-ARB-17",
+      "title": "No lease renewal for long jobs; dead letters only visible via admin endpoint"
+    },
+    {
+      "id": "F-B02B-21",
+      "title": "12+ job kinds missing; no advisory-lock scheduler"
+    },
+    {
+      "id": "F-ARB-22",
+      "title": "CI lacks backend type-check and an image/digest release path"
+    },
+    {
+      "id": "F-ARB-20",
+      "title": "Request timeout not enforced in the API pipeline"
+    },
+    {
+      "id": "F-CKLB-27",
+      "title": "Job kinds share one retry policy; no jitter, no per-kind metrics"
+    }
+  ],
+  "problem": "worker.py invokes the auto-submit scan in every worker loop. The DB job queue has leases and retry backoff, but there is no leader lock for singleton scheduler scans, no lease renewal/heartbeat for long-running jobs and retry policy is largely shared across job kinds.",
+  "impact": "Running multiple workers can perform duplicated expensive scans and potentially race on scheduled operations; long jobs may be reclaimed while still executing if they exceed the lease. Operational diagnosis is weak without per-kind metrics.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/worker.py: loop and auto-submit scan",
+      "backend/app/auto_submit.py: scan_and_submit",
+      "backend/app/jobs.py: claim_next, requeue_expired_leases, retry_job"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Separate singleton scheduling from parallel job execution. Acquire a PostgreSQL advisory lock or scheduler_leases row before scanning deadlines; only the elected scheduler runs the scan."
+      },
+      {
+        "step": 2,
+        "action": "Add heartbeat/lease renewal for jobs expected to run longer than the initial lease. Workers must stop processing if they lose ownership."
+      },
+      {
+        "step": 3,
+        "action": "Configure retry policy per job kind: attempts, backoff, jitter, timeout, retryable/non-retryable error classes and dead-letter handling."
+      },
+      {
+        "step": 4,
+        "action": "Add dedupe keys for schedule-triggered jobs and preserve idempotency keys for scoring/release jobs."
+      },
+      {
+        "step": 5,
+        "action": "Expose queue age, attempts, lease expiry, dead-letter count and handler latency by job kind; add tests with two workers and a deliberately long job."
+      }
+    ],
+    "acceptance_criteria": [
+      "Only one scheduler runs a singleton scan at a time.",
+      "A long-running job renews its lease or is safely stopped before another worker reclaims it.",
+      "Retries do not duplicate scoring or event transitions."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

@@ -1,0 +1,85 @@
+{
+  "id": "REM-038",
+  "title": "Terms and operations documentation still contradict the merged account and four-level product behavior",
+  "severity": "MEDIUM",
+  "status": "partially_fixed",
+  "priority": "P2",
+  "source_ids": [
+    "F-QLT-14",
+    "F-PRP-09",
+    "F-S03A-30",
+    "F-S03B-30"
+  ],
+  "original_titles": [
+    {
+      "id": "F-QLT-14",
+      "title": "Docs report stale test counts and omit six test files"
+    },
+    {
+      "id": "F-PRP-09",
+      "title": "Doc drift and pre-publication hazards (stale test counts; handbook example leaks a real defect)"
+    },
+    {
+      "id": "F-S03A-30",
+      "title": "Terms/Login copy claims accounts are created automatically on first sign-in, contradicting backend rejection of unregistered emails"
+    },
+    {
+      "id": "F-S03B-30",
+      "title": "EXTRA: four-level participant flow replaces the spec's Round 1/Round 2 model"
+    }
+  ],
+  "problem": "PR #59 corrected some README, API and security docs, but frontend Terms still says accounts may be created automatically on first sign-in. COMPETITION_RULES, PRIVACY_NOTICE and EVENT_OPERATIONS_PLAYBOOK retain invite/activation/reset routes, account-status and old single-round “do not upload code” instructions. Some known-gaps/reconciliation documents still refer to the frontend as not implemented.",
+  "impact": "Organizers and participants can follow obsolete routes or misunderstand password setup, code submission, stage flow and manual test process. Operational errors become likely even when the code is correct.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "partially_confirmed",
+    "evidence_paths": [
+      "frontend/src/pages/Terms.tsx",
+      "docs/COMPETITION_RULES.md",
+      "docs/PRIVACY_NOTICE.md",
+      "docs/EVENT_OPERATIONS_PLAYBOOK.md",
+      "docs/KNOWN_GAPS_AND_OWNER_DECISIONS.md",
+      "docs/REQUIREMENTS_RECONCILIATION.md",
+      "docs/API_REFERENCE.md"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Search all tracked docs and public copy for invite, activation, AUTH_NOT_ACTIVATED, status=disabled, passwordless staff, “no code upload”, v1-only workflow and removed endpoint names."
+      },
+      {
+        "step": 2,
+        "action": "Reconcile each hit against current routes and behavior; retain historical statements only in clearly dated audit archives, not active operator instructions."
+      },
+      {
+        "step": 3,
+        "action": "Update Terms, Competition Rules, Privacy Notice, Participant Handbook and Event Operations Playbook from one approved account/flow policy source."
+      },
+      {
+        "step": 4,
+        "action": "Add a CI docs-link/endpoint check or a small contract test that fails when docs mention removed endpoints or claim a workflow that has no route."
+      },
+      {
+        "step": 5,
+        "action": "Require owner review and legal review where documents describe rules, privacy, penalties or proctoring."
+      }
+    ],
+    "acceptance_criteria": [
+      "No active public/operator doc instructs organizers to use removed invite/activation routes.",
+      "Participant documents describe the four-level repo/edit/upload/submit path correctly.",
+      "CI flags references to removed endpoints or stale auth codes."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [],
+  "residual_risk_or_scope_note": "The merged PR updated parts of the documentation, but the full repository still contains contradictory active guidance."
+}

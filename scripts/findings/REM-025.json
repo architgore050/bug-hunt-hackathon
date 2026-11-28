@@ -1,0 +1,96 @@
+{
+  "id": "REM-025",
+  "title": "Production startup does not fail closed on development secrets or insecure runtime configuration",
+  "severity": "HIGH",
+  "status": "confirmed",
+  "priority": "P1",
+  "source_ids": [
+    "F-B02A-03",
+    "F-QLT-19",
+    "F-SEC-05",
+    "F-SEC-11",
+    "F-ARA-18",
+    "F-ARA-19",
+    "F-ARA-22"
+  ],
+  "original_titles": [
+    {
+      "id": "F-B02A-03",
+      "title": "Default JWT secret baked into code; no *_FILE secret support and no boot-time override check"
+    },
+    {
+      "id": "F-QLT-19",
+      "title": "No startup guard against production running on dev-default secrets/DB URLs"
+    },
+    {
+      "id": "F-SEC-05",
+      "title": "Default JWT secret and dev DB credentials ship in code with no production fail-fast"
+    },
+    {
+      "id": "F-SEC-11",
+      "title": "Hardcoded dev credentials in seed and helper scripts"
+    },
+    {
+      "id": "F-ARA-18",
+      "title": "Access tokens use HS256 instead of the specified EdDSA/Ed25519"
+    },
+    {
+      "id": "F-ARA-19",
+      "title": "No kid claim in access tokens"
+    },
+    {
+      "id": "F-ARA-22",
+      "title": "Refresh-successor encryption key derived from the JWT secret"
+    }
+  ],
+  "problem": "config.py contains a public development JWT secret and development DB connection strings. The application startup does not reject production if the JWT secret or DB credentials remain default. There is no *_FILE secret loading. HS256 is used rather than the specified EdDSA/Ed25519, and refresh successor encryption derives from the JWT secret.",
+  "impact": "A deployment with incomplete environment configuration could accept a known signing secret, and rotating JWT secrets also affects refresh-token successor encryption. Dev seed/helper credentials can be accidentally reused outside test environments.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/config.py: Settings defaults",
+      "backend/app/security.py: JWT and refresh-successor encryption",
+      "backend/app/main.py: lifespan startup validation",
+      "backend/seed.py and scripts/*: dev credentials"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Add a validated production settings model: reject known dev JWT secret, development DB password/host, missing TLS/cookie requirements, localhost origins and debug docs on production startup."
+      },
+      {
+        "step": 2,
+        "action": "Implement *_FILE loading for signing keys, DB credentials, encryption keys and object-storage secrets; support mounted secrets without placing values in images or logs."
+      },
+      {
+        "step": 3,
+        "action": "Separate JWT signing and refresh-successor encryption keys. Use key ids and a rotation plan. If EdDSA is required by the locked spec, migrate algorithm and token verifier with a bounded compatibility window."
+      },
+      {
+        "step": 4,
+        "action": "Mark seed/helper scripts as development-only and make destructive reset require an explicit non-production database profile; reject production connection strings."
+      },
+      {
+        "step": 5,
+        "action": "Add startup tests for missing/default secrets, valid production config, key rotation and accidental production seed invocation."
+      }
+    ],
+    "acceptance_criteria": [
+      "Production refuses all development defaults.",
+      "JWT and refresh encryption use separate rotated secrets.",
+      "No secret value is emitted in logs, env examples, build artifacts or commits."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

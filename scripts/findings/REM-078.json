@@ -1,0 +1,59 @@
+{
+  "id": "REM-078",
+  "title": "Session revocation updates refresh tokens without checking session ownership",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-SEC-04"
+  ],
+  "original_titles": [
+    {
+      "id": "F-SEC-04",
+      "title": "DELETE /me/sessions/{id} revokes another user's refresh tokens (IDOR)"
+    }
+  ],
+  "problem": "DELETE /v1/me/sessions/{session_id} correctly scopes the app.sessions update by both session_id and principal.id, but the following refresh-token UPDATE filters only by session_id. If an attacker obtains another user’s session UUID, the second statement can revoke that user’s refresh-token family even though the session-row ownership update matched nothing.",
+  "impact": "This permits cross-user session disruption/logout. It is not necessarily account takeover, but it is an authorization failure and can invalidate a victim’s refresh tokens.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/routers/auth.py: revoke_session DELETE /me/sessions/{session_id}"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Select/lock the session row using both id and user_id = principal.id. If no row is found, return the same 404/204 policy without touching refresh tokens."
+      },
+      {
+        "step": 2,
+        "action": "Update refresh tokens with an ownership predicate as well: join refresh_tokens to sessions and require sessions.user_id = principal.id, or store and verify user_id directly on refresh_tokens."
+      },
+      {
+        "step": 3,
+        "action": "Check the row count and write an audit event only when an owned session was revoked. Do not reveal whether another user’s session id exists."
+      },
+      {
+        "step": 4,
+        "action": "Add a two-user test: user A tries to revoke user B’s session id; verify B’s session remains active and all B refresh tokens are unchanged. Then verify A can revoke A’s own session and its refresh tokens."
+      }
+    ],
+    "acceptance_criteria": [
+      "Cross-user session revocation changes zero rows in both sessions and refresh_tokens.",
+      "Own-session revocation updates both tables atomically.",
+      "A 404/non-disclosing response is returned for foreign session ids."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

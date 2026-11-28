@@ -1,0 +1,92 @@
+{
+  "id": "REM-004",
+  "title": "Participant first-password claim still trusts knowledge of the registered email address",
+  "severity": "HIGH",
+  "status": "partially_fixed",
+  "priority": "P1",
+  "source_ids": [
+    "F-B02B-01",
+    "F-BSP-03",
+    "F-CKLA-05",
+    "F-SEC-03",
+    "F-B02A-15",
+    "F-F01B-20"
+  ],
+  "original_titles": [
+    {
+      "id": "F-B02B-01",
+      "title": "First-login password claim enables account pre-claim takeover"
+    },
+    {
+      "id": "F-BSP-03",
+      "title": "First-login password claim enables takeover of unactivated accounts"
+    },
+    {
+      "id": "F-CKLA-05",
+      "title": "First-login account claiming bypasses invite activation (ATH-02a/02b S2, documented deviation)"
+    },
+    {
+      "id": "F-SEC-03",
+      "title": "First-login claim flow: NULL password_hash accounts are claimable and disqualified accounts get re-activated"
+    },
+    {
+      "id": "F-B02A-15",
+      "title": "Login accepts any typed password for accounts with an empty password_hash (bootstrap takeover path)"
+    },
+    {
+      "id": "F-F01B-20",
+      "title": "Login page copy contradicts itself about account creation; first-sign-in password capture lacks strength meter"
+    }
+  ],
+  "problem": "PR #59 prevents staff accounts from claiming passwords and requires a participant to have a team membership before claiming. However, any person who knows a registered participant email and reaches the login page before the participant can choose the initial password. Mailbox ownership is explicitly not verified.",
+  "impact": "A participant account can still be pre-claimed, allowing impersonation, false reports and consumption of submission caps. This is an accepted event policy in the current UI/docs, not a fully solved authentication problem.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "partially_confirmed",
+    "evidence_paths": [
+      "backend/app/routers/auth.py: login branch for role == participant and password_hash is NULL",
+      "backend/app/routers/admin.py: register_event_participant",
+      "frontend/src/pages/Login.tsx: participant first-password policy",
+      "frontend/src/pages/admin/Participants.tsx: email distribution warning"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Choose and document one policy before the next event: (A) verified email OTP, (B) one-time organizer-generated claim secret delivered in person, or (C) admin-assigned participant passwords with forced change at first login. Do not silently combine these methods."
+      },
+      {
+        "step": 2,
+        "action": "For the preferred one-time claim method, store only a hash of a random 128-bit token, bind it to user_id + event_id, expiry and one-time use, and rate-limit attempts per account and IP."
+      },
+      {
+        "step": 3,
+        "action": "Require the token plus password creation before issuing a normal session. A participant with password_hash NULL must always receive generic AUTH_INVALID_CREDENTIALS unless the claim proof is valid."
+      },
+      {
+        "step": 4,
+        "action": "Record claim issuance, delivery method, claim success/failure and revocation in the audit log without logging the raw secret."
+      },
+      {
+        "step": 5,
+        "action": "Add tests for pre-claim attacker, expired token, replay, wrong account, wrong event, brute-force rate limiting and a successful legitimate claim."
+      }
+    ],
+    "acceptance_criteria": [
+      "A person who only knows the email cannot claim the account.",
+      "Claim secrets are single-use, short-lived, hashed at rest and never logged.",
+      "Unknown accounts and invalid claims have indistinguishable outward credential errors."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [],
+  "residual_risk_or_scope_note": "If the event owner intentionally retains email-only first claim, this remains an accepted risk and must be presented as such. The current requirement to distribute emails through a controlled channel is not cryptographic proof of mailbox ownership."
+}

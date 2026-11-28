@@ -1,0 +1,87 @@
+{
+  "id": "REM-016",
+  "title": "Transactional outbox rows are marked delivered without any delivery and no SSE consumer exists",
+  "severity": "HIGH",
+  "status": "confirmed",
+  "priority": "P1",
+  "source_ids": [
+    "F-ARB-01",
+    "F-CKLB-10",
+    "F-S03B-01",
+    "F-S03B-19",
+    "F-CKLB-17"
+  ],
+  "original_titles": [
+    {
+      "id": "F-ARB-01",
+      "title": "Transactional outbox has no dispatcher; intents written but never delivered"
+    },
+    {
+      "id": "F-CKLB-10",
+      "title": "Outbox dispatcher is dead code and delivers nothing"
+    },
+    {
+      "id": "F-S03B-01",
+      "title": "REALTIME module (SSE /v1/stream) not implemented; all updates are polling"
+    },
+    {
+      "id": "F-S03B-19",
+      "title": "Notifications module absent (no email invites, reminders, results or dispute mails)"
+    },
+    {
+      "id": "F-CKLB-17",
+      "title": "No email/notification capability at all"
+    }
+  ],
+  "problem": "Submission and level paths insert app.outbox_events. evaluator.py dispatch_outbox selects undelivered rows and updates delivered_at/attempts but has no actual publish call. worker.py does not schedule dispatch_outbox. There is no /v1/stream SSE endpoint or notification consumer.",
+  "impact": "Realtime intents are silently discarded. Participants discover stage changes, results and review updates only through polling; the outbox falsely records delivery, making the audit trail misleading.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/routers/submissions.py: outbox_events insert",
+      "backend/app/routers/levels.py: outbox_events insert",
+      "backend/app/evaluator.py: dispatch_outbox",
+      "backend/worker.py: worker loop",
+      "backend/app/main.py: router list"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Define typed outbox event schemas and delivery targets (SSE stream, email/notification, or webhooks). Never set delivered_at until at least one configured consumer acknowledges successful delivery."
+      },
+      {
+        "step": 2,
+        "action": "Add a dispatcher job that claims rows with FOR UPDATE SKIP LOCKED, increments attempts, records last_error and uses per-event retry/backoff; dead-letter poison messages instead of silently dropping them."
+      },
+      {
+        "step": 3,
+        "action": "Implement GET /v1/stream using text/event-stream, stable event ids, heartbeat, Last-Event-ID replay and per-user/event authorization. Do not broadcast GT or private team details to the wrong audience."
+      },
+      {
+        "step": 4,
+        "action": "Wire frontend ConnectionIndicator and event handlers; use polling as a documented fallback and avoid duplicate state application using event ids/version numbers."
+      },
+      {
+        "step": 5,
+        "action": "Add tests for delivery, disconnect/reconnect replay, duplicate delivery, permission isolation and retry/dead-letter outcomes."
+      }
+    ],
+    "acceptance_criteria": [
+      "A row is marked delivered only after acknowledged delivery.",
+      "Every event type has an explicit consumer and replay policy.",
+      "Reconnect does not lose events or duplicate side effects."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

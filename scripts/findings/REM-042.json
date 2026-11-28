@@ -1,0 +1,77 @@
+{
+  "id": "REM-042",
+  "title": "The practice environment and isolated rehearsal flow are not implemented",
+  "severity": "MEDIUM",
+  "status": "deferred_by_design",
+  "priority": "P3",
+  "source_ids": [
+    "F-S03B-03",
+    "F-S03A-10",
+    "F-CKLA-22",
+    "F-ARB-21"
+  ],
+  "original_titles": [
+    {
+      "id": "F-S03B-03",
+      "title": "Practice environment (section 8) entirely missing"
+    },
+    {
+      "id": "F-S03A-10",
+      "title": "Practice environment capability missing for all four roles"
+    },
+    {
+      "id": "F-CKLA-22",
+      "title": "Practice environment entirely missing (PR-01a..PR-04a S2/S1)"
+    },
+    {
+      "id": "F-ARB-21",
+      "title": "practice schema from 9.2 not present"
+    }
+  ],
+  "problem": "The repository contains the live event flow but no separate namespaced practice API/UI/database schema. The four-level flow and code runner are separate from practice mode. This is not shown as an active runtime feature.",
+  "impact": "Participants cannot rehearse the real workspace and submission path without touching production event state. A separate practice system would reduce onboarding errors but creates another isolation boundary to maintain.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "scope_or_policy_check",
+    "evidence_paths": [
+      "backend/app/main.py router list",
+      "backend/app/migrations and models",
+      "frontend/src/App.tsx",
+      "docs/KNOWN_GAPS_AND_OWNER_DECISIONS.md"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Decide whether practice is a launch requirement or an explicit out-of-scope item for this event. Do not silently expose production GT to make a practice copy."
+      },
+      {
+        "step": 2,
+        "action": "If built, create separate practice event/challenge namespaces, synthetic users and separate GT schema or tenant-level isolation."
+      },
+      {
+        "step": 3,
+        "action": "Use immediate feedback only in practice. Add tests proving production submissions, scores, flags and GT are unreachable from practice endpoints."
+      },
+      {
+        "step": 4,
+        "action": "Add a practice navigation/entry page and provide a resettable seed dataset that cannot mutate live event records."
+      }
+    ],
+    "acceptance_criteria": [
+      "Owner signs either a scope waiver or acceptance criteria.",
+      "If implemented, automated tests prove no practice-to-production IDOR or score mutation."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": [],
+  "residual_risk_or_scope_note": "This can be deferred if the event onboarding plan provides a supervised dry run and the waiver is explicit."
+}

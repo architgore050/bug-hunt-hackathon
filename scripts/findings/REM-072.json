@@ -1,0 +1,60 @@
+{
+  "id": "REM-072",
+  "title": "Argon2 password verification needs resource bounds under login/step-up bursts",
+  "severity": "LOW",
+  "status": "confirmed",
+  "priority": "P3",
+  "source_ids": [
+    "F-ARA-20"
+  ],
+  "original_titles": [
+    {
+      "id": "F-ARA-20",
+      "title": "Argon2id hashing not explicitly bounded by a semaphore/thread pool"
+    }
+  ],
+  "problem": "Argon2id is configured with memory/time cost, but the API does not show an explicit bounded semaphore or dedicated worker pool limiting concurrent hash/verify operations. A burst of concurrent login/step-up attempts can multiply CPU and memory use.",
+  "impact": "Attackers may use authentication endpoints to exhaust memory/CPU even when rate limits exist, especially across multiple API workers.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/security.py: hash_password and verify_password",
+      "backend/app/routers/auth.py: login and step_up",
+      "backend/app/deps.py: rate_limit"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Measure Argon2 memory/latency on the production VM and calculate safe maximum concurrent verifications."
+      },
+      {
+        "step": 2,
+        "action": "Add a bounded semaphore or dedicated executor per process for hash/verify operations; reject or queue excess requests with 429/503 and Retry-After."
+      },
+      {
+        "step": 3,
+        "action": "Combine this with distributed per-IP/per-account rate limits so multiple workers cannot multiply the allowed concurrency arbitrarily."
+      },
+      {
+        "step": 4,
+        "action": "Add load tests measuring memory peak, p95 login latency and rejection under credential-stuffing bursts."
+      }
+    ],
+    "acceptance_criteria": [
+      "Authentication burst cannot exceed the measured memory budget.",
+      "Excessive attempts are throttled with a documented retry response."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}

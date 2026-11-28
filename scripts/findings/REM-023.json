@@ -1,0 +1,138 @@
+{
+  "id": "REM-023",
+  "title": "API contracts, response envelopes and client-version compatibility are inconsistent",
+  "severity": "MEDIUM",
+  "status": "confirmed",
+  "priority": "P2",
+  "source_ids": [
+    "F-B02A-01",
+    "F-AG07-06",
+    "F-B02A-17",
+    "F-AG07-03",
+    "F-ARA-11",
+    "F-B02A-05",
+    "F-B02A-09",
+    "F-B02A-16",
+    "F-B02A-23",
+    "F-B02B-28",
+    "F-B02B-30",
+    "F-B02B-31",
+    "F-CKLB-14",
+    "F-AG07-04",
+    "F-BSP-15"
+  ],
+  "original_titles": [
+    {
+      "id": "F-B02A-01",
+      "title": "Success response envelope {data, meta{request_id, server_time}} not implemented on any endpoint"
+    },
+    {
+      "id": "F-AG07-06",
+      "title": "server_time is not carried on every response"
+    },
+    {
+      "id": "F-B02A-17",
+      "title": "server_time not carried on responses; timestamps serialized with +00:00 instead of Z"
+    },
+    {
+      "id": "F-AG07-03",
+      "title": "No machine-checkable API contract (no openapi.yaml, errors.yaml, schemas, copy catalog)"
+    },
+    {
+      "id": "F-ARA-11",
+      "title": "Hand-written API client; no OpenAPI generation, no runtime schema validation, no X-Min-Client-Version"
+    },
+    {
+      "id": "F-B02A-05",
+      "title": "Error catalog code/status mismatches and missing canonical codes (DRAFT_VERSION_CONFLICT 412 not 409; 413 returns SUBMISSION_INVALID)"
+    },
+    {
+      "id": "F-B02A-09",
+      "title": "X-Client-Version minimum-version gate missing (CLIENT_TOO_OLD 426 unreturnable)"
+    },
+    {
+      "id": "F-B02A-16",
+      "title": "Draft optimistic concurrency uses body version instead of If-Match; DRAFT_VERSION_CONFLICT is 412 not 409"
+    },
+    {
+      "id": "F-B02A-23",
+      "title": "Copy catalog / copy_key in meta absent; error messages hardcoded"
+    },
+    {
+      "id": "F-B02B-28",
+      "title": "Auth path/shape naming deviations"
+    },
+    {
+      "id": "F-B02B-30",
+      "title": "Draft contract deviations"
+    },
+    {
+      "id": "F-B02B-31",
+      "title": "Level submit request/response shape deviations"
+    },
+    {
+      "id": "F-CKLB-14",
+      "title": "API client is hand-written; no OpenAPI generation or staleness check"
+    },
+    {
+      "id": "F-AG07-04",
+      "title": "Unknown error code silently degrades to HTTP 400 instead of failing loudly"
+    },
+    {
+      "id": "F-BSP-15",
+      "title": "No X-Min-Client-Version / stale-client reload mechanism"
+    }
+  ],
+  "problem": "The API returns hand-built endpoint-specific success shapes; server_time is present only on selected auth/state endpoints. The frontend client is handwritten without generated/runtime request/response validation or a minimum-client-version gate. The error catalog also contains known status/contract deviations such as DRAFT_VERSION_CONFLICT using 412 and body-size 413 mapping to SUBMISSION_INVALID.",
+  "impact": "Frontend/backend contract drift is detected late, older clients can continue using incompatible payloads, and consumers cannot rely on a stable success envelope or clock-sync metadata.",
+  "verification": {
+    "repository": "devansh1012007/bug-hunt-hackathon",
+    "branch": "main",
+    "commit": "31720a807a5a2e1513d677673fe731b8a23c5cf6",
+    "result": "confirmed",
+    "evidence_paths": [
+      "backend/app/errors.py: CATALOG and handlers",
+      "backend/app/main.py: middleware and response pipeline",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/api-levels.ts",
+      "frontend/src/lib/types.ts"
+    ],
+    "basis": "Current source inspection at the main-branch commit listed in metadata. Original audit line numbers are treated as historical and were not reused as current line references."
+  },
+  "solution": {
+    "implementation_steps": [
+      {
+        "step": 1,
+        "action": "Export a canonical OpenAPI document from the FastAPI app and validate it in CI. Add explicit Pydantic models for every request/response instead of dict bodies and manual casts."
+      },
+      {
+        "step": 2,
+        "action": "Generate TypeScript client/types from OpenAPI or use runtime schemas (for example Zod) at the API boundary. Fail CI when generated types are stale."
+      },
+      {
+        "step": 3,
+        "action": "Choose one success response convention and migrate clients incrementally; include request_id and server_time where timing/diagnostics require it. Document intentional legacy responses."
+      },
+      {
+        "step": 4,
+        "action": "Add X-Min-Client-Version or a config capability response and return 426 CLIENT_TOO_OLD with a safe reload path when a client is unsupported."
+      },
+      {
+        "step": 5,
+        "action": "Normalize error code/status mapping, pagination fields and optimistic-concurrency semantics; include contract tests for every public route."
+      }
+    ],
+    "acceptance_criteria": [
+      "OpenAPI generation and validation runs in CI.",
+      "Runtime/client schemas match server models.",
+      "All errors use documented code/status pairs.",
+      "Client version policy rejects unsupported clients before mutation."
+    ],
+    "regression_tests": [
+      "Add a focused failing test before implementation where practical.",
+      "Add a negative authorization / boundary test, not only a happy-path test.",
+      "Run the affected backend/frontend suite and the full CI workflow before merge."
+    ]
+  },
+  "dependencies": []
+}
