@@ -566,6 +566,8 @@ def test_team_creation_enforces_event_cap_and_audits_only_created_teams(client):
 
 
 def test_admin_managed_participant_registration_replaces_invites(client):
+    from app.db import app_session
+
     admin = _staff(client, "admin@example.com", step_up=True)
     event_id = _create_event(admin)
     team_response = admin.post(f"/v1/admin/events/{event_id}/teams", json={"name": "Registered Team"})
@@ -606,12 +608,17 @@ def test_admin_managed_participant_registration_replaces_invites(client):
     password = "First-Claim-Password-123!"
     first_login = client.post("/v1/auth/login", json={"email": email, "password": password})
     assert first_login.status_code == 200, first_login.text
-    profile = client.get("/v1/me", headers=_auth(first_login.json()["access_token"]))
+    profile = client.get(
+        "/v1/me",
+        headers={"Authorization": f"Bearer {first_login.json()['access_token']}"},
+    )
     assert profile.status_code == 200, profile.text
     assert profile.json()["team"]["id"] == team_id
 
 
 def test_organizer_cannot_register_an_admin_without_side_effects(client):
+    from app.db import app_session
+
     organizer = _staff(client, step_up=True)
     email = f"privilege-escalation-{uuid.uuid4().hex[:8]}@example.com"
 
