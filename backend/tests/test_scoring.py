@@ -212,7 +212,14 @@ def ctf_flag_scenario(seeded_db, request):
         )
 
     run_id = uuid.uuid4().hex[:12]
-    flags = [(f"TEST-CAP-{run_id}-{index}", f"FLAG{{ctf_cap_{run_id}_{index}}}", str(uuid.uuid4())) for index in range(flag_count)]
+    flags = [
+        (
+            f"TEST-CAP-{run_id}-{index}",
+            f"FLAG{{ctf_cap_{run_id}_{index}}}",
+            str(uuid.uuid4()),
+        )
+        for index in range(flag_count)
+    ]
     with gt_session() as gt:
         for flag_key, code, flag_id in flags:
             gt.execute(
