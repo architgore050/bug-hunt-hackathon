@@ -838,6 +838,31 @@ table.table {
   background: var(--panel);
 }
 
+/* Narrow viewports: the fixed-height topbar cannot fit every nav item next
+   to the wordmark (231px wide), so let the bar grow instead of clipping,
+   and drop the secondary landing anchor (the hero CTA links there too). */
+@media (max-width: 600px) {
+  .topbar-inner {
+    height: auto;
+    min-height: var(--header-h);
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  /* Keep the nav on one row next to the wordmark on narrow phones. */
+  .wordmark {
+    font-size: 15px;
+  }
+
+  .topnav a {
+    padding: 6px 8px;
+  }
+
+  .topnav .hide-sm {
+    display: none;
+  }
+}
+
 /* ---------- footer ---------- */
 
 .footer {
@@ -1369,15 +1394,17 @@ table.table {
 
 /* ============================================================
    LANDING PAGE: redesigned hero, event clock, animations
-   Landing-scoped classes only. Does not override global styles.
+   Landing-scoped classes only, with one exception: the html rule
+   below is global on purpose. It smooths in-page fragment jumps;
+   programmatic scrolls (e.g. the route-change scroll-to-top in
+   PublicLayout) opt out with behavior:'instant'.
    ============================================================ */
 
 html {
   scroll-behavior: smooth;
 }
 
-#how-it-works,
-.case-file-section {
+#how-it-works {
   scroll-margin-top: 72px;
 }
 
@@ -1557,23 +1584,22 @@ html {
   animation: pageEnter 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.scroll-reveal {
+/* The hidden pre-reveal state applies only once JS confirms it can run the
+   observer (html.js-reveal is set by useScrollReveal before first paint).
+   Without JS, or without IntersectionObserver, the sections stay visible. */
+.js-reveal .scroll-reveal {
   opacity: 0;
   transform: translateY(16px);
   transition: opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1), transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: opacity, transform;
 }
 
-.scroll-reveal.is-revealed {
+.js-reveal .scroll-reveal.is-revealed {
   opacity: 1;
   transform: translateY(0);
 }
 
 /* ---------- flag waving & wind animations ---------- */
-
-.flag-cloth-path {
-  will-change: d;
-}
 
 .flag-glyph-wave {
   transform-origin: 117px 70px;

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
@@ -10,8 +10,14 @@ import { FlagIcon, ShieldIcon, TerminalCaretIcon } from '../ui/icons'
 const EVENT_DATE_LINE = 'Proposed date: 6 December 2026, Asia/Kolkata (IST)'
 
 function useScrollReveal(): void {
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window === 'undefined' || !('IntersectionObserver' in window)) return
+
+    // Opt elements into hiding only once the reveal machinery is confirmed
+    // to run, and before first paint (useLayoutEffect). Without this class
+    // the CSS keeps .scroll-reveal content visible, so users without JS or
+    // without IntersectionObserver never lose access to the sections.
+    document.documentElement.classList.add('js-reveal')
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -32,6 +38,19 @@ function useScrollReveal(): void {
   }, [])
 }
 
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  )
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const onChange = () => setReduced(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return reduced
+}
+
 function useServerOffset(): number | null {
   const q = useQuery({
     queryKey: ['public-time'],
@@ -45,6 +64,7 @@ function useServerOffset(): number | null {
 /* ---------- decorative flag illustration ---------- */
 
 function FlagIllustration() {
+  const reducedMotion = usePrefersReducedMotion()
   return (
     <svg
       viewBox="0 0 220 220"
@@ -78,21 +98,26 @@ function FlagIllustration() {
         d="M72 35 C102 30, 136 44, 172 38 Q165 62, 172 86 C136 92, 102 78, 72 83 Z"
         fill="var(--signal)"
       >
-        <animate
-          attributeName="d"
-          dur="2.4s"
-          repeatCount="indefinite"
-          values="
-            M72 35 C102 30, 136 44, 172 38 Q165 62, 172 86 C136 92, 102 78, 72 83 Z;
-            M72 35 C108 38, 142 32, 172 44 Q168 68, 172 92 C142 80, 108 86, 72 83 Z;
-            M72 35 C102 42, 136 28, 172 36 Q164 60, 172 84 C136 76, 102 90, 72 83 Z;
-            M72 35 C106 33, 140 43, 172 40 Q167 65, 172 88 C140 91, 106 81, 72 83 Z;
-            M72 35 C102 30, 136 44, 172 38 Q165 62, 172 86 C136 92, 102 78, 72 83 Z
-          "
-          calcMode="spline"
-          keySplines="0.4 0 0.2 1; 0.4 0 0.2 1; 0.4 0 0.2 1; 0.4 0 0.2 1"
-          keyTimes="0; 0.25; 0.5; 0.75; 1"
-        />
+        {/* SMIL animations cannot be disabled by CSS media queries, so the
+            cloth wave is rendered only when the user has not asked the OS
+            for reduced motion. The static base path below remains. */}
+        {!reducedMotion && (
+          <animate
+            attributeName="d"
+            dur="2.4s"
+            repeatCount="indefinite"
+            values="
+              M72 35 C102 30, 136 44, 172 38 Q165 62, 172 86 C136 92, 102 78, 72 83 Z;
+              M72 35 C108 38, 142 32, 172 44 Q168 68, 172 92 C142 80, 108 86, 72 83 Z;
+              M72 35 C102 42, 136 28, 172 36 Q164 60, 172 84 C136 76, 102 90, 72 83 Z;
+              M72 35 C106 33, 140 43, 172 40 Q167 65, 172 88 C140 91, 106 81, 72 83 Z;
+              M72 35 C102 30, 136 44, 172 38 Q165 62, 172 86 C136 92, 102 78, 72 83 Z
+            "
+            calcMode="spline"
+            keySplines="0.4 0 0.2 1; 0.4 0 0.2 1; 0.4 0 0.2 1; 0.4 0 0.2 1"
+            keyTimes="0; 0.25; 0.5; 0.75; 1"
+          />
+        )}
       </path>
 
       {/* Code symbol on flag (gently undulating in sync) */}
@@ -150,9 +175,9 @@ function EventStatusStrip() {
     : null
 
   return (
-    <div className="panel landing-reveal landing-d5" aria-label="Live event status">
+    <section className="panel landing-reveal landing-d5" aria-label="Live event status">
       <div className="landing-clock-header">
-        <span className="landing-clock-live">Live</span>
+        {!eventQ.isError && <span className="landing-clock-live">Live</span>}
         <span className="landing-clock-label">Event clock</span>
       </div>
       <div className="landing-clock-body">
@@ -191,7 +216,7 @@ function EventStatusStrip() {
             <CountdownTimer
               targetMs={new Date(event.starts_at).getTime()}
               nowMs={nowMs + (offset ?? 0)}
-              label={countdownDateLabel ? `Starts in (${countdownDateLabel})` : 'Starts in'}
+              label={countdownDateLabel ? `Starts in · ${countdownDateLabel}` : 'Starts in'}
             />
           )}
           {(!eventQ.data || !event?.starts_at) && (
@@ -207,7 +232,7 @@ function EventStatusStrip() {
           </div>
         </div>
       </div>
-    </div>
+    </section>
   )
 }
 

@@ -1,5 +1,5 @@
-import { NavLink, Link, Outlet, Navigate, useLocation } from 'react-router-dom'
-import { useState, useEffect, type ReactNode } from 'react'
+import { NavLink, Link, Outlet, Navigate, useLocation, useNavigationType } from 'react-router-dom'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { useAuth, homePathFor } from '../lib/auth'
 import { Button, LoadingShell, Panel, Chip } from '../ui/components'
 import { ShieldIcon } from '../ui/icons'
@@ -24,25 +24,29 @@ function roleLabel(role: string): string {
 export function PublicLayout() {
   const { user } = useAuth()
   const location = useLocation()
-  const [scrollProgress, setScrollProgress] = useState(0)
+  const navigationType = useNavigationType()
+  const progressBarRef = useRef<HTMLDivElement>(null)
 
-  // Scroll to top on route change unless navigating to an anchor hash
+  // Scroll to top on push/replace navigations, unless heading to an anchor
+  // hash. Back/forward (POP) keeps the browser's scroll restoration.
+  // behavior:'instant' overrides the global html{scroll-behavior:smooth} so
+  // the jump does not animate through the page on every route change.
   useEffect(() => {
-    if (!location.hash) {
-      window.scrollTo(0, 0)
+    if (navigationType !== 'POP' && !location.hash) {
+      window.scrollTo({ top: 0, behavior: 'instant' })
     }
-  }, [location.pathname, location.hash])
+  }, [location.pathname, location.hash, navigationType])
 
-  // Track scroll progress down the document
+  // Track scroll progress down the document. Writes go straight to the bar
+  // element so scroll events never re-render the layout tree.
   useEffect(() => {
+    const bar = progressBarRef.current
+    if (!bar) return
     const onScroll = () => {
       const el = document.documentElement
       const total = el.scrollHeight - el.clientHeight
-      if (total > 0) {
-        setScrollProgress((window.scrollY / total) * 100)
-      } else {
-        setScrollProgress(0)
-      }
+      const pct = total > 0 ? (window.scrollY / total) * 100 : 0
+      bar.style.width = `${pct}%`
     }
     window.addEventListener('scroll', onScroll, { passive: true })
     onScroll()
@@ -51,16 +55,12 @@ export function PublicLayout() {
 
   return (
     <div>
-      <div
-        className="scroll-progress-bar"
-        style={{ width: `${scrollProgress}%` }}
-        aria-hidden="true"
-      />
+      <div ref={progressBarRef} className="scroll-progress-bar" aria-hidden="true" />
       <header className="topbar">
         <div className="wrap topbar-inner">
           <Wordmark />
           <nav className="topnav" aria-label="Site">
-            <a href="/#how-it-works">How it works</a>
+            <a href="/#how-it-works" className="hide-sm">How it works</a>
             <NavLink to="/rules">Rules</NavLink>
             {user ? (
               <NavLink to={homePathFor(user.role)}>Open console</NavLink>
