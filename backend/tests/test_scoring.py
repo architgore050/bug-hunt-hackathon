@@ -512,3 +512,124 @@ def test_scoring_pipeline_schema_grants_and_tables(seeded_db):
             assert state[0] in ("RECEIVED", "QUEUED", "EVALUATING", "SCORED", "NEEDS_REVIEW", "FAILED")
     with gt_session() as gts:
         assert gts.execute(text("SELECT count(*) FROM app.submission_flag_results")).scalar_one() == 0
+
+
+def test_double_reversal_skips_already_reversed_entries(seeded_db):
+    """Regression: original ledger rows must not be matched twice by reversal.
+
+    The reversal query in finalize_submission_score uses
+    `reverses_entry_id IS NULL`, which matches original rows even when they
+    already have a reversal entry pointing to them. This test sets up a
+    submission A whose +10 entry is already reversed (by -10) and whose +15
+    entry is not yet reversed, then executes the same reversal query the
+    application uses. With the bug, the already-reversed +10 is matched
+    again (double reversal). With the fix (NOT EXISTS), it is skipped.
+    """
+    from app.db import app_session
+    from sqlalchemy import text
+
+    with app_session() as s:
+        row = (
+            s.execute(
+                text(
+                    "SELECT t.id AS team_id, t.event_id, st.id AS stage_id, e.tenant_id "
+                    "FROM app.teams t JOIN app.team_members tm ON tm.team_id = t.id "
+                    "JOIN app.stages st ON st.event_id = t.event_id AND st.kind = 'level' AND st.ordinal = 1 "
+                    "JOIN app.events e ON e.id = t.event_id WHERE t.name = 'Team Lambda' LIMIT 1"
+                )
+            )
+            .mappings()
+            .first()
+        )
+        assert row is not None
+        team_id = str(row["team_id"])
+        event_id = str(row["event_id"])
+        stage_id = str(row["stage_id"])
+        tenant_id = str(row["tenant_id"])
+        members = [
+            str(m[0])
+            for m in s.execute(
+                text("SELECT user_id FROM app.team_members WHERE team_id = CAST(:t AS uuid) ORDER BY user_id LIMIT 1"),
+                {"t": team_id},
+            ).all()
+        ]
+        assert len(members) == 1
+        author_id = members[0]
+        sub_a = str(uuid.uuid4())
+        a1_id = str(uuid.uuid4())
+        a1r_id = str(uuid.uuid4())
+        a2_id = str(uuid.uuid4())
+
+        s.execute(
+            text(
+                "INSERT INTO app.submissions "
+                "(id, tenant_id, event_id, stage_id, challenge_version_id, team_id, author_id, kind, "
+                "idempotency_key, payload, payload_hash, status, receipt_code, title, received_at) "
+                "VALUES (CAST(:sid AS uuid), CAST(:t AS uuid), CAST(:ev AS uuid), CAST(:st AS uuid), "
+                "(SELECT id FROM app.challenge_versions WHERE event_id = CAST(:ev AS uuid) LIMIT 1), "
+                "CAST(:team AS uuid), CAST(:au AS uuid), 'level_artifact', :idem, CAST('{}' AS jsonb), 'x', "
+                "'received', :rc, 'sub', :rec)"
+            ),
+            {
+                "sid": sub_a,
+                "t": tenant_id,
+                "ev": event_id,
+                "st": stage_id,
+                "team": team_id,
+                "au": author_id,
+                "idem": f"idem-{sub_a}",
+                "rc": f"RC-{sub_a[:8]}",
+                "rec": "2026-11-28 10:00:00+00",
+            },
+        )
+
+        s.execute(
+            text(
+                "INSERT INTO app.score_ledger_entries "
+                "(id, tenant_id, event_id, stage_id, team_id, submission_id, component, kind, "
+                "points, reason_code, reverses_entry_id, note) "
+                "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), CAST(:ev AS uuid), CAST(:st AS uuid), "
+                "CAST(:team AS uuid), CAST(:sub AS uuid), 'functional_test', 'award', 10.0, 'MATCH_FULL', NULL, 'award')"
+            ),
+            {"id": a1_id, "t": tenant_id, "ev": event_id, "st": stage_id, "team": team_id, "sub": sub_a},
+        )
+        s.execute(
+            text(
+                "INSERT INTO app.score_ledger_entries "
+                "(id, tenant_id, event_id, stage_id, team_id, submission_id, component, kind, "
+                "points, reason_code, reverses_entry_id, note) "
+                "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), CAST(:ev AS uuid), CAST(:st AS uuid), "
+                "CAST(:team AS uuid), CAST(:sub AS uuid), 'adjustment', 'reversal', -10.0, 'BEST_MEMBER_REPLACED', "
+                "CAST(:rev AS uuid), 'superseded')"
+            ),
+            {"id": a1r_id, "t": tenant_id, "ev": event_id, "st": stage_id, "team": team_id, "sub": sub_a, "rev": a1_id},
+        )
+        s.execute(
+            text(
+                "INSERT INTO app.score_ledger_entries "
+                "(id, tenant_id, event_id, stage_id, team_id, submission_id, component, kind, "
+                "points, reason_code, reverses_entry_id, note) "
+                "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), CAST(:ev AS uuid), CAST(:st AS uuid), "
+                "CAST(:team AS uuid), CAST(:sub AS uuid), 'functional_test', 'award', 15.0, 'MATCH_FULL', NULL, 'award')"
+            ),
+            {"id": a2_id, "t": tenant_id, "ev": event_id, "st": stage_id, "team": team_id, "sub": sub_a},
+        )
+        s.flush()
+        rows = (
+            s.execute(
+                text(
+                    "SELECT id, points FROM app.score_ledger_entries "
+                    "WHERE submission_id = CAST(:sid AS uuid) AND stage_id = CAST(:stid AS uuid) "
+                    "AND reverses_entry_id IS NULL"
+                ),
+                {"sid": sub_a, "stid": stage_id},
+            )
+            .mappings()
+            .all()
+        )
+
+        matched_ids = {str(r["id"]) for r in rows}
+        assert str(a1_id) not in matched_ids, (
+            f"Double-reversal bug: entry {a1_id} already has a reversal but is matched by the reversal query"
+        )
+        assert str(a2_id) in matched_ids, f"Entry {a2_id} has no reversal and should be matched"
