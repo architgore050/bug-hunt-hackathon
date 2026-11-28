@@ -86,7 +86,13 @@ neon, no rainbow coloring, no colored left-stripe motif.
 
 - Purposeful only: countdown state changes (10 min warning, 2 min critical),
   panel transitions under 150ms, focus rings always visible.
-- `prefers-reduced-motion: reduce` disables all non-essential animation.
+- Landing pages add one ambient layer on top of that budget: a 240ms page
+  enter transition, 380-450ms scroll-reveal and staggered hero entrances on
+  first paint, and a decorative 2.4s SMIL cloth wave on the hero flag.
+  Console pages stay under 150ms.
+- `prefers-reduced-motion: reduce` disables all non-essential animation:
+  CSS animations via media queries, and the SMIL cloth wave renders only
+  when the user has not asked for reduced motion (CSS cannot disable SMIL).
 - No hover-animation-first feedback: hover changes tone/border only; state
   changes confirm with text.
 
