@@ -295,3 +295,16 @@ def evaluate_level_submission(payload: dict) -> None:
             ),
             {"st": new_status, "mbc": first_matched_code, "es": eval_state, "sid": submission_id},
         )
+        from .scoring import finalize_submission_score
+
+        finalize_submission_score(
+            session,
+            submission_id=submission_id,
+            stage_id=stage_id,
+            team_id=team_id,
+            event_id=event_id,
+            author_id=str(sub["author_id"]),
+            tenant_id=str(sub["tenant_id"]),
+            received_at=sub["received_at"],
+            kind=sub["kind"],
+        )

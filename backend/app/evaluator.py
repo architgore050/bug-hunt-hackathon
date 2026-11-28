@@ -462,6 +462,19 @@ def apply_test_results(payload: dict) -> None:
             reason_code="TEST_RESULTS",
             note=f"passed {passed}/{total}",
         )
+        from .scoring import finalize_submission_score
+
+        finalize_submission_score(
+            session,
+            submission_id=submission_id,
+            stage_id=str(sub["stage_id"]),
+            team_id=str(sub["team_id"]),
+            event_id=str(sub["event_id"]),
+            author_id=str(sub["author_id"]),
+            tenant_id=str(sub["tenant_id"]),
+            received_at=sub["received_at"],
+            kind=sub["kind"],
+        )
 
 
 @jobs.handler("release_feedback")
