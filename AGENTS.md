@@ -78,7 +78,7 @@ This file governs any AI agent or human contributor working in
 
 ## Testing gates
 
-- `cd backend && pytest` must pass before any backend change merges. The 2026-11-28 review snapshot collected 81 tests; this is a collection count, not a pass count. Re-check collection and run the full suite against PostgreSQL.
+- `cd backend && pytest` must pass in full before any backend change merges. Do not use a hardcoded test count as evidence.
 - `scripts/e2e_journey.py` (46 checks, needs running API + worker + seeded DB)
   before any release-worthy change.
 - `cd frontend && npm run build` must be clean; no TODO/Lorem/XXX anywhere.
