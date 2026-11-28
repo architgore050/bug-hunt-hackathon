@@ -9,7 +9,7 @@ Status: CURRENT. The criteria this build set for itself, with status and evidenc
 | Organizer lifecycle: create event, stages sealed->armed->started, announcements, release, export | VERIFIED | `scripts/e2e_journey.py` organizer checks (46/46 pass reported); `backend/app/routers/admin.py` |
 | Participant loop: activate, login, read event/state, fetch challenge files, submit repair + evidence | VERIFIED | E2E journey participant loop; `backend/tests/test_idempotency.py`; frontend pages `frontend/src/pages/participant/` |
 | Reviewer loop: open review item, decide accept/reject, outcome applied to ledger | VERIFIED | E2E journey reviewer checks; `backend/app/routers/review.py`, `apply_review_outcome` in `backend/app/evaluator.py` |
-| Scoring: components 0.5/0.3/0.2, CTF cap 100, append-only ledger, reversal/adjustment entries | VERIFIED | `backend/tests/test_scoring.py` (34/34 suite includes these); `backend/app/scoring.py` |
+| Scoring: components 0.5/0.3/0.2, CTF cap 100, append-only ledger, reversal/adjustment entries | VERIFIED | `backend/tests/test_scoring.py` (75-test suite includes these); `backend/app/scoring.py` |
 | Release gate: feedback hidden before, visible after release | VERIFIED | E2E journey release check; hidden-feedback invariant in AGENTS.md and state router |
 | Disputes: participant dispute creates review item; resolution flows to ledger | VERIFIED | E2E journey dispute check; `frontend/src/components/DisputeForm.tsx` |
 | Flags: 2 flags on Papyrus (60 pts) verified with capped bonus | VERIFIED | `verify_flag` in `backend/app/evaluator.py`; challenge-app 2 flags; E2E flag checks |
@@ -40,7 +40,8 @@ Status: CURRENT. The criteria this build set for itself, with status and evidenc
 
 | Criterion | Status | Evidence |
 | --- | --- | --- |
-| pytest suite green | VERIFIED | 34/34 pass reported for the one-shot run; re-run with `cd backend && python -m pytest tests/ -q` |
+| pytest test inventory | VERIFIED | 75 test functions at current HEAD (36 v1 plus 39 four-level flow); derive with `cd backend && python -m pytest --collect-only -q` |
+| pytest suite execution | UNVERIFIED | Run `cd backend && python -m pytest tests/ -q` for the exact commit and record the result; no pass receipt is stored in this repository |
 | E2E journey green | VERIFIED | 46/46 checks reported via `scripts/e2e_journey.py` |
 | Frontend build clean | VERIFIED | `npm run build` (React 19 + Vite + TS + Tailwind 4) reported clean |
 | No placeholders in code | VERIFIED | CI placeholder grep step in `.github/workflows/ci.yml` (TODO/Lorem/XXX) |
@@ -49,7 +50,8 @@ Status: CURRENT. The criteria this build set for itself, with status and evidenc
 
 | Criterion | Status | Evidence |
 | --- | --- | --- |
-| Migrations apply clean from scratch | VERIFIED | `scripts/migrate.sh` over `backend/migrations/0001_init.sql`; CI does the same on a fresh database |
+| Migration files present and ordered | VERIFIED | `backend/migrations/0001_init.sql`, `0002_score_ledger_immutable.sql` and `0003_four_level_flow.sql` applied in filename order by `scripts/migrate.sh` |
+| Fresh-database migration execution | UNVERIFIED | Run `scripts/migrate.sh` on a fresh database and record the result for the exact commit; CI is configured but no green run receipt is stored here |
 | Health endpoint real (DB-backed) | VERIFIED | health route checks DB connectivity, not just 200 |
 | Runbooks exist and reference real commands | VERIFIED | DEPLOYMENT_RUNBOOK.md, EVENT_OPERATIONS_PLAYBOOK.md, BACKUP_AND_RECOVERY.md |
 | CI pipeline on GitHub | UNVERIFIED | `.github/workflows/ci.yml` exists locally; no remote run evidence yet (L-14) |

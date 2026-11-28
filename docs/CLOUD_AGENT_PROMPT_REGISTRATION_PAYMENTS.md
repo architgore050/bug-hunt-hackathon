@@ -112,8 +112,9 @@ E. API surface (participant + organizer), following existing conventions:
      initiate, capacity dashboard;
    - webhook endpoint for the gateway (raw body, signature verified).
 
-F. Tests (all gates must stay green: 34 pytest tests, 46-check e2e, clean
-   frontend build):
+F. Tests (all gates must stay green: 75 pytest tests, 46-check e2e, clean
+   frontend build; derive the count with pytest --collect-only before adding
+   tests):
    - unit: adapter contract on FakeGateway (success, failure, timeout,
      duplicate webhook, out-of-order webhook, expired checkout);
    - ledger: idempotent replay, refund references original, no UPDATE/DELETE;

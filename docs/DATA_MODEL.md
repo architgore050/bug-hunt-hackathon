@@ -1,4 +1,4 @@
-Status: describes the implementation as of 2026-11-28 (migrations 0001 through 0004 included)
+Status: describes the implementation as of 2026-11-28 (migrations 0001 through 0005 included)
 
 # Data Model
 
@@ -8,9 +8,9 @@ Source of truth: the ordered SQL files in `backend/migrations/`, applied by `scr
 
 - Versioned plain SQL files in `backend/migrations/`, applied in filename order by `scripts/migrate.sh`. `app.schema_migrations (filename PRIMARY KEY, applied_at)` records what ran; applied files are skipped, `ON_ERROR_STOP=1` aborts on failure. Rationale recorded in `scripts/gen_initial_migration.py` (ADR-018): transparent, reviewable SQL over an ORM-autogenerate black box, expand/contract style.
 - Migrations always run as `PGUSER=pgadmin` (database owner). Runtime roles (`app_api`, `gt_admin`) never migrate; DDL grants are established by `scripts/dev_db.sh` plus migration ownership.
-- Four migrations are present: `0001_init.sql`, `0002_score_ledger_immutable.sql`, `0003_four_level_flow.sql`, and `0004_stage_ordinal_unique.sql`. The seed script (`backend/seed.py`) is data, not DDL, and is dev/test-only.
+- Five migrations are present: `0001_init.sql` (base schema), `0002_score_ledger_immutable.sql` (database trigger, no tables), `0003_four_level_flow.sql` (four-level flow tables), `0004_stage_ordinal_unique.sql` (unique stage ordinals) and `0005_ledger_award_unique.sql` (one effective award per unit). The seed script (`backend/seed.py`) is data, not DDL, and is dev/test-only.
 
-## 2. Schema `app` (32 tables, participant/admin domain)
+## 2. Schema `app` (38 tables: 32 from `0001` plus 6 from `0003`, participant/admin domain)
 
 Readable and writable by `app_api` and `gt_admin`.
 
@@ -50,7 +50,7 @@ Readable and writable by `app_api` and `gt_admin`.
 ### Scoring
 
 - `award_claims`: `event_id`, `stage_id`, `team_id`, `award_unit_id VARCHAR(80)` (gt bug code or flag_key), `submission_id FK`, `UNIQUE (stage_id, team_id, award_unit_id)`. This constraint is the exactly-once guarantee for scoring under at-least-once job delivery (DAT-01). Indexes: stage, team, event.
-- `score_ledger_entries`: append-only by convention (no UPDATE/DELETE code paths; `test_scoring.py` asserts the convention). `tenant_id`, `event_id`, `stage_id`, `team_id` FKs; `submission_id` nullable FK; `award_unit_id VARCHAR(80)`; `component VARCHAR(30)` (functional_test | code_review | evidence_report | ctf_bonus | penalty | adjustment); `kind VARCHAR(20)` (award | bonus | penalty | adjustment); `points NUMERIC(10,2)` (negative for penalty); `reason_code VARCHAR(60)` (MATCH_FULL, ACCEPT_FULL, ACCEPT_PARTIAL, TEST_RESULTS, RELEASE_DEFAULT, FLAG_VERIFIED, INVALID_REPORT_PENALTY, DISPUTE_UPHELD, MANUAL); `actor_id` nullable; `reverses_entry_id` self-FK for corrections; `note TEXT` (match features L/C/A recorded here for replay, DAT-05). Indexes: stage, reverses, tenant, award_unit, event, team, submission.
+- `score_ledger_entries`: append-only by database trigger since `0002` (`trg_score_ledger_append_only` rejects UPDATE and DELETE for every role); corrections must be reversal or adjustment entries. `test_scoring.py` asserts the trigger. `tenant_id`, `event_id`, `stage_id`, `team_id` FKs; `submission_id` nullable FK; `award_unit_id VARCHAR(80)`; `component VARCHAR(30)` (functional_test | code_review | evidence_report | ctf_bonus | penalty | adjustment); `kind VARCHAR(20)` (award | bonus | penalty | adjustment); `points NUMERIC(10,2)` (negative for penalty); `reason_code VARCHAR(60)` (MATCH_FULL, ACCEPT_FULL, ACCEPT_PARTIAL, TEST_RESULTS, RELEASE_DEFAULT, FLAG_VERIFIED, INVALID_REPORT_PENALTY, DISPUTE_UPHELD, MANUAL); `actor_id` nullable; `reverses_entry_id` self-FK for corrections; `note TEXT` (match features L/C/A recorded here for replay, DAT-05). Indexes: stage, reverses, tenant, award_unit, event, team, submission.
 - `leaderboard_snapshots`: `event_id`, `stage_id`, `version` (per-stage increment), `payload JSONB` (ranked rows with tie-break inputs), `visibility DEFAULT 'hidden'` (restricted | public). Indexes: stage, event. Tie-break order baked into `build_leaderboard`: total desc, fewer invalid, earlier last accepted (INT-12).
 
 ### Platform machinery
@@ -62,10 +62,18 @@ Readable and writable by `app_api` and `gt_admin`.
 - `rules_documents`: `event_id`, `version`, `body_md`, `content_hash`, `frozen_at`, `UNIQUE (event_id, version)`.
 - `exports`: `event_id`, `kind`, `content`, `content_hash`, `created_by`. Note: the export endpoint currently returns CSV text directly and does not persist rows here; the table is ready for persisted exports but is unused by code as of this date.
 
-## 2b. Migration `0003_four_level_flow.sql` (four-level event flow, 2026-11-25)
+## 2a. Migration `0002_score_ledger_immutable.sql` (ledger immutability; migration date unverified)
 
-Additive expand migration; no existing table changes. Same grant model as
-section 2 (app_api/gt_admin/scheduler).
+No tables are added. It creates `app.reject_score_ledger_mutation()` and the
+`trg_score_ledger_append_only` BEFORE UPDATE OR DELETE trigger on
+`app.score_ledger_entries`. Corrections are reversal or adjustment rows that
+reference the original entry.
+
+## 2b. Migration `0003_four_level_flow.sql` (four-level event flow; migration date unverified)
+
+Additive expand migration: six new tables and one new column
+(`team_members.is_lead`). No existing table or column is removed. Same grant
+model as section 2 (app_api/gt_admin/scheduler).
 
 - `repo_options`: data-driven option set per event (`option_key` A/B today,
   UNIQUE (event_id, option_key)), each bound to one `challenge_versions` row.
@@ -130,5 +138,5 @@ gt_bugs 1--* gt_locations / gt_aliases / gt_test_cases
 | Participant code paths reach gt? | Impossible: `app_api` has zero gt grants; the HTTP app uses only `app_engine`. Verified by `tests/test_gt_isolation.py` |
 | Who writes gt | `gt_admin` sessions in `routers/admin.py` gt endpoints (step-up required, pre-seal only) and `backend/seed.py` |
 | Cross-team data access | Every participant query filters by `author_id`/`team_id` from the token; UUIDv7 ids are not enumerable |
-| Score mutation | None; append-only ledger plus reversal/adjustment entries |
+| Score mutation | Database-triggered append-only ledger (migration `0002`) plus reversal/adjustment entries |
 | Verdict leakage | `submissions.feedback_released` gates every participant-facing verdict field |
