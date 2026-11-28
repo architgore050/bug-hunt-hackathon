@@ -26,6 +26,16 @@ from sqlalchemy.orm import Session
 from .db import uuid7
 from .models_app import LeaderboardSnapshot, ScoreLedgerEntry
 
+# INVARIANT (REM-051): the score ledger is append-only. Existing rows are never
+# UPDATEd or DELETEd in production code paths; corrections are append-only
+# reversal/adjustment entries that point back at the original via
+# `reverses_entry_id`. This is enforced at the DB layer by triggers that reject
+# UPDATE/DELETE on app.score_ledger_entries (see migrations). Application code
+# must honour this: only add_ledger_entry / reverse_ledger_entry may insert.
+# INVARIANT (REM-051): exactly one effective award per (stage, team, award_unit)
+# is enforced by the UNIQUE(stage_id, team_id, award_unit_id) constraint on
+# app.award_claims (see models_app.AwardClaim). claim_award_unit relies on it.
+
 
 def add_ledger_entry(
     session: Session,
