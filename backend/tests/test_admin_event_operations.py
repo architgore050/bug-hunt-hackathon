@@ -207,7 +207,7 @@ def test_config_revisions_hash_freeze_and_reject_invalid_weights_atomically(clie
     response = organizer.post(
         f"/v1/admin/events/{event_id}/config",
         json={
-            "config": {"scoring": {"weights": {"functional_test": 0.6, "code_review": 0.3}}},
+            "config": {"scoring": {"weights": {"functional_test": 0.6, "code_review": 0.3, "evidence_report": 0.2}}},
             "reason": "Invalid weights must not persist",
             "freeze": True,
         },

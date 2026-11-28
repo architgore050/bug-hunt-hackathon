@@ -792,7 +792,7 @@ def test_activation_cannot_overwrite_an_existing_account(client):
         json={"invite_token": raw, "password": NEW_PASSWORD, "accept_rules": True},
     )
 
-    _assert_error(response, 404, "NOT_FOUND")
+    _assert_error(response, 403, "AUTH_FORBIDDEN")
     with app_session() as session:
         after = (
             session.execute(
