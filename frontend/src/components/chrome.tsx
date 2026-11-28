@@ -1,5 +1,5 @@
 import { NavLink, Link, Outlet, Navigate, useLocation } from 'react-router-dom'
-import type { ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { useAuth, homePathFor } from '../lib/auth'
 import { Button, LoadingShell, Panel, Chip } from '../ui/components'
 import { ShieldIcon } from '../ui/icons'
@@ -23,12 +23,44 @@ function roleLabel(role: string): string {
 
 export function PublicLayout() {
   const { user } = useAuth()
+  const location = useLocation()
+  const [scrollProgress, setScrollProgress] = useState(0)
+
+  // Scroll to top on route change unless navigating to an anchor hash
+  useEffect(() => {
+    if (!location.hash) {
+      window.scrollTo(0, 0)
+    }
+  }, [location.pathname, location.hash])
+
+  // Track scroll progress down the document
+  useEffect(() => {
+    const onScroll = () => {
+      const el = document.documentElement
+      const total = el.scrollHeight - el.clientHeight
+      if (total > 0) {
+        setScrollProgress((window.scrollY / total) * 100)
+      } else {
+        setScrollProgress(0)
+      }
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [location.pathname])
+
   return (
     <div>
+      <div
+        className="scroll-progress-bar"
+        style={{ width: `${scrollProgress}%` }}
+        aria-hidden="true"
+      />
       <header className="topbar">
         <div className="wrap topbar-inner">
           <Wordmark />
           <nav className="topnav" aria-label="Site">
+            <a href="/#how-it-works">How it works</a>
             <NavLink to="/rules">Rules</NavLink>
             {user ? (
               <NavLink to={homePathFor(user.role)}>Open console</NavLink>
@@ -38,7 +70,7 @@ export function PublicLayout() {
           </nav>
         </div>
       </header>
-      <main id="main">
+      <main id="main" key={location.pathname} className="page-transition">
         <Outlet />
       </main>
       <SiteFooter />
