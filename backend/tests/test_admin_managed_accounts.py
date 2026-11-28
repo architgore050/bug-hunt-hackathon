@@ -105,7 +105,14 @@ def test_admin_only_participant_registration_move_remove_and_password_reset(clie
     assert "invite_token" not in participant
     assert "expires_at" not in participant
 
+    # REM-004: first-password claim via email knowledge is removed; the admin
+    # sets the participant's initial password through the password-reset flow.
     initial_password = "Participant-First-Password-123"
+    reset = client.post(
+        f"/v1/admin/users/{participant_id}/password-reset",
+        json={"initial_password": initial_password},
+    )
+    assert reset.status_code in (200, 202, 204), reset.text
     first_login = client.post("/v1/auth/login", json={"email": email, "password": initial_password})
     assert first_login.status_code == 200, first_login.text
     participant_client = TestClient(client.app)

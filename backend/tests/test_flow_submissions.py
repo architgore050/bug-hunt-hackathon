@@ -70,9 +70,9 @@ def test_l2_multilocation_flag_matches_cross_file_bug(client):
         ).scalar_one()
         assert float(total) > 0
 
-    # the team score endpoint reflects the awarded level
+    # REM-009: team score is redacted until feedback release; ledger + claim visible
     score = p1.get("/v1/team/score").json()
-    assert score["total"] > 0
+    assert score.get("released") is False
     assert any(lvl["level_no"] == 2 for lvl in score["levels"])
 
 
