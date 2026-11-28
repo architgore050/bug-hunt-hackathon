@@ -8,7 +8,7 @@ Scope: everything between "participant submits" and "score is visible" for the f
 
 ## 1. Decisions Table
 
-All assumed decisions below are marked `ASSUMED` pending explicit owner confirmation. Open policy/content items remain `OPEN` and are flagged `[DECISION NEEDED]`.
+All assumed decisions below are marked `ASSUMED` pending explicit owner confirmation. Open policy/content items remain `OPEN` and are flagged `[DECISION NEEDED]`. Decision IDs (`D-xx`) follow the decisions table in `docs/design/Bug_Hunt_CTF_Participant_Website_Spec.md`.
 
 | ID | Decision | Status | Impact if it changes |
 |---|---|---|---|
@@ -19,7 +19,7 @@ All assumed decisions below are marked `ASSUMED` pending explicit owner confirma
 | D-07 | **L3/L4 auto-submit with no upload:** Server exports the latest saved workspace snapshot (`app.level_drafts`) as a diff against the frozen base repo, then sends it through the exact same submission and evaluation path as a manual submit (empty diff -> explicit empty submission, 0 points). | ASSUMED | If empty auto-submit should incur a penalty or block progression, `auto_submit.py` and `release_feedback` must be updated. |
 | D-10 | **A/B option fairness:** Launch readiness gate (`READY` checklist), not runtime code: equal bug count and severity distribution, equivalent hidden test suites, and independent verification by two solvers across Option A and Option B. | ASSUMED | If A/B parity cannot be achieved, normalization/scaling factors per option would be needed in `scoring.py`. |
 | D-11 | **Level 3 side quest:** Not defined. Plan a dedicated ledger component slot (`side_quest`) gated by `stage.config.side_quest`, flagged `[DECISION NEEDED]`, supporting either automated hidden tests or human review. | OPEN | Blocks L3 evaluator completion and L3 `max_points` finalization. |
-| INT-01 | **Pre-release verdict hiding:** Mask all pre-release submission statuses (including `rejected_auto` and `duplicate`) to `received` in participant endpoints until `feedback_released = true`. | ASSUMED | If `GET /v1/team/score` must also hide live points before release on L1/L2, `/team/score` gating must be tightened. |
+| INT-01 | **Pre-release verdict hiding:** Mask all pre-release submission statuses (including `rejected_auto` and `duplicate`) to `received` in participant endpoints until `feedback_released = true`. | ASSUMED | `GET /v1/team/score` currently sums ledger points with no `feedback_released` gate (verified in `levels.py`), so live points are participant-visible before release; `/team/score` gating must be tightened (folded into T-01). |
 
 ---
 
@@ -41,7 +41,7 @@ Re-verified directly against repository files on 2026-11-28. Runtime execution o
 | L3 hidden tests & side quest scoring | MISSING | `backend/app/evaluator_level.py` | Neither automated runner execution nor `side_quest` ledger component exists. Blocked on `D-05` and `D-11`. |
 | L4 buggy/fixed variant tests & docs | MISSING | `backend/app/evaluator_level.py`, `backend/app/config.py` | No variant test harness (buggy vs fixed) and no `test_quality` / `docs_quality` rubric/AI pipeline (`ai_assessment_enabled=False`). Blocked on `D-04` and `D-05`. |
 | Leaderboard versioning & `304` polling | PARTIAL | `backend/app/routers/leaderboard.py`, `backend/app/scoring.py` | `leaderboard_snapshots` stores `version` and `visibility`. **Gap:** `GET /v1/leaderboard/{stage_id}` ignores `?since=<version>` and never returns `304 Not Modified`. |
-| Participant verdict hiding (INT-01) | PARTIAL | `backend/app/routers/submissions.py` | `my_submissions` masks `matched_auto`/`needs_review`/`in_review`/`decided`/`ledgered` to `received` before `feedback_released`, **but** does not mask `rejected_auto` or `duplicate`. |
+| Participant verdict hiding (INT-01) | PARTIAL | `backend/app/routers/submissions.py`, `backend/app/routers/levels.py` | `my_submissions` masks `matched_auto`/`needs_review`/`in_review`/`decided`/`ledgered` to `received` before `feedback_released`, **but** does not mask `rejected_auto` or `duplicate`. `GET /v1/team/score` sums `score_ledger_entries` per level with no `feedback_released` gate, so live component points are participant-visible before release. |
 | A/B repo fairness & production content | BLOCKED | `backend/seed.py`, `docs/KNOWN_GAPS_AND_OWNER_DECISIONS.md` | Option A (Papyrus) and Option B (Marina) in `seed.py` are dev fixtures only. Blocked on `D-10` independent solver certification. |
 
 ---
@@ -113,7 +113,7 @@ Ordered so each task is independently mergeable and `main` stays working: ledger
 
 | ID | Title | Files Touched | Depends On | Size | Status | Tests Required | Gating Checks |
 |---|---|---|---|---|---|---|---|
-| T-01 | Mask `rejected_auto`/`duplicate` before release (INT-01) | `backend/app/routers/submissions.py` | None | S | NOT STARTED | `test_gt_isolation.py` or `test_submissions.py` pre-release masking test | CHK-SEC-02 |
+| T-01 | Mask `rejected_auto`/`duplicate` before release + gate `/team/score` live points (INT-01) | `backend/app/routers/submissions.py`, `backend/app/routers/levels.py` | None | S | NOT STARTED | `test_gt_isolation.py` or `test_flow_submissions.py` pre-release masking test, including `/team/score` points gate | CHK-SEC-02 |
 | T-02 | Add `?since=<version>` and `304 Not Modified` to leaderboard | `backend/app/routers/leaderboard.py` | None | S | NOT STARTED | `test_scoring.py` leaderboard `304` and version bump tests | CHK-RES-03 |
 | T-03 | Expand schema: `evaluation_state`, `submission_flag_results`, `submission_scores`, `runner_evaluations` | `backend/migrations/0005_scoring_pipeline.sql`, `backend/app/models_app.py` | None | M | NOT STARTED | Migration idempotency & schema grant tests (`app_api`, `gt_admin`) | CHK-COR-01, CHK-RES-02 |
 | T-04 | Crash-resumable L1/L2 evaluation + `matched_bug_code` + `release_feedback` for `level_report` | `backend/app/evaluator_level.py`, `backend/app/evaluator.py` | T-03 | M | NOT STARTED | Mid-run crash/retry test, L1/L2 `release_feedback` default & penalty tests | CHK-COR-01, CHK-COR-03, CHK-RES-02 |
@@ -130,7 +130,7 @@ Ordered so each task is independently mergeable and `main` stays working: ledger
 
 ## 5. Check Matrix
 
-Maps every acceptance scenario (`Bug_Hunt_CTF_Participant_Website_Spec.md` §8, items 1-15) and every pipeline check from Section 4 of the initial plan to an implementation task or existing module.
+Maps acceptance scenarios 1-15 of `Bug_Hunt_CTF_Participant_Website_Spec.md` §8 and every pipeline check from Section 4 of the initial plan to an implementation task or existing module. Spec §8 has 16 items: scenario 16 (min-width message and keyboard-only controls) is UI accessibility scope and is out of scope for this pipeline plan (see Section 7). S8-xx IDs are keyed to the spec §8 item numbers.
 
 ### 5.1 Spec §8 Acceptance Scenarios (1-15)
 
@@ -160,7 +160,7 @@ Maps every acceptance scenario (`Bug_Hunt_CTF_Participant_Website_Spec.md` §8, 
 | CHK-COR-02 | Retried submit with same `Idempotency-Key` returns original receipt, 0 new ledger rows | Existing (`levels.py`) | DONE |
 | CHK-COR-03 | Auto-submit and manual submit produce identical ledger entries | T-04, T-06 | NOT STARTED |
 | CHK-COR-04 | Team total equals sum of member components after dedupe / best-member rule (`D-02`) | T-04, T-05, T-08 | NOT STARTED |
-| CHK-COR-05 | Ledger is append-only; corrections are new reversing rows, never edits | Existing (`0002`) + T-05 | DONE |
+| CHK-COR-05 | Ledger is append-only; corrections are new reversing rows, never edits | Existing (`0002` trigger) + T-05 (reversal logic) | PARTIAL |
 | CHK-FLG-01 | Exact line, overlapping range, off-by-N (within/outside tolerance) | Existing (`matching.py`) | DONE |
 | CHK-FLG-02 | Wrong file routes to `needs_review` (never auto-penalized) | Existing (`matching.py`) | DONE |
 | CHK-FLG-03 | File outside repo and range outside file rejected at submit | Existing (`levels.py`) + T-06 | PARTIAL |
@@ -198,3 +198,4 @@ Flagged gap: No check in Section 5 is left without a task or existing implementa
 - Production event schedule values (`D-12`), invite/email delivery, and D1 infrastructure provisioning (Cloudflare Tunnel, OCI VM setup).
 - Real-time SSE/WebSocket push for leaderboard or score updates (D1 uses polling with `304`).
 - Multi-domain / multi-region D2 deployment.
+- Spec §8 scenario 16 (min-width message and keyboard-only controls on execution pages): UI accessibility scope, outside the scoring and evaluation pipeline.
