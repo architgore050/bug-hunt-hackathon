@@ -19,6 +19,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    desc,
     func,
     text,
 )
@@ -634,7 +635,7 @@ class SubmissionFlagResult(AppBase):
 class SubmissionScore(AppBase):
     __tablename__ = "submission_scores"
     __table_args__ = (
-        Index("ix_app_submission_scores_stage_team", "stage_id", "team_id", "total_points"),
+        Index("ix_app_submission_scores_stage_team", "stage_id", "team_id", desc("total_points")),
         {"schema": "app"},
     )
 
