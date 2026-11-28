@@ -360,7 +360,8 @@ def test_negative_flag_rejections(client):
             },
         ],
     )
-    assert r.status_code != 200, r.text
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["code"] == "LOCATION_INVALID"
 
     # L1: 2 locations - also fails exactly-1 requirement
     r2 = submit_flags(
@@ -379,7 +380,8 @@ def test_negative_flag_rejections(client):
             },
         ],
     )
-    assert r2.status_code != 200, r2.text  # LOCATION_INVALID: exactly 1 required
+    assert r2.status_code == 422, r2.text
+    assert r2.json()["error"]["code"] == "LOCATION_INVALID"
 
     # L2 exceeds max locations (cap is 5) - 6 locations should fail
     open_level_window(2)
@@ -403,7 +405,8 @@ def test_negative_flag_rejections(client):
             },
         ],
     )
-    assert r3.status_code != 200, r3.text
+    assert r3.status_code == 422, r3.text
+    assert r3.json()["error"]["code"] == "SUBMISSION_INVALID"
 
     # File outside repo (../ traversal) - L1
     r4 = submit_flags(
@@ -419,7 +422,8 @@ def test_negative_flag_rejections(client):
             },
         ],
     )
-    assert r4.status_code != 200, r4.text
+    assert r4.status_code == 404, r4.text
+    assert r4.json()["error"]["code"] == "FILE_NOT_FOUND"
 
     # Line range beyond file - L1
     r5 = submit_flags(
@@ -435,4 +439,5 @@ def test_negative_flag_rejections(client):
             },
         ],
     )
-    assert r5.status_code != 200, r5.text
+    assert r5.status_code == 422
+    assert r5.json()["error"]["code"] == "SUBMISSION_INVALID"
