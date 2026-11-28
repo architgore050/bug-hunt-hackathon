@@ -75,7 +75,7 @@ Rate limit 30/min per user. Required header `Idempotency-Key`. Body (`Submission
 
 Ordered transaction (routers/submissions.py):
 
-1. Identity and team resolved from the token; participation is gated by team membership (teams have no `status` field — migration `0007_drop_team_status.sql` dropped it).
+1. Identity and team resolved from the token; participation is gated by team membership (teams have no `status` field; migration `0007_drop_team_status.sql` dropped it).
 2. Idempotency: existing `(author_id, idempotency_key)` row with the same canonical payload hash replays the original receipt (`"replay": true`) even after the deadline; a different payload raises 409 `IDEMPOTENCY_CONFLICT` (DAT-02).
 3. Stage row locked `FOR UPDATE`, then `clock_timestamp()` read once (ADR-012).
 4. State validation, first failure wins (spec 10.4): `paused` -> 409 `ROUND_PAUSED`; not active -> 409 `ROUND_NOT_ACTIVE` (ended/evaluating/released/final -> 409 `ROUND_ENDED`); `now > ends_at + adjustments + grace_seconds` -> 409 `ROUND_ENDED`.
