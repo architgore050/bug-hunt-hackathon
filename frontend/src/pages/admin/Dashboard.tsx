@@ -128,7 +128,7 @@ function EventsSection({
       {q.isLoading && <LoadingShell label="Loading events" />}
       {q.isError && <ErrorBanner error={q.error} onRetry={() => void q.refetch()} />}
       {q.data && q.data.events.length === 0 && (
-        <EmptyState title="No events yet" note="Create the event record first; stages, teams and invites attach to it." />
+        <EmptyState title="No events yet" note="Create the event record first; stages and teams attach to it." />
       )}
       {q.data && q.data.events.length > 0 && (
         <div className="table-scroll">

@@ -22,7 +22,7 @@ from .. import security
 from ..audit import audit_write
 from ..config import settings
 from ..db import app_session, uuid7
-from ..deps import Principal, check_csrf, get_principal, rate_limit, require_admin
+from ..deps import Principal, check_csrf, get_principal, rate_limit, require_admin, step_up_verified
 from ..errors import ApiError
 
 router = APIRouter(tags=["auth"])
@@ -61,7 +61,7 @@ def login(body: LoginIn, request: Request, response: Response):
         user = (
             s.execute(
                 text(
-                    "SELECT id, email, name, role, status, password_hash, token_version "
+                    "SELECT id, email, name, role, password_hash, token_version "
                     "FROM app.users WHERE lower(email) = :e FOR UPDATE"
                 ),
                 {"e": body.email.lower()},
@@ -69,26 +69,25 @@ def login(body: LoginIn, request: Request, response: Response):
             .mappings()
             .first()
         )
-        # First sign-in flow: no activation invite needed. Signing in with your
-        # email id activates the account. Only registered accounts can sign in;
-        # unregistered emails are rejected with a generic error (no enumeration).
-        # If you are registered but have no password yet, the password you type
-        # becomes your password. If you have a password, it is checked.
-        # NOTE: this is a risk we are willing to take for this event.
+        # Participant first-claim is allowed only for an account that is already
+        # attached to a team. Staff credentials are always assigned by an admin.
         if user is None:
-            # Only admin-registered accounts can sign in. Keep the response generic.
             raise ApiError("AUTH_INVALID_CREDENTIALS")
-        if user["status"] == "disqualified":
-            raise ApiError("AUTH_FORBIDDEN", message="This account was disqualified. Contact the organizers.")
-        if user["status"] not in ("active", "pending"):
-            raise ApiError("AUTH_NOT_ACTIVATED")
+        if user["role"] == "participant":
+            membership = s.execute(
+                text("SELECT 1 FROM app.team_members WHERE user_id = CAST(:uid AS uuid) LIMIT 1"),
+                {"uid": str(user["id"])},
+            ).first()
+            if membership is None:
+                raise ApiError("AUTH_INVALID_CREDENTIALS")
         if not user["password_hash"]:
-            # Event-specific policy: first sign-in claims the initial password.
-            # Mailbox ownership is deliberately not verified; admins control the
-            # registered-email list and the event accepts this first-claim risk.
+            if user["role"] != "participant":
+                raise ApiError("AUTH_INVALID_CREDENTIALS")
+            # First password claims are intentionally limited to pre-registered
+            # participants; mailbox ownership is not verified for this event.
             pw_hash = security.hash_password(body.password)
             s.execute(
-                text("UPDATE app.users SET password_hash = :pw, status = 'active' WHERE id = CAST(:uid AS uuid)"),
+                text("UPDATE app.users SET password_hash = :pw WHERE id = CAST(:uid AS uuid)"),
                 {"pw": pw_hash, "uid": str(user["id"])},
             )
             audit_write(
@@ -101,15 +100,9 @@ def login(body: LoginIn, request: Request, response: Response):
                 request_id=request.state.request_id,
                 details={"email": user["email"]},
             )
-            user = {**user, "password_hash": pw_hash, "status": "active"}
+            user = {**user, "password_hash": pw_hash}
         elif not security.verify_password(body.password, user["password_hash"]):
             raise ApiError("AUTH_INVALID_CREDENTIALS")
-        elif user["status"] == "pending":
-            s.execute(
-                text("UPDATE app.users SET status = 'active' WHERE id = CAST(:uid AS uuid)"),
-                {"uid": str(user["id"])},
-            )
-            user = {**user, "status": "active"}
 
         # Concurrent session limit (AUTH-10), hardened with reclaim + eviction:
         # 1) Reclaim zombie sessions: a session whose refresh tokens are all
@@ -208,7 +201,6 @@ def login(body: LoginIn, request: Request, response: Response):
             "email": user["email"],
             "name": user["name"],
             "role": user["role"],
-            "status": user["status"],
         },
     }
 
@@ -217,11 +209,17 @@ class RegisterIn(BaseModel):
     email: EmailStr
     name: str = Field(min_length=2, max_length=160)
     role: str = Field(default="reviewer", pattern="^(reviewer|organizer|admin)$")
+    password: str = Field(min_length=12, max_length=200)
 
 
 @router.post("/auth/register", status_code=201)
-def register(body: RegisterIn, request: Request, p: Principal = Depends(require_admin)):
-    """Admin-only staff registration. No password is set until the first sign-in."""
+def register(
+    body: RegisterIn,
+    request: Request,
+    p: Principal = Depends(require_admin),
+    _step_up: Principal = Depends(step_up_verified),
+):
+    """Admin-only staff registration with an admin-assigned initial password."""
     rate_limit(f"register:{request.client.host if request.client else ''}", limit=10, window_s=60)
     try:
         with app_session() as s:
@@ -231,8 +229,8 @@ def register(body: RegisterIn, request: Request, p: Principal = Depends(require_
             user_id = str(uuid7())
             s.execute(
                 text(
-                    "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash, status, registration_id) "
-                    "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), :email, :name, :role, NULL, 'active', :reg)"
+                    "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash, registration_id) "
+                    "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), :email, :name, :role, :pw, :reg)"
                 ),
                 {
                     "id": user_id,
@@ -240,6 +238,7 @@ def register(body: RegisterIn, request: Request, p: Principal = Depends(require_
                     "email": body.email.lower(),
                     "name": body.name,
                     "role": body.role,
+                    "pw": security.hash_password(body.password),
                     "reg": str(uuid7())[:8],
                 },
             )
@@ -251,15 +250,16 @@ def register(body: RegisterIn, request: Request, p: Principal = Depends(require_
                 entity_type="user",
                 entity_id=user_id,
                 request_id=request.state.request_id,
-                details={"email": body.email.lower(), "role": body.role, "password_setup_required": True},
+                details={"email": body.email.lower(), "role": body.role, "password_setup_required": False},
             )
     except IntegrityError:
         raise ApiError("VALIDATION_ERROR", details={"email": "This email is already registered."}) from None
     return {
         "ok": True,
         "email": body.email.lower(),
-        "message": "Account registered. The user sets their initial password on first sign-in.",
-        "password_setup_required": True,
+        "role": body.role,
+        "message": "Staff account registered with an administrator-assigned password.",
+        "password_setup_required": False,
     }
 
 
@@ -275,7 +275,7 @@ def refresh(request: Request, response: Response):
             s.execute(
                 text(
                     "SELECT rt.id, rt.session_id, rt.user_id, rt.status AS rt_status, rt.expires_at, rt.successor_encrypted, "
-                    "rt.rotated_at, u.role, u.status AS user_status, u.token_version "
+                    "rt.rotated_at, u.role, u.token_version "
                     "FROM app.refresh_tokens rt JOIN app.users u ON u.id = rt.user_id WHERE rt.token_hash = :th"
                 ),
                 {"th": th},
@@ -329,13 +329,13 @@ def refresh(request: Request, response: Response):
         # normal rotation
         urow = (
             s.execute(
-                text("SELECT id, role, status, token_version FROM app.users WHERE id = CAST(:u AS uuid)"),
+                text("SELECT id, role, token_version FROM app.users WHERE id = CAST(:u AS uuid)"),
                 {"u": str(row["user_id"])},
             )
             .mappings()
             .first()
         )
-        if urow is None or urow["status"] != "active":
+        if urow is None:
             raise ApiError("AUTH_SESSION_REVOKED")
         new_raw = security.new_refresh_token()
         new_id = str(uuid7())
@@ -464,7 +464,6 @@ def me(p: Principal = Depends(get_principal)):
         "email": p.email,
         "name": p.name,
         "role": p.role,
-        "status": p.status,
         "team": dict(team) if team else None,
         "rules_accepted": bool(accepted),
         "rules_version": int(current_rules[0]) if current_rules else None,

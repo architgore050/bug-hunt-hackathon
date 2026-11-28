@@ -15,7 +15,7 @@ own limits honestly.
 | Path | What it is |
 | --- | --- |
 | `backend/` | FastAPI API (participant/staff), durable PostgreSQL job queue, worker, seed |
-| `backend/tests/` | 37 pytest tests (idempotency, IDOR, ground-truth isolation, scoring, auth) |
+| `backend/tests/` | 81 pytest tests collected at the latest review snapshot (idempotency, IDOR, ground-truth isolation, scoring, auth) |
 | `backend/migrations/` | Ordered SQL migrations applied by `scripts/migrate.sh` |
 | `frontend/` | React 19 + Vite + TypeScript + Tailwind 4 SPA ("Case File" design system) |
 | `challenge-app/` | "Papyrus", the Node/Express challenge app with 10 planted bugs + 2 flags |
@@ -60,8 +60,9 @@ cd frontend && npm install && npm run dev   # proxies /v1 to :8100
 ```
 
 Verification: `scripts/e2e_journey.py` runs 46 checks against a running stack
-(last recorded run: 46/46 pass). `backend$ pytest` runs the 34-test suite
-(last recorded run: 37/37 pass).
+(last recorded run: 46/46 pass). The latest review snapshot collected 81 backend
+tests with 0 collection errors. Collection is not execution; run the full pytest
+suite against PostgreSQL before release.
 
 Demo accounts (dev only, password `Dev-only!Passw0rd!`): `organizer@`,
 `reviewer1@`, `p1.team1@` ... `example.com`. The Papyrus challenge app runs
@@ -99,10 +100,10 @@ privacy notice and terms. Engineering: `docs/API_REFERENCE.md`,
   with readiness gate, challenge publishing, idempotent submissions, hidden
   feedback, deterministic matching, reviewer queue, scoring ledger, CTF flag
   verification with caps, leaderboard snapshots, disputes, audit chain, CSV
-  exports, 46/46 E2E + 37/37 pytest, frontend build clean.
+  exports, 46/46 E2E (last recorded run), 81 pytest tests collected (not executed in the latest review environment), frontend build clean.
 - Deliberately not in v1: participant code execution (no isolated runner;
   ADR-010 fallback), AI scoring (disabled by default, DEC-13), email delivery
-  (accounts are admin-registered; initial passwords are claimed on first sign-in and resets are admin-only), SSE (5 s polling),
+  (accounts are admin-registered; participants claim an initial password on first sign-in, staff passwords are admin-assigned, and resets are admin-only), SSE (5 s polling),
   MFA (step-up is password re-entry; WebAuthn documented as the production
   path). The 50-user capacity claim stays provisional until the load-test
   rehearsal passes (`scripts/load_test.py`,

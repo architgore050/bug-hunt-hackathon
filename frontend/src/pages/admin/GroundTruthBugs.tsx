@@ -4,7 +4,7 @@ import { api, ApiRequestError } from '../../lib/api'
 import type { AdminEvent, Severity } from '../../lib/types'
 import { CATEGORIES, SEVERITIES } from '../../lib/types'
 import { Button, EmptyState, ErrorBanner, Field, LoadingShell, Panel } from '../../ui/components'
-import { adminErrorText, StepUpGateHint, StepUpPanel } from '../../components/StepUp'
+import { adminErrorText, needsStepUp, StepUpGateHint, StepUpPanel, useStepUpWindow } from '../../components/StepUp'
 
 interface ChallengeVersion {
   id: string
@@ -36,7 +36,7 @@ export default function GroundTruthBugs() {
   const [eventId, setEventId] = useState('')
   const [challengeId, setChallengeId] = useState('')
   const [stepUpUntil, setStepUpUntil] = useState<number | null>(null)
-  const elevated = stepUpUntil !== null && stepUpUntil > Date.now()
+  const { nowMs, elevated } = useStepUpWindow(stepUpUntil)
   const [form, setForm] = useState(initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -104,6 +104,7 @@ export default function GroundTruthBugs() {
       setNotice('Ground-truth bug created in the isolated evaluation database.')
       setForm(initial)
     } catch (err) {
+      if (needsStepUp(err)) setStepUpUntil(null)
       setError(err instanceof ApiRequestError ? adminErrorText(err) : err instanceof Error ? err.message : 'Operation failed.')
     } finally {
       setBusy(false)
@@ -148,6 +149,7 @@ export default function GroundTruthBugs() {
       <StepUpPanel
         stepUpUntil={stepUpUntil}
         onStepUp={setStepUpUntil}
+        nowMs={nowMs}
         note="Ground-truth bug creation changes evaluation data. Confirm your password before authoring."
       />
       {error && <div className="banner banner-tone-danger" role="alert">{error}</div>}

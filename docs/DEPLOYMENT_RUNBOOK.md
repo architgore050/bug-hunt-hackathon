@@ -38,7 +38,7 @@ Steps:
 6. Verify:
    - `curl http://127.0.0.1:8100/health` must show `database_app: up` and `database_gt: up`.
    - `python scripts/e2e_journey.py` must exit 0 (46 checks).
-   - `cd backend && python -m pytest` must show 34 passed.
+   - `cd backend && python -m pytest` must complete successfully against PostgreSQL. At the 2026-11-28 review snapshot, 81 tests were collected; collection is not a passing test run.
 
 Environment variables (all optional in dev, see `backend/app/config.py`):
 
@@ -83,14 +83,23 @@ Procedure:
    - Admin pass-through: create event and teams -> register a participant in Admin > Participants (email, name and team) -> verify the new account has no password -> first sign-in with that registered email sets the initial password -> subsequent sign-in checks that password -> create challenge, upload the participant files, freeze, publish, enter ground truth via the GT endpoints (step-up required) -> submit one report and one flag end to end.
 9. Backups before going live: see BACKUP_AND_RECOVERY.md; the restore drill is a readiness gate (`backup_restore`).
 
+## Upgrade ordering for the account-policy migrations
+
+For releases that apply migrations 0005 or 0006, do not run the old application against the new schema:
+
+1. Stop the old API and worker processes.
+2. Apply database migrations with `scripts/migrate.sh`.
+3. Start the application build that no longer references invite/password-reset tables or `app.users.status`.
+4. Verify `/health`, sign in with one participant and one staff test account, and run the PostgreSQL-backed test suite before reopening the event.
+
 ## Event-specific account lifecycle
 
 - Participant accounts are created only by an administrator from Admin > Participants. Registration requires a registered email address, participant name and event team.
 - No invitation token or activation URL is generated. The public `POST /v1/auth/activate` route is not registered for this event.
-- On first sign-in, the server checks the email against registered accounts. An unknown email is rejected with the generic invalid-credentials response. If the account has no password hash, the password submitted on first sign-in becomes its initial password; subsequent sign-ins verify it normally.
-- This event deliberately does not verify mailbox ownership during first password claim. Someone who knows a registered email can claim its initial password. This is an accepted risk; administrators must distribute registered emails through a controlled channel.
-- Password recovery is not self-service. Only an administrator can reset another account's password after fresh step-up confirmation. The reset revokes the target account's sessions and refresh tokens. Deliver the new password privately.
-- The legacy invite and public reset-token tables are dropped by migration `0005_remove_legacy_account_tokens.sql`.
+- On first sign-in, the server checks the email against registered accounts. Only a passwordless participant who already belongs to a team may set an initial password. Staff accounts must have an administrator-assigned password. Unknown emails, passwordless staff and participants without team membership receive the generic invalid-credentials response.
+- This event deliberately does not verify mailbox ownership during participant first-password claim. Someone who knows a registered participant email can claim its initial password. This is an accepted risk; administrators must distribute registered participant emails through a controlled channel.
+- Password recovery is not self-service. Only an administrator can reset another account's password after fresh step-up confirmation. The reset revokes the target account's sessions and refresh tokens. Deliver the password in person or through an organization-approved authenticated one-to-one channel; never use email, public/team chat, event chat, tickets, or logs.
+- Legacy invite and public reset-token tables are dropped by migration `0005_remove_legacy_account_tokens.sql`. Account lifecycle status is removed by migration `0006_remove_account_status.sql`; disabled/disqualified legacy users have memberships detached and sessions revoked before the column is dropped. User rows remain for scoring/audit foreign-key history.
 
 ## 3. Event-day launch sequence
 
