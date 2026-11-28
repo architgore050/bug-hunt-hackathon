@@ -77,7 +77,6 @@ const STATUS_TONES: Record<string, Tone> = {
   in_review: 'info',
   needs_review: 'warn',
   matched_auto: 'ok',
-  disqualified: 'danger',
 }
 
 export function StatusChip({ value, size = 'sm' }: { value: string | null | undefined; size?: 'sm' | 'lg' }) {
