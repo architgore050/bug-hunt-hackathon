@@ -771,9 +771,7 @@ def remove_event_participant(
         ).scalar_one()
         if int(remaining_memberships) == 0:
             s.execute(
-                text(
-"UPDATE app.users SET token_version = token_version + 1 WHERE id = CAST(:u AS uuid)"
-                ),
+                text("UPDATE app.users SET token_version = token_version + 1 WHERE id = CAST(:u AS uuid)"),
                 {"u": user_id},
             )
             s.execute(
@@ -822,7 +820,7 @@ def admin_reset_user_password(
             raise ApiError("NOT_FOUND")
         s.execute(
             text(
-"UPDATE app.users SET password_hash = :pw, token_version = token_version + 1 "
+                "UPDATE app.users SET password_hash = :pw, token_version = token_version + 1 "
                 "WHERE id = CAST(:u AS uuid)"
             ),
             {"pw": security.hash_password(body.password), "u": user_id},
@@ -1175,7 +1173,6 @@ def add_bug(challenge_id: str, body: BugIn, request: Request, p: Principal = Dep
             event_scope=f"challenge:{challenge_id}",
         )
 
-
     return {"bug_id": bug_id}
 
 
@@ -1316,12 +1313,12 @@ def update_ground_truth_flag(
                 )
                 if current is None:
                     raise ApiError("NOT_FOUND")
-    
+
                 flag_key = changes.get("flag_key", current["flag_key"])
                 code_hash = flag_code_hash(changes["code"]) if "code" in changes else current["code_hash"]
                 points = changes.get("points", current["points"])
                 max_awards = changes.get("max_awards", current["max_awards"])
-    
+
                 duplicate_key = gts.execute(
                     text(
                         "SELECT 1 FROM gt.gt_flags WHERE challenge_version_id = CAST(:c AS uuid) "
@@ -1340,7 +1337,7 @@ def update_ground_truth_flag(
                 ).first()
                 if duplicate_code:
                     raise ApiError("VALIDATION_ERROR", details={"code": "This flag code already exists."})
-    
+
                 gts.execute(
                     text(
                         "UPDATE gt.gt_flags SET flag_key = :k, code_hash = :h, points = :pts, max_awards = :ma "

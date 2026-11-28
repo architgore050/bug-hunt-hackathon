@@ -102,9 +102,7 @@ def test_passwordless_staff_account_cannot_claim_initial_password(client):
 
     email = f"passwordless-staff-{__import__('uuid').uuid4().hex[:8]}@example.com"
     with app_engine.begin() as conn:
-        tenant_id = conn.execute(
-            text("SELECT tenant_id FROM app.events ORDER BY created_at DESC LIMIT 1")
-        ).scalar_one()
+        tenant_id = conn.execute(text("SELECT tenant_id FROM app.events ORDER BY created_at DESC LIMIT 1")).scalar_one()
         conn.execute(
             text(
                 "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash) "
@@ -125,6 +123,7 @@ def test_passwordless_staff_account_cannot_claim_initial_password(client):
             {"e": email},
         ).scalar_one()
     assert saved_hash is None
+
 
 def test_step_up_required_for_sensitive_admin_routes_and_safe_flag_crud(client):
     org = client.post(
