@@ -94,22 +94,24 @@ def _already_awarded(session, stage_id: str, team_id: str) -> set[str]:
     return {r[0] for r in rows}
 
 
-def _has_component(
-    session,
-    submission_id: str,
-    component: str,
-    award_unit_id: str | None = None,
-    kind: str = "award",
-) -> bool:
-    query = (
-        "SELECT 1 FROM app.score_ledger_entries WHERE submission_id = CAST(:sid AS uuid) "
-        "AND component = :c AND kind = :kind"
-    )
-    params = {"sid": submission_id, "c": component, "kind": kind}
-    if award_unit_id is not None:
-        query += " AND award_unit_id = :unit"
-        params["unit"] = award_unit_id
-    return session.execute(text(query), params).first() is not None
+def _has_component(session, submission_id: str, component: str, award_unit_id: str | None = None) -> bool:
+    if award_unit_id is None:
+        row = session.execute(
+            text(
+                "SELECT 1 FROM app.score_ledger_entries WHERE submission_id = CAST(:sid AS uuid) "
+                "AND component = :c AND kind = 'award'"
+            ),
+            {"sid": submission_id, "c": component},
+        ).first()
+    else:
+        row = session.execute(
+            text(
+                "SELECT 1 FROM app.score_ledger_entries WHERE submission_id = CAST(:sid AS uuid) "
+                "AND award_unit_id = :unit AND component = :c AND kind = 'award'"
+            ),
+            {"sid": submission_id, "unit": award_unit_id, "c": component},
+        ).first()
+    return row is not None
 
 
 @jobs.handler("evaluate_submission")
@@ -265,14 +267,6 @@ def verify_flag(payload: dict) -> None:
             )
     with app_session() as session:
         sub = _submission(session, submission_id)
-        # Serialize retry detection with the team's other flag awards. A committed
-        # bonus for this submission means this job delivery has already succeeded.
-        session.execute(
-            text("SELECT id FROM app.teams WHERE id = CAST(:team AS uuid) FOR UPDATE"),
-            {"team": str(sub["team_id"])},
-        ).scalar_one()
-        if _has_component(session, submission_id, "ctf_bonus", kind="bonus"):
-            return
         cap = float((sub["stage_config"] or {}).get("ctf_bonus_cap_points", 100))
         if flag is None:
             session.execute(
@@ -286,16 +280,16 @@ def verify_flag(payload: dict) -> None:
             text("SELECT id FROM app.teams WHERE id = CAST(:team AS uuid) FOR UPDATE"),
             {"team": str(sub["team_id"])},
         ).scalar_one()
-        # Award units are the ground-truth flag rows, not public keys. This
-        # keeps pools distinct when challenge versions reuse the same flag_key.
-        award_unit_id = str(flag["id"])
+        # max_awards is shared by every team claiming this public flag key.
+        # The transaction-scoped lock serializes the count and claim across workers.
         session.execute(
-            text("SELECT pg_advisory_xact_lock(hashtextextended('ctf_flag:' || :unit, 0))"),
-            {"unit": award_unit_id},
+            text("SELECT pg_advisory_xact_lock(hashtextextended('ctf_flag:' || :flag_key, 0))"),
+            {"flag_key": flag["flag_key"]},
         ).scalar_one()
+        # max_awards per flag
         claimed = session.execute(
             text("SELECT count(*) FROM app.award_claims WHERE award_unit_id = :u"),
-            {"u": award_unit_id},
+            {"u": flag["flag_key"]},
         ).scalar_one()
         if int(claimed) >= int(flag["max_awards"]):
             session.execute(
@@ -308,7 +302,7 @@ def verify_flag(payload: dict) -> None:
             event_id=str(sub["event_id"]),
             stage_id=str(sub["stage_id"]),
             team_id=str(sub["team_id"]),
-            award_unit_id=award_unit_id,
+            award_unit_id=flag["flag_key"],
             submission_id=submission_id,
         )
         if not ok:
@@ -332,7 +326,7 @@ def verify_flag(payload: dict) -> None:
             stage_id=str(sub["stage_id"]),
             team_id=str(sub["team_id"]),
             submission_id=submission_id,
-            award_unit_id=award_unit_id,
+            award_unit_id=flag["flag_key"],
             component="ctf_bonus",
             kind="bonus",
             points=award_points,

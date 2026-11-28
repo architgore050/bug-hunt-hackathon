@@ -39,7 +39,6 @@ CATALOG: dict[str, tuple[int, str]] = {
     "GROUND_TRUTH_LOCKED": (409, "This version is frozen. Create a revision."),
     "REPO_ALREADY_LOCKED": (409, "Your team already locked a repository option. The choice is final."),
     "REPO_NOT_LOCKED": (409, "Your team lead has not locked a repository yet."),
-    "TEAM_FULL": (409, "This team is already at the member limit."),
     "LEVEL_NOT_OPEN": (409, "This level is not open yet."),
     "TEAM_GATE_BLOCKED": (409, "Your team cannot enter this level yet. Some teammates are still working."),
     "LEVEL_ALREADY_SUBMITTED": (409, "This level is already submitted and cannot be reopened."),
