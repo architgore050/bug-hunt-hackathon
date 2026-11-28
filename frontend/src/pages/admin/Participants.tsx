@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiRequestError } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
@@ -11,9 +11,9 @@ import {
   Field,
   LoadingShell,
   Panel,
-  StatusChip,
+  ConfirmButton,
 } from '../../ui/components'
-import { adminErrorText, StepUpGateHint, StepUpPanel } from '../../components/StepUp'
+import { adminErrorText, needsStepUp, StepUpGateHint, StepUpPanel, useStepUpWindow } from '../../components/StepUp'
 
 interface Team {
   id: string
@@ -27,12 +27,16 @@ interface Participant {
   email: string
   name: string
   role: string
-  status: string
   team_id: string
   team_name: string
   password_set: boolean
   created_at: string
 }
+
+const EMPTY_TEAMS: Team[] = []
+const EMPTY_PARTICIPANTS: Participant[] = []
+
+type StaffRole = 'reviewer' | 'organizer' | 'admin'
 
 export default function AdminParticipants() {
   const { user } = useAuth()
@@ -44,7 +48,7 @@ export default function AdminParticipants() {
   })
   const [eventId, setEventId] = useState('')
   const [stepUpUntil, setStepUpUntil] = useState<number | null>(null)
-  const elevated = stepUpUntil !== null && stepUpUntil > Date.now()
+  const { nowMs, elevated } = useStepUpWindow(stepUpUntil)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -60,13 +64,22 @@ export default function AdminParticipants() {
     enabled: !!eventId,
   })
 
-  const teams = teamsQ.data?.teams ?? []
-  const participants = participantsQ.data?.participants ?? []
+  const teams = teamsQ.data?.teams ?? EMPTY_TEAMS
+  const participants = participantsQ.data?.participants ?? EMPTY_PARTICIPANTS
 
   const [form, setForm] = useState({ email: '', name: '', team_id: '' })
   const [teamChoices, setTeamChoices] = useState<Record<string, string>>({})
   const [resetTarget, setResetTarget] = useState<string | null>(null)
   const [resetPasswordValue, setResetPasswordValue] = useState('')
+  const [staffForm, setStaffForm] = useState<{ email: string; name: string; role: StaffRole; password: string }>({
+    email: '',
+    name: '',
+    role: 'reviewer',
+    password: '',
+  })
+  const resetInputRef = useRef<HTMLInputElement | null>(null)
+  const resetTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const previousResetTarget = useRef<string | null>(null)
 
   useEffect(() => {
     if (!eventId && eventsQ.data?.events.length) setEventId(eventsQ.data.events[0].id)
@@ -74,18 +87,23 @@ export default function AdminParticipants() {
 
   useEffect(() => {
     if (!teams.length) {
-      setForm((old) => ({ ...old, team_id: '' }))
+      setForm((old) => old.team_id === '' ? old : { ...old, team_id: '' })
       return
     }
     if (!teams.some((team) => team.id === form.team_id)) {
-      setForm((old) => ({ ...old, team_id: teams[0].id }))
+      const firstTeamId = teams[0].id
+      setForm((old) => old.team_id === firstTeamId ? old : { ...old, team_id: firstTeamId })
     }
     setTeamChoices((old) => {
+      let changed = false
       const next = { ...old }
       for (const participant of participants) {
-        if (!next[participant.id]) next[participant.id] = participant.team_id
+        if (!next[participant.id]) {
+          next[participant.id] = participant.team_id
+          changed = true
+        }
       }
-      return next
+      return changed ? next : old
     })
   }, [teams, participants, form.team_id])
 
@@ -98,13 +116,50 @@ export default function AdminParticipants() {
     setResetPasswordValue('')
   }, [eventId])
 
+  useEffect(() => {
+    if (resetTarget) {
+      previousResetTarget.current = resetTarget
+      resetInputRef.current?.focus()
+      return
+    }
+    if (previousResetTarget.current) {
+      resetTriggerRefs.current[previousResetTarget.current]?.focus()
+      previousResetTarget.current = null
+    }
+  }, [resetTarget])
+
   function clearMessages() {
     setError(null)
     setNotice(null)
   }
 
   function showError(err: unknown) {
+    if (needsStepUp(err)) setStepUpUntil(null)
     setError(err instanceof ApiRequestError ? adminErrorText(err) : 'The operation failed. Please retry.')
+  }
+
+  async function registerStaff(e: React.FormEvent) {
+    e.preventDefault()
+    if (!isAdmin || !elevated) return
+    setBusy(true)
+    clearMessages()
+    try {
+      await api('/v1/auth/register', {
+        method: 'POST',
+        body: {
+          email: staffForm.email.trim().toLowerCase(),
+          name: staffForm.name.trim(),
+          role: staffForm.role,
+          password: staffForm.password,
+        },
+      })
+      setNotice(`Registered ${staffForm.role} account for ${staffForm.email.trim().toLowerCase()}. Deliver the administrator-assigned password privately.`)
+      setStaffForm({ email: '', name: '', role: 'reviewer', password: '' })
+    } catch (err) {
+      showError(err)
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function registerParticipant(e: React.FormEvent) {
@@ -162,13 +217,12 @@ export default function AdminParticipants() {
 
   async function removeParticipant(participant: Participant) {
     if (!isAdmin || !elevated || !eventId) return
-    if (!window.confirm(`Remove ${participant.email} from this event?`)) return
     setBusy(true)
     clearMessages()
     try {
       await api(`/v1/admin/events/${eventId}/participants/${participant.id}`, { method: 'DELETE' })
       setNotice(
-        'Participant removed from this event. If they had no other event membership, their account was disabled and all sessions were revoked.',
+        'Participant removed from this event. If this was their last team membership, their sessions are revoked and they can no longer sign in.',
       )
       await queryClient.invalidateQueries({ queryKey: ['admin-participants', eventId] })
       await queryClient.invalidateQueries({ queryKey: ['admin-teams', eventId] })
@@ -189,7 +243,7 @@ export default function AdminParticipants() {
         body: { password: resetPasswordValue },
       })
       setNotice(
-        `Password reset for ${participant.email}. All previous sessions and refresh tokens were revoked. Deliver the new password through an approved private channel.`,
+        `Password reset for ${participant.email}. All previous sessions and refresh tokens were revoked. Deliver the new password in person or through an organization-approved authenticated one-to-one channel, never in email or a public/team chat.`,
       )
       setResetTarget(null)
       setResetPasswordValue('')
@@ -201,8 +255,6 @@ export default function AdminParticipants() {
     }
   }
 
-  const filteredParticipants = participants
-
   return (
     <div className="stack-lg">
       <header className="stack">
@@ -210,7 +262,7 @@ export default function AdminParticipants() {
         <h1 className="display" style={{ margin: 0, fontSize: 'clamp(1.6rem, 4vw, 2.4rem)' }}>Participants</h1>
         <p className="muted small" style={{ maxWidth: '80ch' }}>
           Accounts are created by administrators only. No invitation tokens or activation links are issued.
-          New accounts have no password until their first sign-in. Organizers can view the roster; only admins can
+Participants without a password choose one at first sign-in. Staff receive an administrator-assigned password. Organizers can view the roster; only admins can
           register, move, remove, or reset participants.
         </p>
         <div className="field" style={{ width: 440, maxWidth: '100%' }}>
@@ -231,12 +283,42 @@ export default function AdminParticipants() {
       {error && <div className="banner banner-tone-danger" role="alert">{error}</div>}
       {notice && <div className="banner banner-tone-ok" role="status">{notice}</div>}
 
-      {eventId && isAdmin && (
+      {isAdmin && (
         <StepUpPanel
           stepUpUntil={stepUpUntil}
           onStepUp={setStepUpUntil}
-          note="Participant registration, team changes, removal and password resets require a fresh admin password confirmation. The confirmation is valid for five minutes."
+          nowMs={nowMs}
+          note="Staff and participant registration, team creation/changes, removal and password resets require a fresh admin password confirmation, valid for five minutes."
         />
+      )}
+
+      {isAdmin && (
+        <Panel exhibit="01" title="Register staff account" actions={!elevated ? <StepUpGateHint /> : undefined}>
+          <form onSubmit={registerStaff} className="grid-2">
+            <Field label="Email address" htmlFor="staff-email" required>
+              <input id="staff-email" className="input" type="email" autoComplete="off" required value={staffForm.email} onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })} />
+            </Field>
+            <Field label="Name" htmlFor="staff-name" required>
+              <input id="staff-name" className="input" minLength={2} maxLength={160} required value={staffForm.name} onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} />
+            </Field>
+            <Field label="Role" htmlFor="staff-role" required>
+              <select id="staff-role" className="select" value={staffForm.role} onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value as StaffRole })}>
+                <option value="reviewer">Reviewer</option>
+                <option value="organizer">Organizer</option>
+                <option value="admin">Administrator</option>
+              </select>
+            </Field>
+            <Field label="Initial password" htmlFor="staff-password" required>
+              <input id="staff-password" className="input" type="password" autoComplete="new-password" minLength={12} maxLength={200} required value={staffForm.password} onChange={(e) => setStaffForm({ ...staffForm, password: e.target.value })} />
+            </Field>
+            <div className="stack" style={{ gridColumn: '1 / -1' }}>
+              <Button type="submit" variant="primary" disabled={busy || !elevated || staffForm.name.trim().length < 2 || staffForm.password.length < 12 || !staffForm.email}>
+                Register staff account
+              </Button>
+              <p className="muted small">Only administrators can create reviewer, organizer and admin accounts. The password is assigned here and cannot be claimed by the account holder.</p>
+            </div>
+          </form>
+        </Panel>
       )}
 
       {eventId && (
@@ -261,7 +343,7 @@ export default function AdminParticipants() {
                     {busy ? 'Registering' : 'Register participant'}
                   </Button>
                   <p className="muted small">
-                    The account is created without a password. The registered email is checked at sign-in; the first password entered for a passwordless account becomes its initial password. This event intentionally accepts the risk that mailbox ownership is not verified.
+                    Only participants can claim a first password. This event does not verify mailbox ownership, so registered participant emails must be distributed through a controlled channel.
                   </p>
                 </form>
               ) : (
@@ -285,23 +367,22 @@ export default function AdminParticipants() {
           <Panel exhibit="03" title="Registered participant roster">
             {participantsQ.isLoading && <LoadingShell label="Loading participants" />}
             {participantsQ.isError && <ErrorBanner error={participantsQ.error} onRetry={() => void participantsQ.refetch()} />}
-            {participantsQ.data && filteredParticipants.length === 0 && <EmptyState title="No participants registered" note="New participant accounts are created from the admin-only form above." />}
-            {filteredParticipants.length > 0 && (
+            {participantsQ.data && participants.length === 0 && <EmptyState title="No participants registered" note="New participant accounts are created from the admin-only form above." />}
+            {participants.length > 0 && (
               <div className="table-scroll">
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Email</th><th>Name</th><th>Team</th><th>Account</th><th>Password</th>
+                      <th>Email</th><th>Name</th><th>Team</th><th>Password</th>
                       {isAdmin && <th>Admin actions</th>}
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredParticipants.map((participant) => (
+                    {participants.map((participant) => (
                       <tr key={participant.id}>
                         <td className="mono small">{participant.email}</td>
                         <td>{participant.name}</td>
                         <td>{participant.team_name}</td>
-                        <td><StatusChip value={participant.status} /></td>
                         <td><Chip tone={participant.password_set ? 'ok' : 'warn'}>{participant.password_set ? 'set' : 'first sign-in pending'}</Chip></td>
                         {isAdmin && (
                           <td style={{ minWidth: 280 }}>
@@ -320,6 +401,7 @@ export default function AdminParticipants() {
                               {resetTarget === participant.id ? (
                                 <div className="stack" style={{ gap: 6 }}>
                                   <input
+                                    ref={resetInputRef}
                                     className="input mono-input"
                                     type="password"
                                     autoComplete="new-password"
@@ -337,8 +419,20 @@ export default function AdminParticipants() {
                                 </div>
                               ) : (
                                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                  <Button size="sm" disabled={busy || !elevated} onClick={() => { setResetTarget(participant.id); setResetPasswordValue('') }}>Reset password</Button>
-                                  <Button size="sm" variant="danger" disabled={busy || !elevated} onClick={() => void removeParticipant(participant)}>Remove participant</Button>
+                                  <button
+                                    ref={(node) => { resetTriggerRefs.current[participant.id] = node }}
+                                    type="button"
+                                    className="btn btn-ghost btn-sm"
+                                    disabled={busy || !elevated}
+                                    onClick={() => { setResetTarget(participant.id); setResetPasswordValue('') }}
+                                  >Reset password</button>
+                                  <ConfirmButton
+                                    label="Remove participant"
+                                    confirmLabel="Confirm removal"
+                                    variant="danger"
+                                    disabled={busy || !elevated}
+                                    onConfirm={() => void removeParticipant(participant)}
+                                  />
                                 </div>
                               )}
                             </div>

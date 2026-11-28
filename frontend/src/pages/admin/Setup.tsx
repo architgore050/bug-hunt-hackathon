@@ -13,7 +13,8 @@ import {
   Panel,
   StatusChip,
 } from '../../ui/components'
-import { adminErrorText, StepUpGateHint, StepUpPanel } from '../../components/StepUp'
+import { adminErrorText, needsStepUp, StepUpGateHint, StepUpPanel, useStepUpWindow } from '../../components/StepUp'
+import { fmtDateTime } from '../../lib/format'
 
 interface Team {
   id: string
@@ -59,7 +60,9 @@ export default function AdminSetup() {
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [stepUpUntil, setStepUpUntil] = useState<number | null>(null)
-  const elevated = stepUpUntil !== null && stepUpUntil > Date.now()
+  const [newTeamJoinCode, setNewTeamJoinCode] = useState<string | null>(null)
+  const [showTeamJoinCode, setShowTeamJoinCode] = useState(false)
+  const { nowMs, elevated } = useStepUpWindow(stepUpUntil)
 
   const liveQ = useQuery({
     queryKey: ['admin-live', eventId],
@@ -125,6 +128,8 @@ export default function AdminSetup() {
     setFreezeConfig(false)
     setTimeForm({ delta: '300', reason: 'OUTAGE', user_id: '' })
     setScoreForm({ team_id: '', points: '', reason: '', confirmed: false })
+    setNewTeamJoinCode(null)
+    setShowTeamJoinCode(false)
     setNotice(null)
     setError(null)
   }, [eventId])
@@ -135,6 +140,7 @@ export default function AdminSetup() {
   }
 
   function showError(err: unknown) {
+    if (needsStepUp(err)) setStepUpUntil(null)
     setError(err instanceof ApiRequestError ? adminErrorText(err) : err instanceof Error ? err.message : 'The operation failed.')
   }
 
@@ -165,7 +171,7 @@ export default function AdminSetup() {
 
   async function createTeam(e: React.FormEvent) {
     e.preventDefault()
-    if (!eventId) return
+    if (!isAdmin || !elevated || !eventId) return
     setBusy(true)
     clearMessages()
     try {
@@ -174,7 +180,9 @@ export default function AdminSetup() {
         body: { name: teamName.trim() },
       })
       setTeamName('')
-      setNotice(`Team created. Initial join code: ${result.join_code}. Keep this code private and distribute it securely.`)
+      setNewTeamJoinCode(result.join_code)
+      setShowTeamJoinCode(false)
+      setNotice('Team created. Reveal the join code only when you are ready to share it privately.')
       await queryClient.invalidateQueries({ queryKey: ['admin-teams', eventId] })
       await queryClient.invalidateQueries({ queryKey: ['admin-live', eventId] })
     } catch (err) {
@@ -289,7 +297,8 @@ export default function AdminSetup() {
             <StepUpPanel
               stepUpUntil={stepUpUntil}
               onStepUp={setStepUpUntil}
-              note="Manual score adjustments require admin access and a fresh password confirmation."
+              nowMs={nowMs}
+              note="Team creation and manual score adjustments require admin access and a fresh password confirmation."
             />
           )}
 
@@ -324,12 +333,27 @@ export default function AdminSetup() {
             </Panel>
 
             <Panel exhibit="02" title="Create team">
-              <form onSubmit={createTeam} className="stack" style={{ gap: 12 }}>
-                <Field label="Team name" htmlFor="team-name" required>
-                  <input id="team-name" className="input" minLength={2} maxLength={120} required value={teamName} onChange={(e) => setTeamName(e.target.value)} />
-                </Field>
-                <Button type="submit" variant="primary" disabled={busy || teamName.trim().length < 2}>Create team</Button>
-              </form>
+              {isAdmin ? (
+                <form onSubmit={createTeam} className="stack" style={{ gap: 12 }}>
+                  <Field label="Team name" htmlFor="team-name" required>
+                    <input id="team-name" className="input" minLength={2} maxLength={120} required value={teamName} onChange={(e) => setTeamName(e.target.value)} disabled={!elevated} />
+                  </Field>
+                  <Button type="submit" variant="primary" disabled={busy || !elevated || teamName.trim().length < 2}>Create team</Button>
+                  {!elevated && <p className="muted small">Confirm your admin password above to create a team.</p>}
+                </form>
+              ) : (
+                <p className="muted small">Only administrators can create teams. Organizers can view the team roster.</p>
+              )}
+              {newTeamJoinCode && (
+                <div className="banner banner-tone-warn" style={{ marginTop: 12 }}>
+                  <div className="banner-title">New team join code</div>
+                  <p className="small">This code is hidden by default so it is not left visible on the operations screen.</p>
+                  <Button size="sm" onClick={() => setShowTeamJoinCode((shown) => !shown)}>
+                    {showTeamJoinCode ? 'Hide join code' : 'Reveal join code'}
+                  </Button>
+                  {showTeamJoinCode && <code className="mono">{newTeamJoinCode}</code>}
+                </div>
+              )}
               <div className="ruled" style={{ marginTop: 14 }}>
                 {teamsQ.isLoading && <LoadingShell label="Loading teams" />}
                 {teamsQ.isError && <ErrorBanner error={teamsQ.error} onRetry={() => void teamsQ.refetch()} />}
@@ -369,7 +393,7 @@ export default function AdminSetup() {
                         <div className="mono small muted">{revision.rule_set_hash}</div>
                       </div>
                       <div className="stack" style={{ alignItems: 'flex-end', gap: 6 }}>
-                        <span className="muted small">{new Date(revision.created_at).toLocaleString()}</span>
+                        <span className="muted small">{fmtDateTime(revision.created_at)}</span>
                         <Button size="sm" onClick={() => { setConfigText(JSON.stringify(revision.config, null, 2)); setConfigReason(`New revision based on v${revision.version}`); setFreezeConfig(false); setConfigDirty(true) }}>Load into editor</Button>
                       </div>
                     </div>

@@ -564,7 +564,7 @@ def main(reset: bool) -> None:
             users[email] = uid
             s.execute(
                 text(
-                    "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash, status) VALUES (CAST(:i AS uuid), CAST(:t AS uuid), :e, :n, :r, :p, 'active')"
+                    "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash) VALUES (CAST(:i AS uuid), CAST(:t AS uuid), :e, :n, :r, :p)"
                 ),
                 {
                     "i": uid,
@@ -795,7 +795,7 @@ def main(reset: bool) -> None:
                 users[email] = uid
                 s.execute(
                     text(
-                        "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash, status) VALUES (CAST(:i AS uuid), CAST(:t AS uuid), :e, :n, 'participant', :p, 'active')"
+                        "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash) VALUES (CAST(:i AS uuid), CAST(:t AS uuid), :e, :n, 'participant', :p)"
                     ),
                     {
                         "i": uid,

@@ -1,6 +1,6 @@
 # Security review (self-review)
 
-Status: CURRENT as of the v1 one-shot build. A self-review by the build team, not an external audit. Conclusion below is honest about what is and is not proven.
+Status: review snapshot 2026-11-28. This is a self-review by the build team, not an external audit; execution and deployment verification remain explicit release gates.
 
 ## Scope
 
@@ -8,7 +8,7 @@ Reviewed: auth flows (login, refresh rotation, step-up, admin registration, firs
 
 ## Method
 
-1. pytest unit/integration suite: 34/34 pass, including auth, authorization, gt isolation (with real psycopg connections as `app_api`/`gt_admin`), idempotency, matching, scoring.
+1. `pytest --collect-only`: 81 tests collected, 0 collection errors. The full pytest suite was not executed in the review environment because PostgreSQL binaries/service were unavailable; do not interpret collection as test success.
 2. E2E journey: 46/46 checks in `scripts/e2e_journey.py`, covering organizer lifecycle, participant and reviewer loops, release, flags, audit verify.
 3. Code reading of `backend/app/security.py`, `deps.py`, `routers/submissions.py`, `db.py`, `audit.py`, and frontend rendering paths.
 4. Hostile-payload test in the backend suite: oversized bodies, malformed ids, path traversal strings on file reads.
@@ -53,7 +53,7 @@ grep -rn "dangerouslySetInnerHTML" frontend/src/ || echo "clean"
 
 ### Event account-policy exception
 
-The event intentionally allows the first password claim for a pre-registered email without verifying mailbox ownership. Unknown emails still receive the same generic invalid-credentials response as incorrect passwords. This is an accepted residual risk, not an email-verification guarantee. Participant registration, team changes, removal and password reset are admin-only; participant mutations and resets require step-up. Public activation and self-service reset routes are not registered, and migration `0005_remove_legacy_account_tokens.sql` drops the legacy token stores.
+Only pre-registered participants with a team membership and no password may claim an initial password. Mailbox ownership is not verified, so anyone who knows a registered participant email could make the first claim; administrators must distribute those addresses through a controlled channel. Staff accounts require an administrator-assigned password. Staff registration, participant registration, team creation, participant team changes/removal and password resets are admin-only and require step-up. Account lifecycle status is not stored; removing the final team membership revokes sessions and prevents future sign-in. Public activation and self-service reset routes are absent; migration `0005_remove_legacy_account_tokens.sql` retires the legacy token stores.
 
 ## Limits of this review
 

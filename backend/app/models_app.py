@@ -65,9 +65,6 @@ class User(AppBase):
     # participant | reviewer | organizer | admin  (integrity_officer folded into reviewer for v1, documented)
     role: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     password_hash: Mapped[str | None] = mapped_column(String(256))
-    status: Mapped[str] = mapped_column(
-        String(20), default="pending", server_default=text("'pending'"), nullable=False
-    )  # pending|active|disqualified
     token_version: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"), nullable=False)
     registration_id: Mapped[str | None] = mapped_column(String(64))
     accommodation_note: Mapped[str | None] = mapped_column(Text)
@@ -118,18 +115,6 @@ class Acceptance(AppBase):
     rules_version: Mapped[int] = mapped_column(Integer, nullable=False)
     accepted_at: Mapped[datetime] = ts()
     ip_hash: Mapped[str | None] = mapped_column(String(64))
-
-
-class PasswordReset(AppBase):
-    __tablename__ = "password_resets"
-    __table_args__ = {"schema": "app"}
-
-    id: Mapped[uuid.UUID] = pk()
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.users.id"), nullable=False, index=True)
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    created_at: Mapped[datetime] = ts()
 
 
 # --- events ------------------------------------------------------------------
@@ -229,23 +214,6 @@ class TeamMember(AppBase):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.users.id"), nullable=False, index=True)
     seat_label: Mapped[str | None] = mapped_column(String(40))
     joined_at: Mapped[datetime] = ts()
-
-
-class Invite(AppBase):
-    __tablename__ = "invites"
-    __table_args__ = {"schema": "app"}
-
-    id: Mapped[uuid.UUID] = pk()
-    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.events.id"), nullable=False, index=True)
-    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    team_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("app.teams.id"))
-    role: Mapped[str] = mapped_column(
-        String(20), default="participant", server_default=text("'participant'"), nullable=False
-    )
-    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    created_at: Mapped[datetime] = ts()
 
 
 # --- stages (the spec's "rounds"; see SOURCE_OF_TRUTH_AND_TRACEABILITY R-013) --

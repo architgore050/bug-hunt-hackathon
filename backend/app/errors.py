@@ -19,7 +19,6 @@ CATALOG: dict[str, tuple[int, str]] = {
     "AUTH_SESSION_REVOKED": (401, "Your session ended. Please sign in again."),
     "AUTH_RATE_LIMITED": (429, "Too many attempts. Try again in {n} seconds."),
     "AUTH_FORBIDDEN": (403, "You do not have access to this."),
-    "AUTH_NOT_ACTIVATED": (403, "Your account is not activated. Use the invite link from your email."),
     "RULES_NOT_ACCEPTED": (403, "Please accept the current rules to continue."),
     "ROUND_NOT_ACTIVE": (409, "This round is not active."),
     "ROUND_PAUSED": (409, "The round is paused. Your timer is stopped."),

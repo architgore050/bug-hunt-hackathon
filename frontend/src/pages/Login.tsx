@@ -43,11 +43,10 @@ export default function Login() {
           <span className="exhibit-num">EX-AUTH</span>
           <h1 className="display" style={{ fontSize: 'clamp(1.6rem, 4vw, 2.2rem)', margin: 0 }}>Sign in</h1>
           <p className="muted small">
-            Sign in with your registered email. Only administrators can create accounts; unregistered emails are
-            rejected with a generic credential error. If an administrator registered you without a password, the
-            password entered on your first sign-in becomes your initial password. Later sign-ins verify it normally.
-            This event deliberately does not verify mailbox ownership for the first password claim, which is an
-            accepted event risk. No invite token or separate activation step is used.
+            Sign in with your registered email. Only administrators can create accounts. Participants whose account
+            has no password choose one at first sign-in; staff accounts receive an administrator-assigned password.
+            This event does not verify mailbox ownership for participant first-password claims, so registered
+            participant emails must be distributed through a controlled channel. No activation link is used.
           </p>
         </header>
 

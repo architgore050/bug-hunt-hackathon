@@ -18,7 +18,7 @@ def test_login_rejects_wrong_password_generically(client):
     assert r2.json()["error"]["message"] == body["message"]
 
 
-def test_admin_registration_and_passwordless_first_sign_in(client):
+def test_admin_registration_sets_staff_password_and_requires_step_up(client):
     from app.db import app_engine
     from sqlalchemy import text
 
@@ -30,72 +30,53 @@ def test_admin_registration_and_passwordless_first_sign_in(client):
     admin = TestClient(client.app)
     admin.headers.update({"Authorization": f"Bearer {admin_login.json()['access_token']}"})
 
-    email = f"first-claim-{__import__('uuid').uuid4().hex[:8]}@example.com"
-    registration = admin.post(
-        "/v1/auth/register",
-        json={"email": email, "name": "First Claim User", "role": "reviewer"},
-    )
+    email = f"staff-{__import__('uuid').uuid4().hex[:8]}@example.com"
+    assigned_password = "Admin-Assigned-Staff-Password-123"
+    registration_body = {"email": email, "name": "First Claim User", "role": "reviewer", "password": assigned_password}
+
+    required = admin.post("/v1/auth/register", json=registration_body)
+    assert required.status_code == 403
+    assert required.json()["error"]["code"] == "ADMIN_STEP_UP_REQUIRED"
+
+    admin.post("/v1/auth/step-up", json={"password": "Dev-only!Passw0rd!"}).raise_for_status()
+    registration = admin.post("/v1/auth/register", json=registration_body)
     assert registration.status_code == 201, registration.text
-    assert registration.json()["password_setup_required"] is True
+    assert registration.json()["password_setup_required"] is False
+    assert registration.json()["role"] == "reviewer"
 
     with app_engine.connect() as conn:
-        before = (
-            conn.execute(
-                text("SELECT password_hash, status FROM app.users WHERE lower(email) = :e"),
-                {"e": email},
-            )
-            .mappings()
-            .one()
-        )
-    assert before["password_hash"] is None
-    assert before["status"] == "active"
+        saved_hash = conn.execute(
+            text("SELECT password_hash FROM app.users WHERE lower(email) = :e"),
+            {"e": email},
+        ).scalar_one()
+    assert saved_hash is not None
 
-    initial_password = "First-Password-Claim-123"
-    first_login = client.post("/v1/auth/login", json={"email": email, "password": initial_password})
-    assert first_login.status_code == 200, first_login.text
+    staff_login = client.post("/v1/auth/login", json={"email": email, "password": assigned_password})
+    assert staff_login.status_code == 200, staff_login.text
+    attempted_claim = client.post(
+        "/v1/auth/login",
+        json={"email": email, "password": "Attacker-Chosen-Password-123"},
+    )
+    assert attempted_claim.status_code == 401
+    assert attempted_claim.json()["error"]["code"] == "AUTH_INVALID_CREDENTIALS"
 
-    with app_engine.connect() as conn:
-        after = (
-            conn.execute(
-                text("SELECT password_hash, status FROM app.users WHERE lower(email) = :e"),
-                {"e": email},
-            )
-            .mappings()
-            .one()
-        )
-    assert after["password_hash"] is not None
-    assert after["status"] == "active"
-
-    wrong = client.post("/v1/auth/login", json={"email": email, "password": "Wrong-First-Password-123"})
-    assert wrong.status_code == 401
-    assert wrong.json()["error"]["code"] == "AUTH_INVALID_CREDENTIALS"
+    duplicate = admin.post("/v1/auth/register", json=registration_body)
+    assert duplicate.status_code == 422
+    assert duplicate.json()["error"]["code"] == "VALIDATION_ERROR"
 
     unknown = client.post(
         "/v1/auth/login",
-        json={"email": "not-registered-anywhere@example.com", "password": initial_password},
+        json={"email": "not-registered-anywhere@example.com", "password": assigned_password},
     )
     assert unknown.status_code == 401
     assert unknown.json()["error"]["code"] == "AUTH_INVALID_CREDENTIALS"
-    assert unknown.json()["error"]["message"] == wrong.json()["error"]["message"]
+    assert unknown.json()["error"]["message"] == attempted_claim.json()["error"]["message"]
 
-    # Activation and public self-service password reset are not registered.
-    assert (
-        client.post(
-            "/v1/auth/activate",
-            json={"invite_token": "x" * 32, "password": initial_password, "accept_rules": True},
-        ).status_code
-        == 404
-    )
+    # Legacy activation and public reset routes remain absent.
+    assert client.post("/v1/auth/activate", json={"password": assigned_password}).status_code == 404
     assert client.post("/v1/auth/password/reset-request", json={"email": email}).status_code == 404
-    assert (
-        client.post(
-            "/v1/auth/password/reset",
-            json={"token": "x" * 32, "password": "Another-Password-123"},
-        ).status_code
-        == 404
-    )
+    assert client.post("/v1/auth/password/reset", json={"password": "Another-Password-123"}).status_code == 404
 
-    # A normal organizer cannot create staff or participant accounts via the global registration endpoint.
     organizer_login = client.post(
         "/v1/auth/login",
         json={"email": "organizer@example.com", "password": "Dev-only!Passw0rd!"},
@@ -108,39 +89,40 @@ def test_admin_registration_and_passwordless_first_sign_in(client):
             "email": f"unauthorized-{__import__('uuid').uuid4().hex[:8]}@example.com",
             "name": "Unauthorized",
             "role": "reviewer",
+            "password": assigned_password,
         },
     )
     assert forbidden.status_code == 403
+    assert forbidden.json()["error"]["code"] == "AUTH_FORBIDDEN"
 
 
-def test_pending_password_account_activates_only_after_successful_verification(client):
-    from app import security
+def test_passwordless_staff_account_cannot_claim_initial_password(client):
     from app.db import app_engine
     from sqlalchemy import text
 
-    email = f"pending-{__import__('uuid').uuid4().hex[:8]}@example.com"
-    password = "Pending-Account-Password-123"
+    email = f"passwordless-staff-{__import__('uuid').uuid4().hex[:8]}@example.com"
     with app_engine.begin() as conn:
         tenant_id = conn.execute(text("SELECT tenant_id FROM app.events ORDER BY created_at DESC LIMIT 1")).scalar_one()
         conn.execute(
             text(
-                "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash, status) "
-                "VALUES (gen_random_uuid(), :tenant, :email, 'Pending Account', 'participant', :pw, 'pending')"
+                "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash) "
+                "VALUES (gen_random_uuid(), :tenant, :email, 'Passwordless Staff', 'reviewer', NULL)"
             ),
-            {"tenant": tenant_id, "email": email, "pw": security.hash_password(password)},
+            {"tenant": tenant_id, "email": email},
         )
 
-    wrong = client.post("/v1/auth/login", json={"email": email, "password": "Wrong-Pending-Password-123"})
-    assert wrong.status_code == 401
+    attempted = client.post(
+        "/v1/auth/login",
+        json={"email": email, "password": "Attacker-Claimed-Password-123"},
+    )
+    assert attempted.status_code == 401
+    assert attempted.json()["error"]["code"] == "AUTH_INVALID_CREDENTIALS"
     with app_engine.connect() as conn:
-        status = conn.execute(text("SELECT status FROM app.users WHERE lower(email) = :e"), {"e": email}).scalar_one()
-    assert status == "pending"
-
-    correct = client.post("/v1/auth/login", json={"email": email, "password": password})
-    assert correct.status_code == 200, correct.text
-    with app_engine.connect() as conn:
-        status = conn.execute(text("SELECT status FROM app.users WHERE lower(email) = :e"), {"e": email}).scalar_one()
-    assert status == "active"
+        saved_hash = conn.execute(
+            text("SELECT password_hash FROM app.users WHERE lower(email) = :e"),
+            {"e": email},
+        ).scalar_one()
+    assert saved_hash is None
 
 
 def test_step_up_required_for_sensitive_admin_routes_and_safe_flag_crud(client):
