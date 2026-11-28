@@ -272,7 +272,7 @@ def test_admin_registration_creates_staff_accounts_with_assigned_passwords(clien
     assert session_count == 0
     assert refresh_count == 0
     assert audit["actor_role"] == "admin"
-    assert audit["details"] == {"email": email.lower(), "role": role}
+    assert audit["details"] == {"email": email.lower(), "role": role, "password_setup_required": False}
     assert _login(client, email.lower(), password=password).json()["user"]["role"] == role
 
 
@@ -328,7 +328,7 @@ def test_duplicate_registration_is_generic_and_does_not_change_the_existing_acco
     )
 
     error = _assert_error(response, 422, "VALIDATION_ERROR")
-    assert error["details"] == {"email": "Registration failed. Try again."}
+    assert error["details"] == {"email": "This email is already registered."}
     assert _state_counts() == before
     with app_session() as session:
         assert (

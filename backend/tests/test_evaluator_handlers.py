@@ -242,7 +242,7 @@ def test_flag_max_awards_allows_one_sequential_team_and_marks_the_other_duplicat
 
 
 def test_second_team_submission_for_same_flag_does_not_duplicate_team_award(evaluation_case):
-    flag_key, code, _flag_id = _insert_flag(evaluation_case, max_awards=99)
+    _flag_key, code, flag_id = _insert_flag(evaluation_case, max_awards=99)
     first = _insert_submission(evaluation_case, "ctf_flag", {}, flag_code=code)
     second = _insert_submission(evaluation_case, "ctf_flag", {}, flag_code=code)
 
@@ -259,7 +259,7 @@ def test_second_team_submission_for_same_flag_does_not_duplicate_team_award(eval
                 text(
                     "SELECT count(*) FROM app.award_claims WHERE team_id = CAST(:team AS uuid) AND award_unit_id = :key"
                 ),
-                {"team": evaluation_case["team_id"], "key": flag_key},
+                {"team": evaluation_case["team_id"], "key": flag_id},
             ).scalar_one()
             == 1
         )

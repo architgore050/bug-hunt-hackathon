@@ -286,8 +286,9 @@ def test_ground_truth_bug_and_flag_paths_persist_relations_hashes_and_audit(clie
     flag_body = {"flag_key": "ADMIN-FLAG", "code": "FLAG{admin_coverage_valid}", "points": 25, "max_awards": 2}
     response = organizer.post(f"/v1/admin/challenges/{challenge_id}/ground-truth/flags", json=flag_body)
     assert response.status_code == 201, response.text
+    flag_id = response.json()["flag_id"]
     assert response.json()["ok"] is True
-    assert uuid.UUID(response.json()["flag_id"])
+    uuid.UUID(flag_id)
 
     from app.security import flag_code_hash
 
@@ -366,7 +367,7 @@ def test_ground_truth_bug_and_flag_paths_persist_relations_hashes_and_audit(clie
     assert audits[0]["entity_id"] == bug_id
     assert audits[0]["details"] == {"code": "ADMIN-BUG"}
     assert audits[0]["event_scope"] == f"challenge:{challenge_id}"
-    assert audits[1]["entity_id"] == "ADMIN-FLAG"
+    assert audits[1]["entity_id"] == flag_id
     assert audits[1]["event_scope"] == f"challenge:{challenge_id}"
     assert {row["actor_role"] for row in audits} == {"organizer"}
 

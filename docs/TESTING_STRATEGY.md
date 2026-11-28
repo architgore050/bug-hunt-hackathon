@@ -29,8 +29,8 @@ Behavioral coverage:
 
 | Scope | What it proves |
 | --- | --- |
-| Authentication and security primitives | Generic login failures, token claims and rejection, password hashing, session and refresh lifecycle, activation and reset, role boundaries, rules acceptance, step-up, CSRF, and rate limits |
-| Admin event and challenge operations | Event schedules and readiness, config revisions, stage controls, teams and invites, challenge upload/freeze/publish, ground-truth authoring, announcements, time adjustments, live ops, audit, exports, disputes, adjustments, and health |
+| Authentication and security primitives | Generic login failures, token claims and rejection, password hashing, session and refresh lifecycle, admin-managed staff registration and first-password claims, role boundaries, rules acceptance, step-up, CSRF, and rate limits |
+| Admin event and challenge operations | Event schedules and readiness, config revisions, stage controls, admin-managed teams and participant registration, challenge upload/freeze/publish, ground-truth authoring, announcements, time adjustments, live ops, audit, exports, disputes, adjustments, and health |
 | Admin four-level operations | Repository lock and options, progress views, manual auto-submit, and idempotent level bootstrap |
 | Participant delivery and responses | Assignment ownership, safe file content/search, public event/rules allowlists, server time and state, leaderboard visibility, team-scoped results, submission masking, and disputes |
 | Reviewer workflow | Queue ordering, claim ownership and expiry, detail projection, decision validation, persisted review jobs, and audit effects |
