@@ -193,6 +193,15 @@ def test_step_up_required_for_sensitive_admin_routes_and_safe_flag_crud(client):
     )
     assert duplicate_key.status_code == 422
 
+    # and a published challenge must refuse ground-truth mutation (F-C-07)
+    published_id = _any_published_challenge_id()
+    locked = oc.post(
+        f"/v1/admin/challenges/{published_id}/ground-truth/flags",
+        json={"flag_key": "FLAG-TEST", "code": "FLAG{step_up}", "points": 5},
+    )
+    assert locked.status_code == 409
+    assert locked.json()["error"]["code"] == "GROUND_TRUTH_LOCKED"
+
 
 def _any_challenge_id(oc):
     from app.db import app_engine
@@ -200,6 +209,18 @@ def _any_challenge_id(oc):
 
     with app_engine.connect() as conn:
         return str(conn.execute(text("SELECT id FROM app.challenge_versions LIMIT 1")).scalar_one())
+
+
+def _any_published_challenge_id() -> str:
+    from app.db import app_engine
+    from sqlalchemy import text
+
+    with app_engine.connect() as conn:
+        return str(
+            conn.execute(
+                text("SELECT id FROM app.challenge_versions WHERE status = 'published' ORDER BY created_at LIMIT 1")
+            ).scalar_one()
+        )
 
 
 def test_refresh_rotation_and_reuse_detection(client):

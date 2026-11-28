@@ -53,7 +53,7 @@ grep -rn "dangerouslySetInnerHTML" frontend/src/ || echo "clean"
 
 ### Event account-policy exception
 
-Only pre-registered participants with a team membership and no password may claim an initial password. Mailbox ownership is not verified, so anyone who knows a registered participant email could make the first claim; administrators must distribute those addresses through a controlled channel. Staff accounts require an administrator-assigned password. Staff registration, participant registration, team creation, participant team changes/removal and password resets are admin-only and require step-up. Account lifecycle status is not stored; removing the final team membership revokes sessions and prevents future sign-in. Public activation and self-service reset routes are absent; migration `0005_remove_legacy_account_tokens.sql` retires the legacy token stores.
+Only pre-registered participants with a team membership and no password may claim an initial password. Mailbox ownership is not verified, so anyone who knows a registered participant email could make the first claim; administrators must distribute those addresses through a controlled channel. Staff accounts require an administrator-assigned password. Staff registration, participant registration, team creation, participant team changes/removal and password resets are admin-only and require step-up. Account lifecycle status is not stored; removing the final team membership revokes sessions and prevents future sign-in. Public activation and self-service reset routes are absent; migration `0006_remove_legacy_account_tokens.sql` retires the legacy token stores.
 
 ## Limits of this review
 

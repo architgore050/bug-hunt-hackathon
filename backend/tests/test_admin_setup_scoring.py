@@ -74,8 +74,8 @@ def test_time_adjustment_is_event_scoped(client):
             "user_id": None,
         },
     )
-    assert wrong_stage.status_code == 422
-    assert wrong_stage.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert wrong_stage.status_code == 404
+    assert wrong_stage.json()["error"]["code"] == "NOT_FOUND"
 
     too_large = organizer.post(
         f"/v1/admin/events/{event_id}/time-adjustment",

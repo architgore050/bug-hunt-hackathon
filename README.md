@@ -15,7 +15,7 @@ own limits honestly.
 | Path | What it is |
 | --- | --- |
 | `backend/` | FastAPI API (participant/staff), durable PostgreSQL job queue, worker, seed |
-| `backend/tests/` | 83 pytest tests collected at the latest review snapshot (idempotency, IDOR, ground-truth isolation, scoring, auth) |
+| `backend/tests/` | Pytest coverage for idempotency, IDOR, ground-truth isolation, scoring, auth, admin operations, and event flows |
 | `backend/migrations/` | Ordered SQL migrations applied by `scripts/migrate.sh` |
 | `frontend/` | React 19 + Vite + TypeScript + Tailwind 4 SPA ("Case File" design system) |
 | `challenge-app/` | "Papyrus", the Node/Express challenge app with 10 planted bugs + 2 flags |
@@ -59,10 +59,9 @@ cd backend && .venv/bin/python worker.py &
 cd frontend && npm install && npm run dev   # proxies /v1 to :8100
 ```
 
-Verification: `scripts/e2e_journey.py` runs 46 checks against a running stack
-(last recorded run: 46/46 pass). The latest review snapshot collected 83 backend
-tests with 0 collection errors. Collection is not execution; run the full pytest
-suite against PostgreSQL before release.
+Verification: `scripts/e2e_journey.py` runs 46 checks against a running stack.
+`cd backend && pytest` must pass in full. Use the current CI run for exact
+results rather than relying on historical counts.
 
 Demo accounts (dev only, password `Dev-only!Passw0rd!`): `organizer@`,
 `reviewer1@`, `p1.team1@` ... `example.com`. The Papyrus challenge app runs
@@ -100,7 +99,7 @@ privacy notice and terms. Engineering: `docs/API_REFERENCE.md`,
   with readiness gate, challenge publishing, idempotent submissions, hidden
   feedback, deterministic matching, reviewer queue, scoring ledger, CTF flag
   verification with caps, leaderboard snapshots, disputes, audit chain, CSV
-  exports, 46/46 E2E (last recorded run), 83 pytest tests collected (not executed in the latest review environment), frontend build clean.
+  exports, the 46-check E2E journey, the full pytest suite, and a clean frontend build. Current results are recorded by CI.
 - Deliberately not in v1: participant code execution (no isolated runner;
   ADR-010 fallback), AI scoring (disabled by default, DEC-13), email delivery
   (accounts are admin-registered; participants claim an initial password on first sign-in, staff passwords are admin-assigned, and resets are admin-only), SSE (5 s polling),

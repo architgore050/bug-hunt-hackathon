@@ -21,7 +21,7 @@ Triggers:
 
 ### Job 1: backend-tests
 
-Purpose: run the pytest suite against a real PostgreSQL 17, because the suite's isolation and idempotency guarantees are database-enforced (unique constraints, role grants, SKIP LOCKED claims).
+Purpose: run the full pytest suite against a real PostgreSQL 17, because the suite's isolation and idempotency guarantees are database-enforced (unique constraints, role grants, SKIP LOCKED claims).
 
 Steps:
 
@@ -33,7 +33,7 @@ Steps:
 4. Set up Python 3.12 and `pip install -r backend/requirements.txt`.
 5. Bootstrap: run `scripts/dev_db.sh` (creates roles/grants inside the service container database) and `scripts/migrate.sh` against a CI database.
    - `tests/conftest.py` itself creates and migrates `bughunt_test`, so the explicit bootstrap mainly validates that the scripts run in CI.
-6. Run `python -m pytest backend/tests -v`.
+6. Run `python -m pytest backend/tests -v`; the job passes only when the full suite passes.
    - The suite self-contains its secrets (`conftest.py` sets a test-only `JWT_SECRET` and dev role passwords scoped to the throwaway database), so NO repository secrets are required for this job.
 7. Upload the pytest report as a workflow artifact on failure.
 

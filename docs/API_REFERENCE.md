@@ -1,4 +1,4 @@
-Status: describes the implementation as of 2026-11-27
+Status: describes the implementation as of 2026-11-28
 
 # API Reference
 
@@ -31,6 +31,7 @@ Idempotency: `POST /v1/submissions` requires an `Idempotency-Key` header (8..80 
 | POST `/v1/auth/refresh` | cookie | CSRF: `Origin` must equal an allow-listed origin AND header `X-BHCTF-Client` must be present (NET-05) | none | `{access_token, expires_at, server_time}`; rotates the refresh family. Reuse of a rotated token within 10 s grace returns the same successor (AUTH-04); reuse outside grace revokes the whole family and session. Errors: 403 `AUTH_FORBIDDEN` (bad Origin/header), 401 `AUTH_SESSION_REVOKED` |
 | POST `/v1/auth/logout` | any | bearer required | none | `{ok:true}`; revokes all refresh tokens and the session, clears cookie |
 | POST `/v1/auth/register` | admin + step-up | Staff account creation; the password is assigned by the administrator, not claimed by the staff member. | `{email, name, role: reviewer|organizer|admin, password (min 12)}` | 201 `{ok, email, role, message, password_setup_required:false}`. Participant accounts are created by `POST /v1/admin/events/{id}/participants`.
+
 | POST `/v1/auth/step-up` | any | 5 failures/300 s per user | `{password}` | `{ok, valid_until}`; records `sessions.step_up_at = now()`. Error: 401 `AUTH_INVALID_CREDENTIALS` |
 | GET `/v1/me` | any | none | none | `{id, email, name, role, team{id,name,join_code,event_id,slug,event_status}|null, rules_accepted, rules_version}` |
 | GET `/v1/me/sessions` | any | none | none | `[{id, created_at, last_seen_at, device(user_agent, 80 chars)}]` for unrevoked sessions |
@@ -117,7 +118,7 @@ Auth as listed; `step_up` column means the route additionally requires a fresh s
 
 | Method, path | Auth | Notes |
 | --- | --- | --- |
-| POST `/v1/admin/events` | organizer | Body `{name, slug, starts_at?, duration_minutes=180, max_participants=50, max_teams=12, timezone="Asia/Kolkata"}` -> 201 `{event_id}`. Config embeds the provisional-capacity note (ADR-011) |
+| POST `/v1/admin/events` | organizer | Body `{name, slug, starts_at?, duration_minutes=180, max_participants=50, max_teams=12, timezone="Asia/Kolkata"}` -> 201 `{event_id}`. Duration must be positive; timezone is persisted. Config embeds the provisional-capacity note (ADR-011) |
 | POST `/v1/admin/events/{id}/status` | organizer | `{status}`; validated transition, readiness gate before `live` (422 with pending count), sets event window on going live |
 | POST `/v1/admin/events/{id}/config` | organizer | `{config, reason (5..500), freeze}`. Weights must sum to 1.0 (422 otherwise). Computes `rule_set_hash` = sha256 of canonical JSON; `freeze:true` snapshots the config onto the event (DAT-04) |
 | GET `/v1/admin/events/{id}/config/revisions` | organizer | Returns `{config_version, current_config, revisions[]}` with immutable version, config, hash, reason, created and frozen timestamps; latest 100 revisions |
@@ -144,18 +145,20 @@ Auth as listed; `step_up` column means the route additionally requires a fresh s
 | POST `/v1/admin/challenges/{id}/ground-truth/test-results` | organizer + step_up | `{submission_id, tests_passed, tests_total}`; enqueues `apply_test_results` (ADR-019); audit scope `scoring` |
 | POST `/v1/admin/events/{id}/announcements` | organizer | `{severity: info|warning|critical, body 3..1000}` |
 | POST `/v1/admin/events/{id}/time-adjustment` | organizer | `{stage_id, delta_seconds (nonzero, +/-86400 max), reason_code: ACCOMMODATION|OUTAGE|DEVICE_FAILURE|OTHER, user_id?}`; stage and optional active participant must belong to the event in the path (TIM-05) |
+
 | GET `/v1/admin/events/{id}/live` | organizer | Control room: submission status counts, team/participant counts, job queue `{oldest_queued_age_s, dead_letters}`, review backlog, stages, health probes, kill-switch state. `participants_online_estimate` is accounts-with-membership, not live presence |
 | GET `/v1/admin/events/{id}/readiness` | organizer | Checklist rows |
-| POST `/v1/admin/events/{id}/readiness/{key}` | organizer | `{state: checked|unchecked|na}`; gates the live transition |
+| POST `/v1/admin/events/{id}/readiness/{key}` | organizer | `{state: checked|unchecked|na}`; gates the live transition. Unknown event/key returns 404 |
 | GET `/v1/admin/audit/verify` | organizer | Recomputes the hash chain per scope: `{scope, entries, verified, broken_at|null, intact}` |
 | GET `/v1/admin/audit` | organizer | `?limit<=500&action=`; newest first, no actor_id in the listing projection |
 | GET `/v1/admin/events/{id}/export/{kind}` | organizer | `kind = results|submissions|ledger`; returns `{filename, content}` CSV text, computed on demand |
-| GET `/v1/admin/disputes` | organizer | All disputes with submission title/receipt |
-| POST `/v1/admin/disputes/{id}/resolve` | organizer | `{outcome: upheld|rejected, resolution, adjust_points?}`; upheld with `adjust_points` appends a `DISPUTE_UPHELD` ledger adjustment (never mutates old entries, DAT-05) |
+| GET `/v1/admin/disputes` | organizer | `?event_id=&limit=50&offset=0`; limit 1..100, newest first with deterministic ID tiebreak. Returns `{disputes, total, limit, offset}`; the organizer console pages through results with Load more |
+| POST `/v1/admin/disputes/{id}/resolve` | organizer | `{outcome: upheld|rejected, resolution, adjust_points?}`; adjustments must be finite and within the ledger numeric range. Upheld with `adjust_points` appends a `DISPUTE_UPHELD` ledger adjustment (never mutates old entries, DAT-05) |
 | POST `/v1/admin/adjustments` | admin + step-up | `{stage_id, team_id, points (nonzero, +/-10000 max), reason<=1000}` -> `MANUAL` ledger adjustment; stage and team must belong to the same event; audit scope `scoring` |
+
 | GET `/v1/admin/system/health` | organizer | DB probes, job counts by status, oldest queued age, profile, kill switches |
 
-**Event account policy:** There are no public account-activation or self-service password-reset endpoints. All accounts are created by administrators. Participant registration is event/team-scoped through the admin endpoint above; global `/auth/register` is limited to staff roles and requires an administrator-assigned password plus step-up. Only a participant with an existing team membership and no password can choose an initial password on first sign-in. Mailbox ownership is intentionally not verified for this participant first-password claim; registered participant email addresses must be distributed through a controlled channel. Staff passwords are always administrator-assigned. Unknown emails, passwordless staff accounts and participants without team membership receive the same generic invalid-credentials response as incorrect passwords. No invite tokens, activation links, account lifecycle status or public reset tokens are used. Migrations `0005_remove_legacy_account_tokens.sql` and `0006_remove_account_status.sql` remove the old token stores and account status. Participant registration, team creation, team moves/removal and password reset are admin-only and require step-up confirmation. Passwords are delivered in person or through an organization-approved authenticated one-to-one channel, never by email or public/team/event chat. The Setup & scoring page also exposes stage and team creation, configuration revision history/editing, event-scoped time adjustment, and admin-only step-up score adjustments.
+**Event account policy:** There are no public account-activation or self-service password-reset endpoints. All accounts are created by administrators. Participant registration is event/team-scoped through the admin endpoint above; global `/auth/register` is limited to staff roles and requires an administrator-assigned password plus step-up. Only a participant with an existing team membership and no password can choose an initial password on first sign-in. Mailbox ownership is intentionally not verified for this participant first-password claim; registered participant email addresses must be distributed through a controlled channel. Staff passwords are always administrator-assigned. Unknown emails, passwordless staff accounts and participants without team membership receive the same generic invalid-credentials response as incorrect passwords. No invite tokens, activation links, account lifecycle status or public reset tokens are used. Migrations `0006_remove_legacy_account_tokens.sql` and `0007_remove_account_status.sql` remove the old token stores and account status. Participant registration, team creation, team moves/removal and password reset are admin-only and require step-up confirmation. Passwords are delivered in person or through an organization-approved authenticated one-to-one channel, never by email or public/team/event chat. The Setup & scoring page also exposes stage and team creation, configuration revision history/editing, event-scoped time adjustment, and admin-only step-up score adjustments.
 
 ## 9. Error codes (catalog)
 

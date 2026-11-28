@@ -1,4 +1,4 @@
-Status: describes the implementation as of 2026-11-22
+Status: describes the implementation as of 2026-11-28
 
 # Deployment Runbook
 
@@ -39,6 +39,24 @@ Steps:
    - `curl http://127.0.0.1:8100/health` must show `database_app: up` and `database_gt: up`.
    - `python scripts/e2e_journey.py` must exit 0.
    - `cd backend && python -m pytest` must complete successfully against PostgreSQL; collection is not a passing test run.
+
+### Existing database upgrades
+
+1. Take and verify a backup. Stop API/worker traffic or schedule a maintenance window; `0004_stage_ordinal_unique.sql` adds a unique index and briefly takes an `ACCESS EXCLUSIVE` lock on `app.stages`.
+2. Check for duplicate ordinal groups before migrating:
+
+   ```sql
+   SELECT event_id, kind, ordinal, count(*), array_agg(id ORDER BY id) AS stage_ids
+   FROM app.stages
+   GROUP BY event_id, kind, ordinal
+   HAVING count(*) > 1;
+   ```
+
+   Resolve duplicates only after reviewing stage progression, submissions, and assignments. The migration intentionally refuses to delete or renumber them.
+3. Run one migrator as the database owner: `bash scripts/migrate.sh`. Set a bounded `lock_timeout` and `statement_timeout` for the session if the database client supports them.
+4. Verify `ux_stages_event_kind_ordinal` exists in `pg_constraint` and `0004_stage_ordinal_unique.sql` is recorded in `app.schema_migrations`. Smoke-test stage creation, level bootstrap, and participant stage selection before reopening traffic.
+5. Prefer rolling back application code while retaining the constraint. Do not drop it while the new bootstrap path is running. A schema rollback requires a reviewed forward fix or a restore that accounts for writes made after the migration.
+
 
 Environment variables (all optional in dev, see `backend/app/config.py`):
 
@@ -99,7 +117,7 @@ For releases that apply migrations 0005 or 0006, do not run the old application 
 - On first sign-in, the server checks the email against registered accounts. Only a passwordless participant who already belongs to a team may set an initial password. Staff accounts must have an administrator-assigned password. Unknown emails, passwordless staff and participants without team membership receive the generic invalid-credentials response.
 - This event deliberately does not verify mailbox ownership during participant first-password claim. Someone who knows a registered participant email can claim its initial password. This is an accepted risk; administrators must distribute registered participant emails through a controlled channel.
 - Password recovery is not self-service. Only an administrator can reset another account's password after fresh step-up confirmation. The reset revokes the target account's sessions and refresh tokens. Deliver the password in person or through an organization-approved authenticated one-to-one channel; never use email, public/team chat, event chat, tickets, or logs.
-- Legacy invite and public reset-token tables are dropped by migration `0005_remove_legacy_account_tokens.sql`. Account lifecycle status is removed by migration `0006_remove_account_status.sql`; disabled/disqualified legacy users have memberships detached, password hashes cleared and sessions revoked before the column is dropped. User rows remain for scoring/audit foreign-key history.
+- Legacy invite and public reset-token tables are dropped by migration `0006_remove_legacy_account_tokens.sql`. Account lifecycle status is removed by migration `0007_remove_account_status.sql`; disabled/disqualified legacy users have memberships detached, password hashes cleared and sessions revoked before the column is dropped. User rows remain for scoring/audit foreign-key history.
 
 ## 3. Event-day launch sequence
 
@@ -141,7 +159,8 @@ For releases that apply migrations 0005 or 0006, do not run the old application 
   - Announce via a `critical` announcement and follow the scoring-correction runbook entry (master guide runbook list).
 - A wrong stage start can be adjusted with `extend` (1..3600 s) or per-user `time_adjustments` with reason codes.
   - Pause/resume has the partially-implemented ends_at restoration caveat documented in SYSTEM_ARCHITECTURE.md Section 5.2.
-  - Prefer `extend` after an outage rather than relying on `resume` time restoration.
+  - Resume restores the latest real pause window, including legacy `pause` transitions, capped at 7200 seconds. Extending while paused does not reset that window.
+  - Verify the resulting ends_at after an outage; use `extend` for any additional correction.
 - A compromised account: an administrator can reset the account password from Admin > Participants. The operation requires a fresh step-up check, increments token_version, and revokes all active sessions and refresh tokens. An admin cannot reset their own password through this endpoint.
 - Full host loss (D1): restore per BACKUP_AND_RECOVERY.md on a fresh VM; the SPA on Cloudflare Pages can display a status notice; do not claim automatic failover (master guide: no fake failover claims).
 - Change freeze: no code or config changes during an active round except the documented control actions (OPS-03).
