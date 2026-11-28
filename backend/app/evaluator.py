@@ -501,7 +501,7 @@ def release_feedback(payload: dict) -> None:
                     "SELECT s.id, s.team_id, s.matched_bug_code, s.challenge_version_id, e.tenant_id "
                     "FROM app.submissions s JOIN app.events e ON e.id = s.event_id "
                     "WHERE s.stage_id = CAST(:s AS uuid) AND s.status IN ('decided','matched_auto','ledgered') "
-                    "AND s.kind = 'bug_report' AND s.matched_bug_code IS NOT NULL"
+                    "AND s.kind IN ('bug_report', 'level_report') AND s.matched_bug_code IS NOT NULL"
                 ),
                 {"s": stage_id},
             )
@@ -535,7 +535,7 @@ def release_feedback(payload: dict) -> None:
                 note=f"default review quality {default_review_quality} applied at release (disputable)",
             )
             session.execute(
-                text("UPDATE app.submissions SET status='ledgered' WHERE id = CAST(:sid AS uuid)"),
+                text("UPDATE app.submissions SET status='ledgered', evaluation_state='SCORED' WHERE id = CAST(:sid AS uuid)"),
                 {"sid": str(a["id"])},
             )
 
@@ -545,7 +545,7 @@ def release_feedback(payload: dict) -> None:
                 session.execute(
                     text(
                         "SELECT s.team_id, e.tenant_id, count(*) AS n FROM app.submissions s JOIN app.events e ON e.id = s.event_id "
-                        "WHERE s.stage_id = CAST(:s AS uuid) AND s.status = 'rejected_auto' AND s.kind = 'bug_report' GROUP BY s.team_id, e.tenant_id"
+                        "WHERE s.stage_id = CAST(:s AS uuid) AND s.status = 'rejected_auto' AND s.kind IN ('bug_report', 'level_report') GROUP BY s.team_id, e.tenant_id"
                     ),
                     {"s": stage_id},
                 )

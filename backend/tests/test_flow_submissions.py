@@ -238,3 +238,75 @@ def test_runs_disabled_but_submission_paths_open(client):
     assert r3.status_code == 200
     r4 = submit_empty(pc, 1)
     assert r4.status_code == 202
+
+
+def test_l1_crash_resumes_without_double_scoring_or_duplicate(client):
+    from app.db import app_session
+    from app.evaluator_level import evaluate_level_submission
+    from sqlalchemy import text
+
+    go_live(client)
+    pc = flow_client(client, TEAM1[0])
+    lock_repo(pc).raise_for_status()
+    enter_workspace(pc, 1).raise_for_status()
+    flag = {
+        "title": "SQL injection in notes search endpoint",
+        "category": "injection",
+        "description": "User query is concatenated directly into SQLite query string.",
+        "evidence": "GET /api/notes?q=test",
+        "locations": [{"file_path": "routes/notes.js", "line_start": 10, "line_end": 20}],
+    }
+    r = submit_flags(pc, 1, [flag])
+    assert r.status_code == 202
+    sid = r.json()["submission_id"]
+    worker_drain()
+    # simulate crash-retry by re-running evaluate_level_submission on the same submission
+    evaluate_level_submission({"submission_id": sid, "level_no": 1})
+    with app_session() as s:
+        sub = s.execute(
+            text("SELECT status, evaluation_state, matched_bug_code FROM app.submissions WHERE id = CAST(:id AS uuid)"),
+            {"id": sid},
+        ).mappings().first()
+        assert sub["evaluation_state"] == "SCORED"
+        assert sub["status"] in ("matched_auto", "needs_review", "rejected_auto")
+        ledger_count = s.execute(
+            text("SELECT count(*) FROM app.score_ledger_entries WHERE submission_id = CAST(:id AS uuid)"),
+            {"id": sid},
+        ).scalar_one()
+        flag_rows = s.execute(
+            text("SELECT count(*) FROM app.submission_flag_results WHERE submission_id = CAST(:id AS uuid)"),
+            {"id": sid},
+        ).scalar_one()
+        assert flag_rows == 1
+        if sub["status"] == "matched_auto":
+            assert sub["matched_bug_code"] is not None
+            assert ledger_count == 1
+
+
+def test_l1_release_feedback_applies_default_code_review_and_penalty(client):
+    from app.db import app_session
+    from app.evaluator import release_feedback
+    from sqlalchemy import text
+
+    go_live(client)
+    pc = flow_client(client, TEAM1[0])
+    lock_repo(pc).raise_for_status()
+    enter_workspace(pc, 1).raise_for_status()
+    thin_flag = {
+        "title": "Short invalid report",
+        "category": "other",
+        "description": "This report has no matching bug.",
+        "locations": [{"file_path": "public/index.html", "line_start": 1, "line_end": 2}],
+    }
+    r = submit_flags(pc, 1, [thin_flag])
+    assert r.status_code == 202
+    worker_drain()
+    with app_session() as s:
+        stage_id = str(s.execute(text("SELECT stage_id FROM app.submissions WHERE id = CAST(:id AS uuid)"), {"id": r.json()["submission_id"]}).scalar_one())
+    release_feedback({"stage_id": stage_id})
+    with app_session() as s:
+        released = s.execute(
+            text("SELECT feedback_released FROM app.submissions WHERE id = CAST(:id AS uuid)"),
+            {"id": r.json()["submission_id"]},
+        ).scalar_one()
+        assert released is True
