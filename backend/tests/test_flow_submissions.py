@@ -263,10 +263,16 @@ def test_l1_crash_resumes_without_double_scoring_or_duplicate(client):
     # simulate crash-retry by re-running evaluate_level_submission on the same submission
     evaluate_level_submission({"submission_id": sid, "level_no": 1})
     with app_session() as s:
-        sub = s.execute(
-            text("SELECT status, evaluation_state, matched_bug_code FROM app.submissions WHERE id = CAST(:id AS uuid)"),
-            {"id": sid},
-        ).mappings().first()
+        sub = (
+            s.execute(
+                text(
+                    "SELECT status, evaluation_state, matched_bug_code FROM app.submissions WHERE id = CAST(:id AS uuid)"
+                ),
+                {"id": sid},
+            )
+            .mappings()
+            .first()
+        )
         assert sub["evaluation_state"] == "SCORED"
         assert sub["status"] in ("matched_auto", "needs_review", "rejected_auto")
         ledger_count = s.execute(
@@ -302,7 +308,12 @@ def test_l1_release_feedback_applies_default_code_review_and_penalty(client):
     assert r.status_code == 202
     worker_drain()
     with app_session() as s:
-        stage_id = str(s.execute(text("SELECT stage_id FROM app.submissions WHERE id = CAST(:id AS uuid)"), {"id": r.json()["submission_id"]}).scalar_one())
+        stage_id = str(
+            s.execute(
+                text("SELECT stage_id FROM app.submissions WHERE id = CAST(:id AS uuid)"),
+                {"id": r.json()["submission_id"]},
+            ).scalar_one()
+        )
     release_feedback({"stage_id": stage_id})
     with app_session() as s:
         released = s.execute(

@@ -664,7 +664,9 @@ class RunnerEvaluation(AppBase):
     exit_code: Mapped[int | None] = mapped_column(Integer)
     tests_passed: Mapped[int | None] = mapped_column(Integer)
     tests_total: Mapped[int | None] = mapped_column(Integer)
-    variant_results: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"), nullable=False)
+    variant_results: Mapped[dict] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb"), nullable=False
+    )
     side_quest_passed: Mapped[bool | None] = mapped_column()
     stdout_truncated: Mapped[str | None] = mapped_column(Text)
     stderr_truncated: Mapped[str | None] = mapped_column(Text)

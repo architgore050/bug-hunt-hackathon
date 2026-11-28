@@ -535,7 +535,9 @@ def release_feedback(payload: dict) -> None:
                 note=f"default review quality {default_review_quality} applied at release (disputable)",
             )
             session.execute(
-                text("UPDATE app.submissions SET status='ledgered', evaluation_state='SCORED' WHERE id = CAST(:sid AS uuid)"),
+                text(
+                    "UPDATE app.submissions SET status='ledgered', evaluation_state='SCORED' WHERE id = CAST(:sid AS uuid)"
+                ),
                 {"sid": str(a["id"])},
             )
 

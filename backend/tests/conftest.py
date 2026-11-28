@@ -77,6 +77,14 @@ def client(seeded_db, _clear_rate_limits):
 STAFF_PW = "Dev-only!Passw0rd!"
 
 
+def organizer_client(client: TestClient) -> TestClient:
+    """An organizer-authenticated TestClient reusing the given client's app."""
+    org = client.post("/v1/auth/login", json={"email": "organizer@example.com", "password": STAFF_PW}).json()
+    oc = TestClient(client.app)
+    oc.headers.update({"Authorization": f"Bearer {org['access_token']}"})
+    return oc
+
+
 def login(client, email: str, password: str = STAFF_PW) -> dict:
     r = client.post("/v1/auth/login", json={"email": email, "password": password})
     assert r.status_code == 200, r.text
