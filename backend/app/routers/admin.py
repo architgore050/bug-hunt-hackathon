@@ -1122,60 +1122,60 @@ class BugIn(BaseModel):
 @router.post("/admin/challenges/{challenge_id}/ground-truth/bugs", status_code=201)
 def add_bug(challenge_id: str, body: BugIn, request: Request, p: Principal = Depends(step_up_verified)):
     """Writes ground truth via the gt_admin role only (DAT-03)."""
-    with _editable_challenge_lock(challenge_id):
-        with gt_session() as gts:
-            bug_id = str(uuid7())
+    with _editable_challenge_lock(challenge_id), gt_session() as gts:
+        bug_id = str(uuid7())
+        gts.execute(
+            text(
+                "INSERT INTO gt.gt_bugs (id, challenge_version_id, code, title, severity, category, points, root_cause_group, explanation, fix_guidance) "
+                "VALUES (CAST(:id AS uuid), CAST(:c AS uuid), :code, :title, :sev, :cat, :pts, :rcg, :expl, :fix)"
+            ),
+            {
+                "id": bug_id,
+                "c": challenge_id,
+                "code": body.code,
+                "title": body.title,
+                "sev": body.severity,
+                "cat": body.category,
+                "pts": body.points,
+                "rcg": body.root_cause_group,
+                "expl": body.explanation,
+                "fix": body.fix_guidance,
+            },
+        )
+        for loc in body.locations:
             gts.execute(
                 text(
-                    "INSERT INTO gt.gt_bugs (id, challenge_version_id, code, title, severity, category, points, root_cause_group, explanation, fix_guidance) "
-                    "VALUES (CAST(:id AS uuid), CAST(:c AS uuid), :code, :title, :sev, :cat, :pts, :rcg, :expl, :fix)"
+                    "INSERT INTO gt.gt_locations (id, bug_id, file_path, line_start, line_end, is_primary) VALUES (CAST(:id AS uuid), CAST(:b AS uuid), :fp, :ls, :le, :prim)"
                 ),
                 {
-                    "id": bug_id,
-                    "c": challenge_id,
-                    "code": body.code,
-                    "title": body.title,
-                    "sev": body.severity,
-                    "cat": body.category,
-                    "pts": body.points,
-                    "rcg": body.root_cause_group,
-                    "expl": body.explanation,
-                    "fix": body.fix_guidance,
+                    "id": str(uuid7()),
+                    "b": bug_id,
+                    "fp": loc["file_path"],
+                    "ls": loc["line_start"],
+                    "le": loc["line_end"],
+                    "prim": loc.get("is_primary", True),
                 },
             )
-            for loc in body.locations:
-                gts.execute(
-                    text(
-                        "INSERT INTO gt.gt_locations (id, bug_id, file_path, line_start, line_end, is_primary) VALUES (CAST(:id AS uuid), CAST(:b AS uuid), :fp, :ls, :le, :prim)"
-                    ),
-                    {
-                        "id": str(uuid7()),
-                        "b": bug_id,
-                        "fp": loc["file_path"],
-                        "ls": loc["line_start"],
-                        "le": loc["line_end"],
-                        "prim": loc.get("is_primary", True),
-                    },
-                )
-            for al in body.aliases:
-                gts.execute(
-                    text(
-                        "INSERT INTO gt.gt_aliases (id, bug_id, keyword, weight) VALUES (CAST(:id AS uuid), CAST(:b AS uuid), :kw, :w)"
-                    ),
-                    {"id": str(uuid7()), "b": bug_id, "kw": al["keyword"], "w": al.get("weight", 1.0)},
-                )
-            audit_write(
-                gts,
-                actor_id=p.id,
-                actor_role=p.role,
-                action="gt.bug_added",
-                entity_type="gt_bug",
-                entity_id=bug_id,
-                request_id=request.state.request_id,
-                details={"code": body.code},
-                event_scope=f"challenge:{challenge_id}",
+        for al in body.aliases:
+            gts.execute(
+                text(
+                    "INSERT INTO gt.gt_aliases (id, bug_id, keyword, weight) VALUES (CAST(:id AS uuid), CAST(:b AS uuid), :kw, :w)"
+                ),
+                {"id": str(uuid7()), "b": bug_id, "kw": al["keyword"], "w": al.get("weight", 1.0)},
             )
-    
+        audit_write(
+            gts,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="gt.bug_added",
+            entity_type="gt_bug",
+            entity_id=bug_id,
+            request_id=request.state.request_id,
+            details={"code": body.code},
+            event_scope=f"challenge:{challenge_id}",
+        )
+
+
     return {"bug_id": bug_id}
 
 
