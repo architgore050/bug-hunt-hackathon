@@ -1,6 +1,7 @@
 # Review of the Bug Hunt CTF Engineering Audit
 
-Status: review of docs/audit/sha-f96eb5ca/Bug_Hunt_CTF_Audit.md, completed 2026-11-27
+Status: review of docs/audit/sha-f96eb5ca/audit/Bug_Hunt_CTF_Audit.md, completed 2026-11-27
+Note: the audit document was moved from `docs/audit/sha-f96eb5ca/Bug_Hunt_CTF_Audit.md` to `docs/audit/sha-f96eb5ca/audit/Bug_Hunt_CTF_Audit.md` after this review was written; the review content and cited findings are unchanged.
 Reviewed SHA: current main (427f268). Delta between the audited tree (f96eb5ca) and main verified as exactly one commit, 3bd3a96 "Clarify participant points and level scores", plus the audit documents themselves. All verdicts below are against current main, which is valid per that delta.
 
 ## 1. Scope and method

@@ -103,7 +103,7 @@ Procedure:
 
 ## Upgrade ordering for the account-policy migrations
 
-For releases that apply migrations `0006_remove_legacy_account_tokens.sql`, `0007_remove_account_status.sql` or `0008_drop_team_status.sql`, do not run the old application against the new schema:
+For releases that apply migrations `0006_remove_legacy_account_tokens.sql`, `0007_remove_account_status.sql` or `0008_drop_team_status.sql`, do not run the old application against the new schema. `0006` breaks only the invite/reset routes it removes, but `0007` and `0008` drop `app.users.status` and `app.teams.status`, which a pre-migration build selects on authenticated routes (every authenticated request reads `users.status`), so a running old build fails across the whole API, not just on removed routes, until the new build is up:
 
 1. Stop the old API and worker processes.
 2. Apply database migrations with `scripts/migrate.sh`.

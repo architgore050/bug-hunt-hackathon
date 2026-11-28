@@ -19,7 +19,6 @@ import { fmtDateTime } from '../../lib/format'
 interface Team {
   id: string
   name: string
-  status: string
   member_count: number
 }
 
@@ -28,7 +27,6 @@ interface Participant {
   email: string
   name: string
   role: string
-  status: string
   team_id: string
   team_name: string
   password_set: boolean
@@ -43,6 +41,10 @@ interface ConfigRevision {
   created_at: string
   frozen_at: string | null
 }
+
+const EMPTY_STAGES: LiveOps['stages'] = []
+const EMPTY_TEAMS: Team[] = []
+const EMPTY_PARTICIPANTS: Participant[] = []
 
 const TIME_REASONS = ['ACCOMMODATION', 'OUTAGE', 'DEVICE_FAILURE', 'OTHER'] as const
 
@@ -93,9 +95,9 @@ export default function AdminSetup() {
     () => eventsQ.data?.events.find((event) => event.id === eventId) ?? null,
     [eventsQ.data, eventId],
   )
-  const stages = liveQ.data?.stages ?? []
-  const teams = teamsQ.data?.teams ?? []
-  const participants = participantsQ.data?.participants ?? []
+  const stages = liveQ.data?.stages ?? EMPTY_STAGES
+  const teams = teamsQ.data?.teams ?? EMPTY_TEAMS
+  const participants = participantsQ.data?.participants ?? EMPTY_PARTICIPANTS
 
   const [stageForm, setStageForm] = useState({ name: '', kind: 'main', grace: '3' })
   const [teamName, setTeamName] = useState('')

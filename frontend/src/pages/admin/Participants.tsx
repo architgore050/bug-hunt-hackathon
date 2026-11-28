@@ -18,7 +18,6 @@ import { adminErrorText, needsStepUp, StepUpGateHint, StepUpPanel, useStepUpWind
 interface Team {
   id: string
   name: string
-  status: string
   member_count: number
 }
 
@@ -324,7 +323,7 @@ Participants without a password choose one at first sign-in. Staff receive an ad
       {eventId && (
         <>
           <div className="grid-2">
-            <Panel exhibit="01" title="Register participant" actions={isAdmin && !elevated ? <StepUpGateHint /> : undefined}>
+            <Panel exhibit="02" title="Register participant" actions={isAdmin && !elevated ? <StepUpGateHint /> : undefined}>
               {isAdmin ? (
                 <form onSubmit={registerParticipant} className="stack" style={{ gap: 12 }}>
                   <Field label="Email address" htmlFor="participant-email" required>
@@ -351,7 +350,7 @@ Participants without a password choose one at first sign-in. Staff receive an ad
               )}
             </Panel>
 
-            <Panel exhibit="02" title="Teams">
+            <Panel exhibit="03" title="Teams">
               {teamsQ.isLoading && <LoadingShell label="Loading teams" />}
               {teamsQ.isError && <ErrorBanner error={teamsQ.error} onRetry={() => void teamsQ.refetch()} />}
               {teams.map((team) => (
@@ -364,7 +363,7 @@ Participants without a password choose one at first sign-in. Staff receive an ad
             </Panel>
           </div>
 
-          <Panel exhibit="03" title="Registered participant roster">
+          <Panel exhibit="04" title="Registered participant roster">
             {participantsQ.isLoading && <LoadingShell label="Loading participants" />}
             {participantsQ.isError && <ErrorBanner error={participantsQ.error} onRetry={() => void participantsQ.refetch()} />}
             {participantsQ.data && participants.length === 0 && <EmptyState title="No participants registered" note="New participant accounts are created from the admin-only form above." />}
