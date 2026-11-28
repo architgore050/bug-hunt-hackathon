@@ -498,3 +498,17 @@ def test_leaderboard_since_returns_304_when_unchanged(client, seeded_db):
     r2 = oc.get(f"/v1/leaderboard/{stage_id}?since={v1}")
     assert r2.status_code == 200
     assert r2.json()["version"] == v2
+
+
+def test_scoring_pipeline_schema_grants_and_tables(seeded_db):
+    from app.db import app_session, gt_session
+
+    with app_session() as s:
+        for tbl in ("submission_flag_results", "submission_scores", "runner_evaluations"):
+            cnt = s.execute(text(f"SELECT count(*) FROM app.{tbl}")).scalar_one()
+            assert cnt == 0
+        state = s.execute(text("SELECT evaluation_state FROM app.submissions LIMIT 1")).first()
+        if state is not None:
+            assert state[0] in ("RECEIVED", "QUEUED", "EVALUATING", "SCORED", "NEEDS_REVIEW", "FAILED")
+    with gt_session() as gts:
+        assert gts.execute(text("SELECT count(*) FROM app.submission_flag_results")).scalar_one() == 0
