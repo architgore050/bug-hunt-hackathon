@@ -20,6 +20,7 @@ from ..deps import Principal, require_organizer, step_up_verified
 from ..errors import ApiError
 from ..flow import LEVEL_COUNT, teammate_view
 from ..jobs import enqueue
+from ..tenancy import require_event_in_tenant, require_team_in_tenant
 
 router = APIRouter(tags=["admin-levels"])
 
@@ -46,16 +47,7 @@ def admin_repo_lock(
     """Set or override a team's repository option (audited, step-up required)."""
     p = step_up_verified(request, p)
     with app_session() as s:
-        team = (
-            s.execute(
-                text("SELECT id, event_id, name FROM app.teams WHERE id = CAST(:t AS uuid)"),
-                {"t": team_id},
-            )
-            .mappings()
-            .first()
-        )
-        if team is None:
-            raise ApiError("NOT_FOUND")
+        team = require_team_in_tenant(s, team_id, p.tenant_id)  # REM-001 tenant scope
         option = (
             s.execute(
                 text(
@@ -143,9 +135,7 @@ def admin_repo_option(event_id: str, body: RepoOptionIn, request: Request, p: Pr
     """Register a repo option for the event (data-driven option set)."""
     p = step_up_verified(request, p)
     with app_session() as s:
-        ev = s.execute(text("SELECT id FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": event_id}).first()
-        if ev is None:
-            raise ApiError("NOT_FOUND")
+        require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
         cv = s.execute(
             text("SELECT id FROM app.challenge_versions WHERE id = CAST(:c AS uuid) AND event_id = CAST(:e AS uuid)"),
             {"c": body.challenge_version_id, "e": event_id},
@@ -188,9 +178,7 @@ def admin_repo_option(event_id: str, body: RepoOptionIn, request: Request, p: Pr
 def admin_progress(event_id: str, p: Principal = Depends(require_organizer)):
     """Team-by-team, member-by-member progression matrix for live ops."""
     with app_session() as s:
-        ev = s.execute(text("SELECT id FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": event_id}).first()
-        if ev is None:
-            raise ApiError("NOT_FOUND")
+        require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
         teams = (
             s.execute(
                 text(
@@ -250,9 +238,7 @@ def admin_bootstrap_levels(event_id: str, request: Request, p: Principal = Depen
     """Create the four level stages for an event if they are missing
     (kind='level', ordinals 1..4, synthetic draft windows)."""
     with app_session() as s:
-        ev = s.execute(text("SELECT id FROM app.events WHERE id = CAST(:e AS uuid)"), {"e": event_id}).first()
-        if ev is None:
-            raise ApiError("NOT_FOUND")
+        require_event_in_tenant(s, event_id, p.tenant_id)  # REM-001 tenant scope
         created = 0
         names = {
             1: "Level 1: Find the Bugs",

@@ -7,11 +7,16 @@ touching callers. Content addressing: SHA-256 of the bytes; the storage key
 is derived from owner, level and hash so the same upload cannot collide.
 """
 
+# DEFERRED v2 (REM-015): per-team encrypted pre-delivery + timed key release + watermarking — owner-approved waiver, not implemented in D0 profile.
+
 from __future__ import annotations
 
 import hashlib
 import os
 import pathlib
+
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from .config import settings
 from .errors import ApiError
@@ -89,3 +94,44 @@ def inspect_zip(data: bytes) -> dict:
         if total_uncompressed > MAX_UNCOMPRESSED_BYTES:
             raise ApiError("ARTIFACT_INVALID", details={"zip": "Archive decompresses beyond the size limit."})
     return {"entry_count": len(seen), "uncompressed_bytes": total_uncompressed}
+
+
+# --- staged-artifact lifecycle transitions (REM-015 follow-up) -----------------
+# NOTE: CHECK constraint on app.submission_artifacts.status currently allows ('staged','submitted'); adding 'abandoned'/'used' needs a migration (orchestrator owns migrations).
+
+
+def mark_staged(session: Session, artifact_id: str, owner_id: str) -> int:
+    """Set a just-uploaded artifact back to 'staged' (owner-scoped update)."""
+    res = session.execute(
+        text(
+            "UPDATE app.submission_artifacts SET status = 'staged' "
+            "WHERE id = CAST(:id AS uuid) AND owner_id = CAST(:owner AS uuid)"
+        ),
+        {"id": artifact_id, "owner": owner_id},
+    )
+    return res.rowcount or 0
+
+
+def mark_used(session: Session, artifact_id: str, owner_id: str) -> int:
+    """Bind an artifact to a submission ('used' is stored as 'submitted' today; owner-scoped update)."""
+    res = session.execute(
+        text(
+            "UPDATE app.submission_artifacts SET status = 'submitted' "
+            "WHERE id = CAST(:id AS uuid) AND owner_id = CAST(:owner AS uuid)"
+        ),
+        {"id": artifact_id, "owner": owner_id},
+    )
+    return res.rowcount or 0
+
+
+def mark_abandoned(session: Session, artifact_id: str, owner_id: str) -> int:
+    """Flag a never-submitted artifact for reaping ('submitted' is the only
+    representable non-staged state until the CHECK constraint is widened)."""
+    res = session.execute(
+        text(
+            "UPDATE app.submission_artifacts SET status = 'submitted' "
+            "WHERE id = CAST(:id AS uuid) AND owner_id = CAST(:owner AS uuid)"
+        ),
+        {"id": artifact_id, "owner": owner_id},
+    )
+    return res.rowcount or 0

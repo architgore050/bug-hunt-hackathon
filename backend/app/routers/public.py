@@ -1,5 +1,7 @@
 """Public endpoints: event info, rules. No private data, cacheable, SEO-safe."""
 
+# MANUAL-REVALIDATION (REM-079): owner-to-contract mapping for public endpoints must be reconciled with docs/API_REFERENCE.md before the event.
+
 from __future__ import annotations
 
 from fastapi import APIRouter
@@ -19,7 +21,7 @@ def public_event():
                 text(
                     "SELECT slug, name, status, starts_at, ends_at, timezone, duration_minutes, "
                     "max_participants, max_teams, rules_version, config FROM app.events "
-                    "WHERE status <> 'draft' ORDER BY created_at DESC LIMIT 1"
+                    "WHERE status IN ('live','ready') ORDER BY created_at DESC LIMIT 1"
                 )
             )
             .mappings()
@@ -52,7 +54,8 @@ def public_rules():
             s.execute(
                 text(
                     "SELECT r.version, r.body_md, r.frozen_at, e.name FROM app.rules_documents r "
-                    "JOIN app.events e ON e.id = r.event_id ORDER BY r.version DESC LIMIT 1"
+                    "JOIN app.events e ON e.id = r.event_id "
+                    "WHERE e.status IN ('live','ready') ORDER BY r.version DESC LIMIT 1"
                 )
             )
             .mappings()

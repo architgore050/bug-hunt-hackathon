@@ -1,14 +1,18 @@
 """Authoritative state endpoints: server time, round state, participant config.
 
 The server owns time and state (TIM-01/02). Clients poll /state every ~5 s
-during an active stage (spec 12.1 D1 realtime profile).
+during an active stage (spec 12.1 D1 realtime profile). REM-055: /state and
+/config are version-gated via ETag/If-None-Match so an unchanged payload
+short-circuits to 304 instead of being re-downloaded on every poll.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import text
 
 from ..db import app_session, db_now
@@ -23,6 +27,26 @@ def server_time():
     with app_session() as s:
         now = db_now(s)
     return {"server_time_ms": int(now.timestamp() * 1000), "server_time": now.isoformat()}
+
+
+def _payload_etag(payload: dict) -> str:
+    """Stable weak ETag from the canonical JSON of the response payload.
+
+    ``sort_keys`` + ``default=str`` makes the hash independent of dict
+    ordering and safe for datetimes, so the same logical payload always maps
+    to the same ETag across processes.
+    """
+    digest = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[:24]
+    return f'W/"state-{digest}"'
+
+
+def _not_modified(request: Request, response: Response, payload: dict) -> Response | None:
+    """Return a 304 Response when If-None-Match matches the payload ETag."""
+    etag = _payload_etag(payload)
+    if request.headers.get("If-None-Match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    response.headers["ETag"] = etag
+    return None
 
 
 def _effective_end(session, stage_row, user_id: str | None):
@@ -43,7 +67,11 @@ def _effective_end(session, stage_row, user_id: str | None):
 
 
 @router.get("/state")
-def round_state(p: Principal = Depends(get_principal)):
+def round_state(
+    p: Principal = Depends(get_principal),
+    request: Request = None,
+    response: Response = None,
+):
     require_role("participant", "reviewer", "organizer", "admin")(p)
     with app_session() as s:
         stage = (
@@ -53,8 +81,10 @@ def round_state(p: Principal = Depends(get_principal)):
                     "st.config, e.id AS event_id, e.status AS event_status, e.rules_version "
                     "FROM app.stages st JOIN app.events e ON e.id = st.event_id "
                     "WHERE e.status IN ('ready','live','closed','finalized') AND st.kind <> 'level' "
+                    "AND e.tenant_id = CAST(:tid AS uuid) "
                     "ORDER BY st.ordinal DESC, st.created_at DESC LIMIT 1"
-                )
+                ),
+                {"tid": p.tenant_id},
             )
             .mappings()
             .first()
@@ -74,7 +104,7 @@ def round_state(p: Principal = Depends(get_principal)):
             {"s": str(stage["id"])},
         ).first()
         paused = stage["status"] == "paused"
-    return {
+    payload = {
         "server_time": now.isoformat(),
         "round": {
             "id": str(stage["id"]),
@@ -92,10 +122,22 @@ def round_state(p: Principal = Depends(get_principal)):
         "leaderboard_version": int(lb[0] or 0),
         "leaderboard_visibility": lb[1] or "hidden",
     }
+    # REM-055: server_time changes every call, so it is excluded from the
+    # ETag payload (it would defeat caching); the pollable competition state
+    # is the round + versions block below.
+    etag_payload = {k: v for k, v in payload.items() if k != "server_time"}
+    not_modified = _not_modified(request, response, etag_payload)
+    if not_modified is not None:
+        return not_modified
+    return payload
 
 
 @router.get("/config")
-def participant_config(p: Principal = Depends(get_principal)):
+def participant_config(
+    p: Principal = Depends(get_principal),
+    request: Request = None,
+    response: Response = None,
+):
     """Stage configuration visible to the participant: caps, modes, scoring weights, flags (spec TABLE 15)."""
     require_role("participant", "reviewer", "organizer", "admin")(p)
     with app_session() as s:
@@ -104,8 +146,11 @@ def participant_config(p: Principal = Depends(get_principal)):
                 text(
                     "SELECT st.id, st.config, st.grace_seconds, e.config AS event_config FROM app.stages st "
                     "JOIN app.events e ON e.id = st.event_id "
-                    "WHERE e.status IN ('ready','live','closed','finalized') AND st.kind <> 'level' ORDER BY st.ordinal DESC LIMIT 1"
-                )
+                    "WHERE e.status IN ('ready','live','closed','finalized') AND st.kind <> 'level' "
+                    "AND e.tenant_id = CAST(:tid AS uuid) "
+                    "ORDER BY st.ordinal DESC LIMIT 1"
+                ),
+                {"tid": p.tenant_id},
             )
             .mappings()
             .first()
@@ -127,7 +172,7 @@ def participant_config(p: Principal = Depends(get_principal)):
         "penalty",
         "schedule",
     )
-    return {
+    payload = {
         "stage_id": str(stage["id"]),
         "grace_seconds": stage["grace_seconds"],
         "runner_enabled": bool(ev.get("features", {}).get("runner_enabled", False)),
@@ -137,3 +182,9 @@ def participant_config(p: Principal = Depends(get_principal)):
         "limits": {k: cfg.get(k) for k in safe_keys if cfg.get(k) is not None},
         "schedule": ev.get("schedule", []),
     }
+    # REM-055: config is effectively immutable while a stage is live, so an
+    # unchanged payload short-circuits to 304 with the ETag above.
+    not_modified = _not_modified(request, response, payload)
+    if not_modified is not None:
+        return not_modified
+    return payload

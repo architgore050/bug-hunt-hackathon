@@ -9,6 +9,8 @@ Implements AUTH-01..AUTH-07 from the blind-spot register:
 - Password hashing uses Argon2id with OWASP-minimum parameters.
 """
 
+# REM-002: the GT credential lives in db.py (gt_engine); this module never imports it — evaluator paths only.
+
 from __future__ import annotations
 
 import base64
@@ -24,8 +26,18 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from .config import settings
 
-_ph = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)  # OWASP minimum (AUTH-07)
+# REM-072: Argon2 resource bounds come from settings so operators can size the
+# hash/verify cost for the deployment instead of hardcoded defaults (a bounded
+# semaphore in the auth routers limits concurrent verification CPU/memory).
+_ph = PasswordHasher(
+    time_cost=settings.argon2_time_cost,
+    memory_cost=settings.argon2_memory_cost,
+    parallelism=settings.argon2_parallelism,
+)  # OWASP-minimum baseline (AUTH-07)
 
+# REM-026: the refresh cookie MUST be set with Secure, HttpOnly, SameSite=Strict
+# and Path=/v1/auth (attributes live in routers/auth.py, where the cookie is issued);
+# this key only encrypts the successor token handed back inside that cookie.
 _fernet = Fernet(base64.urlsafe_b64encode(hashlib.sha256(settings.jwt_secret.encode()).digest()))
 
 
@@ -74,6 +86,10 @@ def decrypt_successor(blob: str) -> str | None:
 def create_access_token(
     *, user_id: str, session_id: str, role: str, token_version: int, event_id: str | None = None
 ) -> tuple[str, datetime]:
+    # REM-025: fail closed — a production deployment must never sign tokens with
+    # the well-known development secret that ships in config.py defaults.
+    if settings.environment == "production" and settings.jwt_secret == "dev-only-insecure-secret-replace-me":
+        raise RuntimeError("refusing to issue access tokens: jwt_secret is the development default in production")
     now = datetime.now(UTC)
     exp = now + timedelta(seconds=settings.access_token_ttl_s)
     claims = {
