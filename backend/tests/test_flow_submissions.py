@@ -406,7 +406,9 @@ def test_negative_flag_rejections(client):
         ],
     )
     assert r3.status_code == 422, r3.text
-    assert r3.json()["error"]["code"] == "SUBMISSION_INVALID"
+    detail = r3.json()["detail"]
+    assert detail[0]["type"] == "too_long"
+    assert detail[0]["loc"] == ["body", "flags", 0, "locations"]
 
     # File outside repo (../ traversal) - L1
     r4 = submit_flags(
