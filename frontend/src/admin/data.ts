@@ -302,10 +302,10 @@ function buildSeed(): AdminWorkspace {
   ]
 
   const admins: AdminWorkspace['admins'] = [
-    { id: 'adm-1', name: 'Event Director', email: 'director@sdc.vitbhopal.ac.in', role: 'super_admin', status: 'active', createdAt: T('06:00'), lastLoginAt: T('10:00'), resetRequired: false, resetToken: null, resetTokenIssuedAt: null },
-    { id: 'adm-2', name: 'Kalpesh Parashar', email: 'kalpesh@sdc.vitbhopal.ac.in', role: 'admin', status: 'active', createdAt: T('06:00'), lastLoginAt: T('09:55'), resetRequired: false, resetToken: null, resetTokenIssuedAt: null },
-    { id: 'adm-3', name: 'Aashish Prasad', email: 'aashish@sdc.vitbhopal.ac.in', role: 'organizer', status: 'active', createdAt: T('06:00'), lastLoginAt: T('09:50'), resetRequired: false, resetToken: null, resetTokenIssuedAt: null },
-    { id: 'adm-4', name: 'Dr. Praveen Lalwani', email: 'praveen@vitbhopal.ac.in', role: 'viewer', status: 'active', createdAt: T('06:00'), lastLoginAt: null, resetRequired: false, resetToken: null, resetTokenIssuedAt: null },
+    { id: 'adm-1', name: 'Event Director', email: 'director@sdc.vitbhopal.ac.in', role: 'super_admin', status: 'active', createdAt: T('06:00'), lastLoginAt: T('10:00'), resetRequired: false },
+    { id: 'adm-2', name: 'Kalpesh Parashar', email: 'kalpesh@sdc.vitbhopal.ac.in', role: 'admin', status: 'active', createdAt: T('06:00'), lastLoginAt: T('09:55'), resetRequired: false },
+    { id: 'adm-3', name: 'Aashish Prasad', email: 'aashish@sdc.vitbhopal.ac.in', role: 'organizer', status: 'active', createdAt: T('06:00'), lastLoginAt: T('09:50'), resetRequired: false },
+    { id: 'adm-4', name: 'Dr. Praveen Lalwani', email: 'praveen@vitbhopal.ac.in', role: 'viewer', status: 'active', createdAt: T('06:00'), lastLoginAt: null, resetRequired: false },
   ]
 
   const notifications: AdminWorkspace['notifications'] = [

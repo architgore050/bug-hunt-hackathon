@@ -7,7 +7,6 @@ import Terms from './pages/Terms'
 import Login from './pages/Login'
 import NotFound from './pages/NotFound'
 import EventDetails from './pages/EventDetails'
-import Dashboard from './pages/participant/Dashboard'
 import LevelExplain from './pages/participant/LevelExplain'
 import LevelRules from './pages/participant/LevelRules'
 import LevelGuide from './pages/participant/LevelGuide'
@@ -23,7 +22,6 @@ import ReviewItem from './pages/review/ItemDetail'
 import AdminDashboard from './pages/admin/Dashboard'
 import AdminChallenges from './pages/admin/Challenges'
 import { AdminShell } from './admin/AdminShell'
-import { AdminProvider } from './admin/store'
 import AdminOverview from './pages/admin/Overview'
 import AdminParticipantsTeams from './pages/admin/ParticipantsTeams'
 import AdminEvaluations from './pages/admin/Evaluations'
@@ -35,13 +33,10 @@ import AdminAccounts from './pages/admin/AdminAccounts'
 import AdminNotificationCentre from './pages/admin/NotificationCentre'
 import AdminLogin from './pages/admin/AdminLogin'
 import AdminPasswordReset from './pages/admin/AdminPasswordReset'
+import ArenaApp from './arena/ArenaApp'
 
 function AdminResetWrapper() {
-  return (
-    <AdminProvider>
-      <AdminPasswordReset />
-    </AdminProvider>
-  )
+  return <AdminPasswordReset />
 }
 
 export default function App() {
@@ -58,14 +53,17 @@ export default function App() {
 
       <Route path="/login" element={<Login />} />
 
+      {/* Self-contained participant prototype with a swappable mock provider.
+          No auth or backend is required until DEMO_MODE is disabled. */}
+      <Route path="/arena/*" element={<ArenaApp />} />
+
       {/* Participant four-level experience */}
+      {/* Legacy dashboard URL now forwards participants to the arena UI. */}
       <Route
         path="/dashboard"
         element={
           <RequireRole roles={['participant']}>
-            <ConsoleShell area="/app">
-              <Dashboard />
-            </ConsoleShell>
+            <Navigate to="/arena/overview" replace />
           </RequireRole>
         }
       />
@@ -108,8 +106,8 @@ export default function App() {
           <RequireRole roles={['participant']}>
             <ConsoleShell area="/app">
               <Routes>
-                <Route index element={<Navigate to="/dashboard" replace />} />
-                <Route path="workspace" element={<Navigate to="/dashboard" replace />} />
+                <Route index element={<Navigate to="/arena/overview" replace />} />
+                <Route path="workspace" element={<Navigate to="/arena/overview" replace />} />
                 <Route path="submissions" element={<Submissions />} />
                 <Route path="submissions/:submissionId" element={<SubmissionDetail />} />
                 <Route path="results" element={<Results />} />
@@ -146,7 +144,7 @@ export default function App() {
       <Route
         path="/admin"
         element={
-          <RequireRole roles={['organizer', 'admin']} devPreview>
+          <RequireRole roles={['organizer', 'admin']}>
             <AdminShell>
               <Outlet />
             </AdminShell>

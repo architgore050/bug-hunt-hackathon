@@ -166,8 +166,6 @@ export interface AdminAccount {
   createdAt: string
   lastLoginAt: string | null
   resetRequired: boolean
-  resetToken: string | null
-  resetTokenIssuedAt: string | null
 }
 
 export interface LoginAttempt {

@@ -540,7 +540,13 @@ export default function Landing() {
             <Link to="/rules" className="landing-text-link">
               Competition rules →
             </Link>
+            <Link to="/arena/overview" className="btn btn-ghost">
+              Open demo workspace
+            </Link>
           </div>
+          <p className="muted small mono" style={{ marginTop: 10 }}>
+            Demo workspace uses sample data. No account is required.
+          </p>
         </div>
         <div className="landing-hero-illustration landing-reveal landing-d4">
           <FlagIllustration />
