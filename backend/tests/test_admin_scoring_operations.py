@@ -7,15 +7,18 @@ import hashlib
 import io
 import uuid
 
-from conftest import login, participant_client
+from conftest import STAFF_PW, login, participant_client
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 
-def _staff(client: TestClient, email: str = "organizer@example.com") -> TestClient:
+def _staff(client: TestClient, email: str = "organizer@example.com", *, step_up: bool = False) -> TestClient:
     token = login(client, email)["access_token"]
     staff = TestClient(client.app)
     staff.headers.update({"Authorization": f"Bearer {token}"})
+    if step_up:
+        response = staff.post("/v1/auth/step-up", json={"password": STAFF_PW})
+        assert response.status_code == 200, response.text
     return staff
 
 
@@ -84,8 +87,8 @@ def _insert_dispute(session, context: dict, submission_id: str, statement: str) 
 
 
 def test_manual_adjustments_are_admin_only_audited_and_append_only(client):
-    organizer = _staff(client)
-    admin = _staff(client, "admin@example.com")
+    organizer = _staff(client, step_up=True)
+    admin = _staff(client, "admin@example.com", step_up=True)
     context = _context()
     body = {
         "stage_id": str(context["stage_id"]),
@@ -365,7 +368,7 @@ def test_rejected_dispute_records_resolution_without_a_score_adjustment(client):
 
 def test_csv_exports_return_and_persist_exact_event_scoped_content(client):
     participant = participant_client(client, "p1.team1@example.com")
-    admin = _staff(client, "admin@example.com")
+    admin = _staff(client, "admin@example.com", step_up=True)
     assignments = participant.get("/v1/assignments")
     assert assignments.status_code == 200, assignments.text
     assignment = assignments.json()["assignments"][0]
