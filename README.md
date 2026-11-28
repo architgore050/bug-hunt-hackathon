@@ -7,8 +7,10 @@ defects, reproduce the failures, trace root causes, repair the app, and report
 everything through this platform. Verified CTF flags add capped bonus points.
 
 Everything in this repository is a v1 one-shot build: the platform runs
-locally today, is load-ready for a 50-participant rehearsal, and documents its
-own limits honestly.
+locally today and documents its own limits honestly. A 50-participant
+rehearsal is a provisional future target, not a passed capacity test; the
+current tool cannot simulate the full cap and `docs/LOAD_TEST_REPORT.md`
+is UNRUN.
 
 ## Repository layout
 
@@ -21,8 +23,7 @@ own limits honestly.
 | `challenge-app/` | "Papyrus", the Node/Express challenge app with 10 planted bugs + 2 flags |
 | `docs/` | The full documentation set (27+ documents, see below) |
 | `scripts/` | Dev bootstrap, migrations, seed reset, E2E journey, load test |
-| `.github/workflows/` | CI: backend tests + frontend build |
-| `.opencode/skills/` | Project-local OpenCode skills: eight-lens code review suite and `be-ambitious` |
+| `.github/workflows/` | CI: secret scan, backend quality, backend tests, backend e2e, frontend quality, source hygiene |
 
 ## Quick start (D0 local profile)
 
@@ -61,7 +62,8 @@ cd frontend && npm install && npm run dev   # proxies /v1 to :8100
 
 Verification: `scripts/e2e_journey.py` runs 46 checks against a running stack.
 `cd backend && pytest` must pass in full. Use the current CI run for exact
-results rather than relying on historical counts.
+results rather than relying on historical counts; no local pass receipt is
+stored in this repository.
 
 Demo accounts (dev only, password `Dev-only!Passw0rd!`): `organizer@`,
 `reviewer1@`, `p1.team1@` ... `example.com`. The Papyrus challenge app runs

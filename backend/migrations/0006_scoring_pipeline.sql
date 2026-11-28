@@ -1,4 +1,4 @@
--- 0005_scoring_pipeline.sql: additive schema for crash-resumable evaluation,
+-- 0006_scoring_pipeline.sql: additive schema for crash-resumable evaluation,
 -- per-member L3/L4 score tracking, and runner evaluation jobs.
 -- Forward-only expand migration; grants follow 0003_four_level_flow.sql.
 

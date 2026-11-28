@@ -94,13 +94,23 @@ def _already_awarded(session, stage_id: str, team_id: str) -> set[str]:
     return {r[0] for r in rows}
 
 
-def _has_component(session, submission_id: str, component: str) -> bool:
-    row = session.execute(
-        text(
-            "SELECT 1 FROM app.score_ledger_entries WHERE submission_id = CAST(:sid AS uuid) AND component = :c AND kind = 'award'"
-        ),
-        {"sid": submission_id, "c": component},
-    ).first()
+def _has_component(session, submission_id: str, component: str, award_unit_id: str | None = None) -> bool:
+    if award_unit_id is None:
+        row = session.execute(
+            text(
+                "SELECT 1 FROM app.score_ledger_entries WHERE submission_id = CAST(:sid AS uuid) "
+                "AND component = :c AND kind = 'award'"
+            ),
+            {"sid": submission_id, "c": component},
+        ).first()
+    else:
+        row = session.execute(
+            text(
+                "SELECT 1 FROM app.score_ledger_entries WHERE submission_id = CAST(:sid AS uuid) "
+                "AND award_unit_id = :unit AND component = :c AND kind = 'award'"
+            ),
+            {"sid": submission_id, "unit": award_unit_id, "c": component},
+        ).first()
     return row is not None
 
 
@@ -165,6 +175,7 @@ def evaluate_submission(payload: dict) -> None:
                     points=points["evidence_report"],
                     reason_code="MATCH_FULL",
                     note=f"bug={bug.code} L={decision.features.location_score:.2f} C={decision.features.category_score:.2f} A={decision.features.alias_evidence:.2f}",
+                    dedupe_award=True,
                 )
                 session.execute(
                     text(
@@ -330,9 +341,8 @@ def verify_flag(payload: dict) -> None:
 
 @jobs.handler("apply_review_outcome")
 def apply_review_outcome(payload: dict) -> None:
-    """Apply the reviewer decision into the ledger (code_review component)."""
+    """Apply the persisted reviewer decision to every claimed award unit."""
     submission_id = payload["submission_id"]
-    decision = payload["decision"]
     review_id = payload["review_id"]
     with app_session() as session:
         sub = _submission(session, submission_id)
@@ -340,35 +350,38 @@ def apply_review_outcome(payload: dict) -> None:
             return
         review = (
             session.execute(
-                text("SELECT decision, rubric, quality FROM app.reviews WHERE id = CAST(:r AS uuid)"), {"r": review_id}
+                text("SELECT submission_id, decision, rubric, quality FROM app.reviews WHERE id = CAST(:r AS uuid)"),
+                {"r": review_id},
             )
             .mappings()
             .first()
         )
-        if review is None:
+        if review is None or str(review["submission_id"]) != submission_id:
             return
+        decision = review["decision"]
         rubric = review["rubric"] or {}
         if decision in ("accept_full", "accept_partial"):
-            # claim award unit if the reviewer accepted without a deterministic match (unplanned/promoted path
-            # is a follow-up; in v1 the reviewer decision only scores code_review for deterministically matched
-            # or review-accepted reports that already claimed their unit)
-            claim = session.execute(
-                text("SELECT award_unit_id FROM app.award_claims WHERE submission_id = CAST(:sid AS uuid) LIMIT 1"),
-                {"sid": submission_id},
-            ).first()
+            claims = (
+                session.execute(
+                    text("SELECT award_unit_id FROM app.award_claims WHERE submission_id = CAST(:sid AS uuid)"),
+                    {"sid": submission_id},
+                )
+                .scalars()
+                .all()
+            )
             weights = (
                 (sub["event_config"] or {})
                 .get("scoring", {})
                 .get("weights", {"functional_test": 0.5, "code_review": 0.3, "evidence_report": 0.2})
             )
-            unit_id = claim[0] if claim else None
             review_quality = float(rubric.get("code_quality", 0)) * 0.4 + float(rubric.get("root_cause", 0)) * 0.6
             if decision == "accept_full":
                 review_quality = max(review_quality, 0.5)
             if decision == "accept_partial":
                 review_quality *= 0.5
-            if unit_id and not _has_component(session, submission_id, "code_review"):
-                # code_review points need bug points: fetch from gt
+            for unit_id in claims:
+                if _has_component(session, submission_id, "code_review", unit_id):
+                    continue
                 with gt_session() as gts:
                     bug = gts.execute(
                         text(
@@ -393,6 +406,7 @@ def apply_review_outcome(payload: dict) -> None:
                     points=pts["code_review"],
                     reason_code=decision.upper(),
                     note=f"rubric={json.dumps(rubric, default=str)[:300]}",
+                    dedupe_award=True,
                 )
             session.execute(
                 text("UPDATE app.submissions SET status='decided' WHERE id = CAST(:sid AS uuid)"),
@@ -400,11 +414,10 @@ def apply_review_outcome(payload: dict) -> None:
             )
         elif decision == "reject_invalid":
             session.execute(
-                text("UPDATE app.submissions SET status='decided' WHERE id = CAST(:sid AS uuid)"),
+                text("UPDATE app.submissions SET status='rejected_auto' WHERE id = CAST(:sid AS uuid)"),
                 {"sid": submission_id},
             )
         elif decision == "unplanned_valid":
-            # promotion is a P2 capability: route to organizer review, do not score automatically (INT-02)
             session.execute(
                 text("UPDATE app.submissions SET status='needs_review' WHERE id = CAST(:sid AS uuid)"),
                 {"sid": submission_id},
@@ -418,50 +431,53 @@ def apply_review_outcome(payload: dict) -> None:
 
 @jobs.handler("apply_test_results")
 def apply_test_results(payload: dict) -> None:
-    """Organizer-recorded functional test results -> functional_test ledger entry."""
+    """Organizer-recorded functional test results for every claimed award unit."""
     submission_id = payload["submission_id"]
     passed, total = int(payload["tests_passed"]), int(payload["tests_total"])
     with app_session() as session:
-        if _has_component(session, submission_id, "functional_test"):
-            return  # idempotent
         sub = _submission(session, submission_id)
         if sub is None:
             return
-        claim = session.execute(
-            text("SELECT award_unit_id FROM app.award_claims WHERE submission_id = CAST(:sid AS uuid) LIMIT 1"),
-            {"sid": submission_id},
-        ).first()
-        if claim is None:
-            return
+        claims = (
+            session.execute(
+                text("SELECT award_unit_id FROM app.award_claims WHERE submission_id = CAST(:sid AS uuid)"),
+                {"sid": submission_id},
+            )
+            .scalars()
+            .all()
+        )
         weights = (
             (sub["event_config"] or {})
             .get("scoring", {})
             .get("weights", {"functional_test": 0.5, "code_review": 0.3, "evidence_report": 0.2})
         )
-        unit_id = claim[0]
-        with gt_session() as gts:
-            bug = gts.execute(
-                text("SELECT points FROM gt.gt_bugs WHERE code = :c AND challenge_version_id = CAST(:v AS uuid)"),
-                {"c": unit_id, "v": str(sub["challenge_version_id"])},
-            ).first()
-        bug_points = float(bug[0]) if bug else 0.0
-        pts = compute_award_points(
-            bug_points, weights, test_fraction=passed / total, review_quality=0.0, evidence_quality=0.0
-        )
-        add_ledger_entry(
-            session,
-            tenant_id=str(sub["tenant_id"]),
-            event_id=str(sub["event_id"]),
-            stage_id=str(sub["stage_id"]),
-            team_id=str(sub["team_id"]),
-            submission_id=submission_id,
-            award_unit_id=unit_id,
-            component="functional_test",
-            kind="award",
-            points=pts["functional_test"],
-            reason_code="TEST_RESULTS",
-            note=f"passed {passed}/{total}",
-        )
+        for unit_id in claims:
+            if _has_component(session, submission_id, "functional_test", unit_id):
+                continue
+            with gt_session() as gts:
+                bug = gts.execute(
+                    text("SELECT points FROM gt.gt_bugs WHERE code = :c AND challenge_version_id = CAST(:v AS uuid)"),
+                    {"c": unit_id, "v": str(sub["challenge_version_id"])},
+                ).first()
+            bug_points = float(bug[0]) if bug else 0.0
+            pts = compute_award_points(
+                bug_points, weights, test_fraction=passed / total, review_quality=0.0, evidence_quality=0.0
+            )
+            add_ledger_entry(
+                session,
+                tenant_id=str(sub["tenant_id"]),
+                event_id=str(sub["event_id"]),
+                stage_id=str(sub["stage_id"]),
+                team_id=str(sub["team_id"]),
+                submission_id=submission_id,
+                award_unit_id=unit_id,
+                component="functional_test",
+                kind="award",
+                points=pts["functional_test"],
+                reason_code="TEST_RESULTS",
+                note=f"passed {passed}/{total}",
+                dedupe_award=True,
+            )
         from .scoring import finalize_submission_score
 
         finalize_submission_score(
@@ -486,14 +502,15 @@ def release_feedback(payload: dict) -> None:
         stage = (
             session.execute(
                 text(
-                    "SELECT st.id, st.config, e.id AS event_id, e.tenant_id, e.config AS event_config FROM app.stages st JOIN app.events e ON e.id = st.event_id WHERE st.id = CAST(:s AS uuid)"
+                    "SELECT st.id, st.status, st.config, e.id AS event_id, e.tenant_id, e.config AS event_config "
+                    "FROM app.stages st JOIN app.events e ON e.id = st.event_id WHERE st.id = CAST(:s AS uuid) FOR UPDATE OF st"
                 ),
                 {"s": stage_id},
             )
             .mappings()
             .first()
         )
-        if stage is None:
+        if stage is None or stage["status"] not in ("evaluating", "released", "final"):
             return
         cfg = stage["config"] or {}
         weights = (
@@ -507,11 +524,11 @@ def release_feedback(payload: dict) -> None:
         penalty_cfg = cfg.get("penalty", {"fp_factor": 0.25, "cap_fraction": 0.2})
         severity_points = {"low": 10, "medium": 20, "high": 30, "critical": 50}
 
-        # 1. code_review defaults for decided accepts without a code_review entry
+        # 1. code_review defaults for every accepted award unit without a review entry
         accepts = (
             session.execute(
                 text(
-                    "SELECT s.id, s.team_id, s.matched_bug_code, s.challenge_version_id, e.tenant_id "
+                    "SELECT s.id, s.team_id, s.challenge_version_id, e.tenant_id "
                     "FROM app.submissions s JOIN app.events e ON e.id = s.event_id "
                     "WHERE s.stage_id = CAST(:s AS uuid) AND s.status IN ('decided','matched_auto','ledgered') "
                     "AND s.kind IN ('bug_report', 'level_report') AND s.matched_bug_code IS NOT NULL"
@@ -522,37 +539,50 @@ def release_feedback(payload: dict) -> None:
             .all()
         )
         for a in accepts:
-            if _has_component(session, str(a["id"]), "code_review"):
-                continue
-            with gt_session() as gts:
-                bug = gts.execute(
-                    text("SELECT points FROM gt.gt_bugs WHERE code = :c AND challenge_version_id = CAST(:v AS uuid)"),
-                    {"c": a["matched_bug_code"], "v": str(a["challenge_version_id"])},
-                ).first()
-            bug_points = float(bug[0]) if bug else 0.0
-            pts = compute_award_points(
-                bug_points, weights, test_fraction=0.0, review_quality=default_review_quality, evidence_quality=0.0
+            claims = (
+                session.execute(
+                    text("SELECT award_unit_id FROM app.award_claims WHERE submission_id = CAST(:sid AS uuid)"),
+                    {"sid": str(a["id"])},
+                )
+                .scalars()
+                .all()
             )
-            add_ledger_entry(
-                session,
-                tenant_id=str(a["tenant_id"]),
-                event_id=str(stage["event_id"]),
-                stage_id=stage_id,
-                team_id=str(a["team_id"]),
-                submission_id=str(a["id"]),
-                award_unit_id=a["matched_bug_code"],
-                component="code_review",
-                kind="award",
-                points=pts["code_review"],
-                reason_code="RELEASE_DEFAULT",
-                note=f"default review quality {default_review_quality} applied at release (disputable)",
-            )
-            session.execute(
-                text(
-                    "UPDATE app.submissions SET status='ledgered', evaluation_state='SCORED' WHERE id = CAST(:sid AS uuid)"
-                ),
-                {"sid": str(a["id"])},
-            )
+            for unit_id in claims:
+                if _has_component(session, str(a["id"]), "code_review", unit_id):
+                    continue
+                with gt_session() as gts:
+                    bug = gts.execute(
+                        text(
+                            "SELECT points FROM gt.gt_bugs WHERE code = :c AND challenge_version_id = CAST(:v AS uuid)"
+                        ),
+                        {"c": unit_id, "v": str(a["challenge_version_id"])},
+                    ).first()
+                bug_points = float(bug[0]) if bug else 0.0
+                pts = compute_award_points(
+                    bug_points, weights, test_fraction=0.0, review_quality=default_review_quality, evidence_quality=0.0
+                )
+                add_ledger_entry(
+                    session,
+                    tenant_id=str(a["tenant_id"]),
+                    event_id=str(stage["event_id"]),
+                    stage_id=stage_id,
+                    team_id=str(a["team_id"]),
+                    submission_id=str(a["id"]),
+                    award_unit_id=unit_id,
+                    component="code_review",
+                    kind="award",
+                    points=pts["code_review"],
+                    reason_code="RELEASE_DEFAULT",
+                    note=f"default review quality {default_review_quality} applied at release (disputable)",
+                    dedupe_award=True,
+                )
+            if claims:
+                session.execute(
+                    text(
+                        "UPDATE app.submissions SET status='ledgered', evaluation_state='SCORED' WHERE id = CAST(:sid AS uuid)"
+                    ),
+                    {"sid": str(a["id"])},
+                )
 
         # 2. penalties for definitively invalid reports, capped (applied at release only)
         if float(penalty_cfg.get("fp_factor", 0)) > 0:
@@ -568,6 +598,15 @@ def release_feedback(payload: dict) -> None:
                 .all()
             )
             for r in rejects:
+                existing = session.execute(
+                    text(
+                        "SELECT 1 FROM app.score_ledger_entries WHERE stage_id = CAST(:s AS uuid) "
+                        "AND team_id = CAST(:t AS uuid) AND reason_code = 'INVALID_REPORT_PENALTY' LIMIT 1"
+                    ),
+                    {"s": stage_id, "t": str(r["team_id"])},
+                ).first()
+                if existing:
+                    continue
                 penalty_each = severity_points["low"] * float(penalty_cfg.get("fp_factor", 0.25))
                 cap = _stage_max_points(session, stage_id) * float(penalty_cfg.get("cap_fraction", 0.2))
                 penalty_total = min(penalty_each * int(r["n"]), cap)
@@ -585,21 +624,36 @@ def release_feedback(payload: dict) -> None:
                         note=f"{int(r['n'])} invalid report(s), capped at {cap:.1f}",
                     )
 
-        # 3. publish feedback
-        session.execute(
-            text("UPDATE app.submissions SET feedback_released = true WHERE stage_id = CAST(:s AS uuid)"),
-            {"s": stage_id},
-        )
+        # 3. publish feedback only for the actual release transition
+        if stage["status"] in ("released", "final"):
+            session.execute(
+                text(
+                    "UPDATE app.submissions SET feedback_released = true, points_visible = COALESCE(("
+                    "SELECT SUM(l.points) FROM app.score_ledger_entries l WHERE l.submission_id = app.submissions.id"
+                    "), 0) WHERE stage_id = CAST(:s AS uuid)"
+                ),
+                {"s": stage_id},
+            )
 
 
 def _stage_max_points(session, stage_id: str) -> float:
-    rows = session.execute(
-        text(
-            "SELECT COALESCE(SUM(b.points), 0) FROM gt.gt_bugs b WHERE b.challenge_version_id IN "
-            "(SELECT challenge_version_id FROM app.assignments WHERE stage_id = CAST(:s AS uuid))"
-        ),
-        {"s": stage_id},
-    ).scalar_one()
+    challenge_ids = (
+        session.execute(
+            text("SELECT challenge_version_id FROM app.assignments WHERE stage_id = CAST(:s AS uuid)"),
+            {"s": stage_id},
+        )
+        .scalars()
+        .all()
+    )
+    if not challenge_ids:
+        return 0.0
+    with gt_session() as gts:
+        rows = gts.execute(
+            text(
+                "SELECT COALESCE(SUM(points), 0) FROM gt.gt_bugs WHERE challenge_version_id = ANY(CAST(:ids AS uuid[]))"
+            ),
+            {"ids": [str(value) for value in challenge_ids]},
+        ).scalar_one()
     return float(rows or 0)
 
 
@@ -610,13 +664,16 @@ def refresh_leaderboard(payload: dict) -> None:
     with app_session() as session:
         stage = (
             session.execute(
-                text("SELECT id, config, event_id FROM app.stages WHERE id = CAST(:s AS uuid)"), {"s": stage_id}
+                text("SELECT id, status, config, event_id FROM app.stages WHERE id = CAST(:s AS uuid)"),
+                {"s": stage_id},
             )
             .mappings()
             .first()
         )
         if stage is None:
             return
+        if stage["status"] in ("released", "final"):
+            release_feedback({"stage_id": stage_id})
         cfg = stage["config"] or {}
         if visibility is None:
             mode = cfg.get("leaderboard_mode", "hidden")

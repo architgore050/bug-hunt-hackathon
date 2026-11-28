@@ -1,4 +1,4 @@
-Status: describes the implementation as of 2026-11-22
+Status: describes the implementation as of 2026-11-28
 
 # Performance and Capacity
 
@@ -21,11 +21,11 @@ These are testable targets, not promises: the master docs explicitly forbid clai
 
 ## 2. What has been measured so far
 
-Nothing that qualifies as a capacity measurement. Verified on 2026-11-22:
+Nothing that qualifies as a capacity measurement. Verified on 2026-11-28:
 
-- No load-test scripts and no `docs/LOAD_TEST_REPORT.md` exist in this repository (checked the whole tree). The intended home for the report is `docs/LOAD_TEST_REPORT.md`; when the first load test runs, its actual numbers go there and this section gets updated with the reference. Until then: UNRUN.
-- What HAS been exercised at low scale in development: the full e2e journey (`scripts/e2e_journey.py`, 46 checks) runs against a local dev stack with 11 seeded participants in 2 teams, exercising submission acceptance, idempotent replay, cooldown rejection, evaluation, review, release and dispute. This proves correctness of the paths, not capacity.
-- The pytest suite (34 tests) runs against a real PostgreSQL with the production migration (CI uses a PostgreSQL 17 service container; local dev clusters may run 16 or 17); no behavior has been validated against anything other than real PostgreSQL.
+- `scripts/load_test.py` and `docs/LOAD_TEST_REPORT.md` both exist in this repository. No run has produced accepted numbers yet; every result cell in the report is UNRUN. When the first full-path rehearsal runs, its actual numbers go into the report and this section gets updated with the reference. Until then the capacity claim stays provisional.
+- Static inspection confirms the current seed creates 9 participants in 2 teams. The historical claim that the full e2e journey (`scripts/e2e_journey.py`, 46 checks) was exercised against that seed is UNVERIFIED because no committed run receipt proves it. The journey checks cover submission acceptance, idempotent replay, cooldown rejection, evaluation, review, release and dispute; even an executed run would prove correctness of those paths, not capacity.
+- The pytest suite (75 tests) runs against a real PostgreSQL with all production migrations (CI uses a PostgreSQL 17 service container; local dev clusters may run 16 or 17); no behavior has been validated against anything other than real PostgreSQL.
 
 Assumption (explicit): development-machine latency gives no basis for p95 claims on the D1 VM. Do not cite dev timings as benchmarks.
 
@@ -77,9 +77,9 @@ From `migrations/0001_init.sql`:
 
 The cap stays provisional until ALL of these pass, in order:
 
-1. Load test scripts written and run from OUTSIDE the provider through the real Cloudflare/Tunnel path (master docs 18.2): realistic journeys, realistic payload sizes, recorded hardware, region, image digests, script commit, concurrency ramp and duration.
+1. `scripts/load_test.py` extended as needed and run from OUTSIDE the provider through the real Cloudflare/Tunnel path (master docs 18.2): realistic journeys, realistic payload sizes, recorded hardware, region, image digests, script commit, concurrency ramp and duration.
 2. Submission ack p95 <= 500 ms and reads p95 <= 300 ms under 50-participant journeys, with server-side and end-to-end latency reported separately.
 3. Queue age, dead letters, lock waits, connection usage, CPU/RSS/disk recorded during the run and within budget.
-4. Results written to `docs/LOAD_TEST_REPORT.md` (does not exist yet) and the `load_test_50` readiness item checked; only then can the event go live at the 50-participant cap (the readiness gate enforces the checklist mechanically).
+4. Results written to the existing `docs/LOAD_TEST_REPORT.md` (currently all UNRUN) and the `load_test_50` readiness item checked; only then can the event go live at the 50-participant cap (the readiness gate enforces the checklist mechanically).
 
 A 10x-overhead load test at 500 synthetic users is the aspirational master-doc bar; for the v1 free-VM profile the binding gate is the 50-user full-path rehearsal above.

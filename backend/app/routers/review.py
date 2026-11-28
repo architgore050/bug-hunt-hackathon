@@ -195,7 +195,7 @@ def record_decision(item_id: str, body: DecisionIn, request: Request, p: Princip
             raise ApiError("NOT_FOUND")
         if row["status"] == "decided":
             raise ApiError("VALIDATION_ERROR", details={"decision": "Already decided."})
-        if row["status"] == "claimed" and row["claimed_by"] is not None and str(row["claimed_by"]) != p.id:
+        if row["status"] != "claimed" or row["claimed_by"] is None or str(row["claimed_by"]) != p.id:
             raise ApiError("AUTH_FORBIDDEN", message="Claim this item before deciding.")
 
         sub_status = {
@@ -228,6 +228,8 @@ def record_decision(item_id: str, body: DecisionIn, request: Request, p: Princip
             text("UPDATE app.submissions SET status=:st WHERE id = CAST(:sid AS uuid)"),
             {"st": sub_status, "sid": str(row["submission_id"])},
         )
+        # The decision is also stored in app.reviews; the worker treats the
+        # persisted row as authoritative and ignores this payload copy.
         enqueue(
             s,
             "apply_review_outcome",

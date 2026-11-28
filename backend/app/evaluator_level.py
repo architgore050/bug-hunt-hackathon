@@ -238,6 +238,7 @@ def evaluate_level_submission(payload: dict) -> None:
                         points=points["evidence_report"],
                         reason_code="MATCH_FULL",
                         note=f"bug={bug.code} L={decision.features.location_score:.2f} C={decision.features.category_score:.2f} A={decision.features.alias_evidence:.2f}",
+                        dedupe_award=True,
                     )
                     jobs.enqueue(
                         session,
@@ -279,6 +280,9 @@ def evaluate_level_submission(payload: dict) -> None:
             eval_state = "SCORED"
         elif any(o in ("accept_partial", "needs_review") for o in outcomes):
             new_status = "needs_review"
+            eval_state = "SCORED"
+        elif outcomes and all(o == "duplicate" for o in outcomes):
+            new_status = "duplicate"
             eval_state = "SCORED"
         elif outcomes and all(o in ("reject_invalid", "duplicate") for o in outcomes):
             new_status = "rejected_auto"

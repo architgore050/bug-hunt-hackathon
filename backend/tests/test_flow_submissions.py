@@ -314,6 +314,22 @@ def test_l1_release_feedback_applies_default_code_review_and_penalty(client):
                 {"id": r.json()["submission_id"]},
             ).scalar_one()
         )
+    # Feedback stays hidden while the stage is not yet released (INT-01).
+    release_feedback({"stage_id": stage_id})
+    with app_session() as s:
+        released = s.execute(
+            text("SELECT feedback_released FROM app.submissions WHERE id = CAST(:id AS uuid)"),
+            {"id": r.json()["submission_id"]},
+        ).scalar_one()
+        assert released is False
+
+    # Release the stage, then feedback becomes visible.
+    with app_session() as s:
+        s.execute(
+            text("UPDATE app.stages SET status = 'released' WHERE id = CAST(:id AS uuid)"),
+            {"id": stage_id},
+        )
+
     release_feedback({"stage_id": stage_id})
     with app_session() as s:
         released = s.execute(
