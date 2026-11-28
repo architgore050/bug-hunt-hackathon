@@ -134,6 +134,11 @@ The evaluator's decision paths (deterministic matcher, then evaluator jobs):
 - Evaluation computes release defaults and penalties while feedback stays
   hidden. Release publishes feedback and per-submission points. A stage-row lock
   and existing-entry checks make repeated evaluate/release delivery idempotent.
+  Award rows are also constrained unique by submission, award unit and component,
+  so concurrent review, test-result and release jobs cannot double-score a unit.
+- Per-submission points are the sum of ledger rows linked to that submission.
+  Team penalties have no submission link; they appear in the team total and in
+  the results `penalties` field, not inside each submission's points.
 
 ## 4. CTF bonus and caps
 
@@ -165,7 +170,9 @@ penalty.applies = at_release_only):
   min(2.5 x invalid_count, 55).
 - The release job appends one penalty entry per team: component penalty, kind
   penalty, negative points, reason INVALID_REPORT_PENALTY, note with the count
-  and the cap.
+  and the cap. The first application freezes the invalid-report count; reports
+  rejected between `evaluate` and `release` do not change that penalty. An
+  organizer correction requires an explicit linked adjustment entry.
 - Never shown live: before release the participant list collapses all
   in-flight statuses to "received", so teams cannot probe the evaluator's
   verdicts (and template-report probing is a rules violation).

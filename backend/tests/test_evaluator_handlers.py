@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 import pytest
 from app import evaluator, evaluator_level, security
 from app.db import app_session, gt_session
-from app.scoring import claim_award_unit
+from app.scoring import add_ledger_entry, claim_award_unit
 from sqlalchemy import text
 
 
@@ -658,3 +660,81 @@ def test_leaderboard_refresh_finalizes_release_before_taking_snapshot(evaluation
     row = next(row for row in snapshot["rows"] if row["team_id"] == evaluation_case["team_id"])
     assert row["score"] == 41.5
     assert penalty_count == 1
+
+
+def test_award_ledger_deduplicates_a_repeated_unit(evaluation_case):
+    bug_code = _insert_bug(evaluation_case)
+    submission_id = _insert_submission(evaluation_case, "bug_report", {})
+    with app_session() as session:
+        assert claim_award_unit(
+            session,
+            event_id=evaluation_case["event_id"],
+            stage_id=evaluation_case["stage_id"],
+            team_id=evaluation_case["team_id"],
+            award_unit_id=bug_code,
+            submission_id=submission_id,
+        )
+        first = add_ledger_entry(
+            session,
+            tenant_id=evaluation_case["tenant_id"],
+            event_id=evaluation_case["event_id"],
+            stage_id=evaluation_case["stage_id"],
+            team_id=evaluation_case["team_id"],
+            submission_id=submission_id,
+            award_unit_id=bug_code,
+            component="functional_test",
+            kind="award",
+            points=50.0,
+            reason_code="TEST_RESULTS",
+            dedupe_award=True,
+        )
+        duplicate = add_ledger_entry(
+            session,
+            tenant_id=evaluation_case["tenant_id"],
+            event_id=evaluation_case["event_id"],
+            stage_id=evaluation_case["stage_id"],
+            team_id=evaluation_case["team_id"],
+            submission_id=submission_id,
+            award_unit_id=bug_code,
+            component="functional_test",
+            kind="award",
+            points=50.0,
+            reason_code="TEST_RESULTS",
+            dedupe_award=True,
+        )
+
+    assert first is not None
+    assert duplicate is None
+    assert len([row for row in _ledger(submission_id) if row["component"] == "functional_test"]) == 1
+
+
+def test_concurrent_test_result_delivery_scores_one_award(evaluation_case, monkeypatch):
+    bug_code = _insert_bug(evaluation_case)
+    submission_id = _insert_submission(evaluation_case, "bug_report", {})
+    with app_session() as session:
+        assert claim_award_unit(
+            session,
+            event_id=evaluation_case["event_id"],
+            stage_id=evaluation_case["stage_id"],
+            team_id=evaluation_case["team_id"],
+            award_unit_id=bug_code,
+            submission_id=submission_id,
+        )
+
+    original_add = evaluator.add_ledger_entry
+    barrier = Barrier(2)
+
+    def synchronized_add(*args, **kwargs):
+        barrier.wait(timeout=10)
+        return original_add(*args, **kwargs)
+
+    monkeypatch.setattr(evaluator, "add_ledger_entry", synchronized_add)
+    payload = {"submission_id": submission_id, "tests_passed": 1, "tests_total": 1}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(evaluator.apply_test_results, payload) for _ in range(2)]
+        for future in futures:
+            future.result(timeout=10)
+
+    entries = [row for row in _ledger(submission_id) if row["component"] == "functional_test"]
+    assert len(entries) == 1
+    assert float(entries[0]["points"]) == 50.0

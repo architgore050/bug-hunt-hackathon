@@ -175,6 +175,7 @@ def evaluate_submission(payload: dict) -> None:
                     points=points["evidence_report"],
                     reason_code="MATCH_FULL",
                     note=f"bug={bug.code} L={decision.features.location_score:.2f} C={decision.features.category_score:.2f} A={decision.features.alias_evidence:.2f}",
+                    dedupe_award=True,
                 )
                 session.execute(
                     text(
@@ -405,6 +406,7 @@ def apply_review_outcome(payload: dict) -> None:
                     points=pts["code_review"],
                     reason_code=decision.upper(),
                     note=f"rubric={json.dumps(rubric, default=str)[:300]}",
+                    dedupe_award=True,
                 )
             session.execute(
                 text("UPDATE app.submissions SET status='decided' WHERE id = CAST(:sid AS uuid)"),
@@ -474,6 +476,7 @@ def apply_test_results(payload: dict) -> None:
                 points=pts["functional_test"],
                 reason_code="TEST_RESULTS",
                 note=f"passed {passed}/{total}",
+                dedupe_award=True,
             )
 
 
@@ -558,6 +561,7 @@ def release_feedback(payload: dict) -> None:
                     points=pts["code_review"],
                     reason_code="RELEASE_DEFAULT",
                     note=f"default review quality {default_review_quality} applied at release (disputable)",
+                    dedupe_award=True,
                 )
             if claims:
                 session.execute(

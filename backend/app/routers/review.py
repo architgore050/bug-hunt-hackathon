@@ -228,6 +228,8 @@ def record_decision(item_id: str, body: DecisionIn, request: Request, p: Princip
             text("UPDATE app.submissions SET status=:st WHERE id = CAST(:sid AS uuid)"),
             {"st": sub_status, "sid": str(row["submission_id"])},
         )
+        # The decision is also stored in app.reviews; the worker treats the
+        # persisted row as authoritative and ignores this payload copy.
         enqueue(
             s,
             "apply_review_outcome",
