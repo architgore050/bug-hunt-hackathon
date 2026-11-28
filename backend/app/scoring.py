@@ -262,15 +262,9 @@ def finalize_submission_score(
     total = round(_submission_ledger_total(session, submission_id), 2)
 
     # Upsert the per-member submission_scores row.
-    existing = (
-        session.execute(
-            text("SELECT id, is_team_best FROM app.submission_scores WHERE submission_id = CAST(:sid AS uuid)"),
-            {"sid": submission_id},
-        )
-        .mappings()
-        .first()
-    )
-    if existing is None:
+    # ON CONFLICT touches only the score fields; is_team_best is never
+    # overwritten here — it is decided by the aggregation pass below.
+    was_best = bool(
         session.execute(
             text(
                 "INSERT INTO app.submission_scores "
@@ -278,7 +272,10 @@ def finalize_submission_score(
                 "total_points, components, is_team_best, received_at, updated_at) "
                 "VALUES (CAST(:id AS uuid), CAST(:eid AS uuid), CAST(:stid AS uuid), "
                 "CAST(:tid AS uuid), CAST(:sub AS uuid), CAST(:aid AS uuid), :pts, "
-                "CAST('{}' AS jsonb), false, :rec, now())"
+                "CAST('{}' AS jsonb), false, :rec, now()) "
+                "ON CONFLICT (submission_id) DO UPDATE "
+                "SET total_points = EXCLUDED.total_points, updated_at = now() "
+                "RETURNING is_team_best"
             ),
             {
                 "id": str(uuid.uuid4()),
@@ -290,17 +287,8 @@ def finalize_submission_score(
                 "pts": total,
                 "rec": received_at,
             },
-        )
-        was_best = False
-    else:
-        session.execute(
-            text(
-                "UPDATE app.submission_scores SET total_points = :pts, updated_at = now() "
-                "WHERE submission_id = CAST(:sid AS uuid)"
-            ),
-            {"sid": submission_id, "pts": total},
-        )
-        was_best = bool(existing["is_team_best"])
+        ).scalar_one()
+    )
 
     # Best-member aggregation applies only to L3/L4 artifact submissions.
     if kind != "level_artifact":
