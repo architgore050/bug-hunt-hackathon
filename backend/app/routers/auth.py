@@ -3,7 +3,7 @@
 - POST /auth/login: rate limited, generic error (no account enumeration).
 - POST /auth/refresh: cookie + CSRF headers; rotates the refresh token family;
   reuse outside the grace window revokes the family (AUTH-4).
-- POST /auth/activate: single-use invite token -> set password + accept rules.
+- POST /auth/activate: single-use invite token -> create a new account or link an existing active same-role account, then accept rules. Existing credentials are never reset.
 - POST /auth/password/reset-request + /reset.
 - GET /me, /me/sessions, POST /me/acceptances, POST /auth/step-up.
 """
@@ -398,7 +398,7 @@ def activate(body: ActivateIn, request: Request):
         inv = (
             s.execute(
                 text(
-                    "SELECT id, email, team_id, role, used_at, expires_at, event_id FROM app.invites WHERE token_hash = :th"
+                    "SELECT id, email, team_id, role, used_at, expires_at, event_id FROM app.invites WHERE token_hash = :th FOR UPDATE"
                 ),
                 {"th": th},
             )
@@ -409,32 +409,54 @@ def activate(body: ActivateIn, request: Request):
             raise ApiError(
                 "NOT_FOUND", message="This invite is invalid or expired. Request a new invite from the organizers."
             )
-        user_id = str(uuid7())
-        pw_hash = security.hash_password(body.password)
-        s.execute(
-            text(
-                "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash, status, registration_id) "
-                "SELECT :id, e.tenant_id, :email, split_part(:email, '@', 1), :role, :pw, 'active', :reg "
-                "FROM app.events e WHERE e.id = CAST(:ev AS uuid) "
-                "ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, status = 'active' RETURNING id"
-            ),
-            {
-                "id": user_id,
-                "email": inv["email"],
-                "role": inv["role"],
-                "pw": pw_hash,
-                "reg": str(uuid7())[:8],
-                "ev": str(inv["event_id"]),
-            },
-        )
-        urow = (
+        existing = (
             s.execute(
-                text("SELECT id, tenant_id, role, token_version FROM app.users WHERE email = :e"), {"e": inv["email"]}
+                text("SELECT id, role, status FROM app.users WHERE lower(email) = lower(:e)"),
+                {"e": inv["email"]},
             )
             .mappings()
             .first()
         )
-        s.execute(text("UPDATE app.invites SET used_at = now() WHERE id = CAST(:i AS uuid)"), {"i": str(inv["id"])})
+        if existing is None:
+            user_id = str(uuid7())
+            pw_hash = security.hash_password(body.password)
+            s.execute(
+                text(
+                    "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash, status, registration_id) "
+                    "SELECT CAST(:id AS uuid), e.tenant_id, CAST(:email AS varchar), split_part(CAST(:email AS text), '@', 1), "
+                    "CAST(:role AS varchar), :pw, 'active', :reg "
+                    "FROM app.events e WHERE e.id = CAST(:ev AS uuid) ON CONFLICT (email) DO NOTHING"
+                ),
+                {
+                    "id": user_id,
+                    "email": inv["email"],
+                    "role": inv["role"],
+                    "pw": pw_hash,
+                    "reg": str(uuid7())[:8],
+                    "ev": str(inv["event_id"]),
+                },
+            )
+        urow = (
+            s.execute(
+                text("SELECT id, tenant_id, role, status, token_version FROM app.users WHERE lower(email) = lower(:e)"),
+                {"e": inv["email"]},
+            )
+            .mappings()
+            .one()
+        )
+        # An invite may add an existing account to a team, but it is not a
+        # credential-recovery flow. Never let a lower-privileged invite reset a
+        # privileged account's password, change its role, or reactivate it.
+        if urow["role"] != inv["role"] or urow["status"] != "active":
+            raise ApiError("AUTH_FORBIDDEN", message="This invite cannot activate the existing account.")
+        consumed = s.execute(
+            text("UPDATE app.invites SET used_at = now() WHERE id = CAST(:i AS uuid) AND used_at IS NULL"),
+            {"i": str(inv["id"])},
+        )
+        if consumed.rowcount != 1:
+            raise ApiError(
+                "NOT_FOUND", message="This invite is invalid or expired. Request a new invite from the organizers."
+            )
         if inv["team_id"]:
             s.execute(
                 text(
