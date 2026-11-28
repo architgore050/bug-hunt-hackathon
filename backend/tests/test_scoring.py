@@ -241,7 +241,7 @@ def ctf_flag_scenario(seeded_db, request):
     with app_session() as s:
         submission_index = 0
         for team_id, user_id in submitters:
-            for flag_key, code, flag_id in flags:
+            for flag_key, code, _flag_id in flags:
                 submission_id = str(uuid.uuid4())
                 s.execute(
                     text(

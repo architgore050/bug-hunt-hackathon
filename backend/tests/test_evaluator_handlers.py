@@ -73,9 +73,10 @@ def _insert_bug(case: dict, *, points: float = 100, category: str = "logic") -> 
     return code
 
 
-def _insert_flag(case: dict, *, max_awards: int = 99) -> tuple[str, str]:
+def _insert_flag(case: dict, *, max_awards: int = 99) -> tuple[str, str, str]:
     flag_key = f"TEST-FLAG-{uuid.uuid4().hex[:8]}"
     code = f"FLAG{{synthetic_{uuid.uuid4().hex}}}"
+    flag_id = str(uuid.uuid4())
     with gt_session() as session:
         session.execute(
             text(
@@ -84,14 +85,14 @@ def _insert_flag(case: dict, *, max_awards: int = 99) -> tuple[str, str]:
                 "VALUES (CAST(:id AS uuid), CAST(:version AS uuid), :key, :hash, 40, :max_awards)"
             ),
             {
-                "id": str(uuid.uuid4()),
+                "id": flag_id,
                 "version": case["challenge_version_id"],
                 "key": flag_key,
                 "hash": security.flag_code_hash(code),
                 "max_awards": max_awards,
             },
         )
-    return flag_key, code
+    return flag_key, code, flag_id
 
 
 def _insert_submission(
@@ -199,7 +200,7 @@ def test_invalid_flag_is_rejected_without_claim_ledger_or_job(evaluation_case):
 
 
 def test_flag_max_awards_allows_one_sequential_team_and_marks_the_other_duplicate(evaluation_case):
-    flag_key, code = _insert_flag(evaluation_case, max_awards=1)
+    flag_key, code, flag_id = _insert_flag(evaluation_case, max_awards=1)
     with app_session() as session:
         other = (
             session.execute(
@@ -234,14 +235,14 @@ def test_flag_max_awards_allows_one_sequential_team_and_marks_the_other_duplicat
     assert float(_ledger(first)[0]["points"]) == 40.0
     with app_session() as session:
         claims = session.execute(
-            text("SELECT submission_id FROM app.award_claims WHERE award_unit_id = :key"), {"key": flag_key}
+            text("SELECT submission_id FROM app.award_claims WHERE award_unit_id = :key"), {"key": flag_id}
         ).all()
     assert len(claims) == 1
     assert str(claims[0][0]) == first
 
 
 def test_second_team_submission_for_same_flag_does_not_duplicate_team_award(evaluation_case):
-    flag_key, code = _insert_flag(evaluation_case, max_awards=99)
+    flag_key, code, flag_id = _insert_flag(evaluation_case, max_awards=99)
     first = _insert_submission(evaluation_case, "ctf_flag", {}, flag_code=code)
     second = _insert_submission(evaluation_case, "ctf_flag", {}, flag_code=code)
 

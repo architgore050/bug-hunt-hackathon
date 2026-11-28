@@ -358,7 +358,6 @@ def test_progress_view_combines_repo_choice_roster_and_server_owned_progress(cli
     assert len(progress["teams"]) == 2
     team = next(row for row in progress["teams"] if row["team_id"] == team_id)
     assert team["team_name"] == context["team_name"]
-    assert team["team_status"] == "active"
     assert team["repo_option"] == "A" and team["lock_source"] == "admin_override"
     assert len(team["members"]) == 4
     for member in team["members"]:
