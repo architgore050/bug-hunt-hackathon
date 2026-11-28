@@ -1,12 +1,55 @@
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import type { PublicEvent, TimeResponse } from '../lib/types'
 import { clockOffset, fmtDateTime, proposedDateLabel } from '../lib/format'
-import { Chip, CountdownTimer, ErrorBanner, LoadingLine, Panel, SectionHeading, StatusChip, useNowTick } from '../ui/components'
+import { CountdownTimer, ErrorBanner, LoadingLine, Panel, SectionHeading, StatusChip, useNowTick } from '../ui/components'
 import { FlagIcon, ShieldIcon, TerminalCaretIcon } from '../ui/icons'
 
 const EVENT_DATE_LINE = 'Proposed date: 6 December 2026, Asia/Kolkata (IST)'
+
+function useScrollReveal(): void {
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined' || !('IntersectionObserver' in window)) return
+
+    // Opt elements into hiding only once the reveal machinery is confirmed
+    // to run, and before first paint (useLayoutEffect). Without this class
+    // the CSS keeps .scroll-reveal content visible, so users without JS or
+    // without IntersectionObserver never lose access to the sections.
+    document.documentElement.classList.add('js-reveal')
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-revealed')
+            observer.unobserve(entry.target)
+          }
+        }
+      },
+      { threshold: 0.08, rootMargin: '0px 0px -30px 0px' }
+    )
+
+    const elements = document.querySelectorAll('.scroll-reveal')
+    elements.forEach((el) => observer.observe(el))
+
+    return () => observer.disconnect()
+  }, [])
+}
+
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  )
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const onChange = () => setReduced(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return reduced
+}
 
 function useServerOffset(): number | null {
   const q = useQuery({
@@ -17,6 +60,99 @@ function useServerOffset(): number | null {
   if (q.data) return clockOffset(q.data.server_time)
   return null
 }
+
+/* ---------- decorative flag illustration ---------- */
+
+function FlagIllustration() {
+  const reducedMotion = usePrefersReducedMotion()
+  return (
+    <svg
+      viewBox="0 0 220 220"
+      width={280}
+      height={280}
+      fill="none"
+      aria-hidden="true"
+      style={{ maxWidth: '100%', height: 'auto' }}
+    >
+      {/* Dotted arc base */}
+      <path
+        d="M40 188 Q110 218 180 188"
+        stroke="var(--line-strong)"
+        strokeWidth="1.2"
+        strokeDasharray="3.5 5"
+        strokeLinecap="round"
+      />
+      {/* Pole */}
+      <line
+        x1="72" y1="30" x2="72" y2="198"
+        stroke="var(--signal-dim)"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      />
+      {/* Pole cap */}
+      <circle cx="72" cy="28" r="3.5" fill="var(--signal)" />
+
+      {/* Flag body with continuous, fluid wave motion */}
+      <path
+        className="flag-cloth-path"
+        d="M72 35 C102 30, 136 44, 172 38 Q165 62, 172 86 C136 92, 102 78, 72 83 Z"
+        fill="var(--signal)"
+      >
+        {/* SMIL animations cannot be disabled by CSS media queries, so the
+            cloth wave is rendered only when the user has not asked the OS
+            for reduced motion. The static base path below remains. */}
+        {!reducedMotion && (
+          <animate
+            attributeName="d"
+            dur="2.4s"
+            repeatCount="indefinite"
+            values="
+              M72 35 C102 30, 136 44, 172 38 Q165 62, 172 86 C136 92, 102 78, 72 83 Z;
+              M72 35 C108 38, 142 32, 172 44 Q168 68, 172 92 C142 80, 108 86, 72 83 Z;
+              M72 35 C102 42, 136 28, 172 36 Q164 60, 172 84 C136 76, 102 90, 72 83 Z;
+              M72 35 C106 33, 140 43, 172 40 Q167 65, 172 88 C140 91, 106 81, 72 83 Z;
+              M72 35 C102 30, 136 44, 172 38 Q165 62, 172 86 C136 92, 102 78, 72 83 Z
+            "
+            calcMode="spline"
+            keySplines="0.4 0 0.2 1; 0.4 0 0.2 1; 0.4 0 0.2 1; 0.4 0 0.2 1"
+            keyTimes="0; 0.25; 0.5; 0.75; 1"
+          />
+        )}
+      </path>
+
+      {/* Code symbol on flag (gently undulating in sync) */}
+      <g className="flag-glyph-wave">
+        <text
+          x="117"
+          y="69"
+          fontFamily="'IBM Plex Mono', ui-monospace, monospace"
+          fontSize="22"
+          fill="var(--ink)"
+          textAnchor="middle"
+          fontWeight="600"
+        >
+          {'< / >'}
+        </text>
+      </g>
+
+      {/* Trailing wisps fluttering in wind */}
+      <path className="flag-wisp-1" d="M172 50 Q182 48 186 52" stroke="var(--signal)" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+      <path className="flag-wisp-2" d="M172 65 Q180 63 184 67" stroke="var(--signal)" strokeWidth="1.3" fill="none" strokeLinecap="round" />
+      <path className="flag-wisp-3" d="M172 80 Q178 78 182 82" stroke="var(--signal)" strokeWidth="1.1" fill="none" strokeLinecap="round" />
+
+      {/* Decorative crosses and dots floating subtly */}
+      <g className="flag-sparkle">
+        <text x="190" y="38" fontFamily="'IBM Plex Mono', monospace" fontSize="15" fill="var(--line-strong)">+</text>
+        <text x="198" y="78" fontFamily="'IBM Plex Mono', monospace" fontSize="11" fill="var(--line-strong)">+</text>
+        <text x="190" y="108" fontFamily="'IBM Plex Mono', monospace" fontSize="14" fill="var(--line-strong)">+</text>
+        <circle cx="52" cy="100" r="1.8" fill="var(--line-strong)" />
+        <circle cx="202" cy="95" r="1.5" fill="var(--line-strong)" />
+      </g>
+    </svg>
+  )
+}
+
+/* ---------- live event clock ---------- */
 
 function EventStatusStrip() {
   const timeQ = useQuery({
@@ -31,16 +167,26 @@ function EventStatusStrip() {
   })
   const nowMs = useNowTick()
   const offset = timeQ.data ? clockOffset(timeQ.data.server_time) : null
+  const event = eventQ.data?.event ?? null
+
+  // Short date label for the countdown header, e.g. "6 Dec"
+  const countdownDateLabel = event?.starts_at
+    ? new Date(event.starts_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })
+    : null
 
   return (
-    <Panel exhibit="EX-00" title="Event status" className="panel" ariaLabel="Live event status">
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        <div style={{ display: 'grid', gap: 8, minWidth: 0 }}>
+    <section className="panel landing-reveal landing-d5" aria-label="Live event status">
+      <div className="landing-clock-header">
+        {!eventQ.isError && <span className="landing-clock-live">Live</span>}
+        <span className="landing-clock-label">Event clock</span>
+      </div>
+      <div className="landing-clock-body">
+        <div className="landing-clock-info">
           {eventQ.isLoading && <LoadingLine label="Loading event record" />}
           {eventQ.isError && <ErrorBanner error={eventQ.error} onRetry={() => void eventQ.refetch()} />}
           {eventQ.data?.event === null && (
             <>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="landing-clock-event-row">
                 <StatusChip value="pending" />
                 <span className="mono small">Proposed date: {proposedDateLabel()}</span>
               </div>
@@ -50,31 +196,30 @@ function EventStatusStrip() {
               </p>
             </>
           )}
-          {eventQ.data?.event && (
+          {event && (
             <>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span className="mono" style={{ fontSize: 15 }}>{eventQ.data.event.name}</span>
-                <StatusChip value={eventQ.data.event.status} size="lg" />
+              <div className="landing-clock-event-row">
+                <span className="landing-clock-event-name">{event.name}</span>
+                <StatusChip value={event.status} size="lg" />
               </div>
               <div className="muted small mono">
-                {eventQ.data.event.starts_at
-                  ? `Starts ${fmtDateTime(eventQ.data.event.starts_at)}`
+                {event.starts_at
+                  ? `Starts ${fmtDateTime(event.starts_at)}`
                   : 'Start time not announced'}{' '}
-                {'·'} {eventQ.data.event.duration_minutes} minutes {'·'} team cap {eventQ.data.event.max_teams}{' '}
-                {'·'} participant cap {eventQ.data.event.max_participants}
+                · {event.duration_minutes} min · {event.max_teams} teams max
               </div>
             </>
           )}
         </div>
-        <div style={{ textAlign: 'right' }}>
-          {eventQ.data?.event?.starts_at && !timeQ.isError && (
+        <div className="landing-countdown-block">
+          {event?.starts_at && !timeQ.isError && (
             <CountdownTimer
-              targetMs={new Date(eventQ.data.event.starts_at).getTime()}
+              targetMs={new Date(event.starts_at).getTime()}
               nowMs={nowMs + (offset ?? 0)}
-              label="Starts in"
+              label={countdownDateLabel ? `Starts in · ${countdownDateLabel}` : 'Starts in'}
             />
           )}
-          {(!eventQ.data || !eventQ.data.event?.starts_at) && (
+          {(!eventQ.data || !event?.starts_at) && (
             <div style={{ display: 'grid', gap: 4 }}>
               <span className="overline">Server clock</span>
               <span className="countdown" style={{ fontSize: 18 }}>
@@ -87,14 +232,16 @@ function EventStatusStrip() {
           </div>
         </div>
       </div>
-    </Panel>
+    </section>
   )
 }
 
-function TheBrief() {
+/* ---------- section: event overview ---------- */
+
+function EventOverview() {
   return (
-    <section aria-labelledby="brief-h" style={{ display: 'grid', gap: 18 }}>
-      <SectionHeading num="01" title="The brief" note="data sheet" />
+    <section id="how-it-works" className="scroll-reveal" aria-labelledby="overview-h" style={{ display: 'grid', gap: 18 }}>
+      <SectionHeading num="01" title="Event overview" note="SDC · full-stack debugging" />
       <div className="grid-2">
         <div>
           <p className="serif-quote">
@@ -131,6 +278,8 @@ function TheBrief() {
   )
 }
 
+/* ---------- section: format ---------- */
+
 const FORMAT_PARTS = [
   { num: 'P1', title: 'Setup and bug reconnaissance', minutes: 30, note: 'Run the app, map the codebase, log first symptoms.' },
   { num: 'P2', title: 'Debugging and root-cause analysis', minutes: 35, note: 'Reproduce failures, trace causes, file structured reports.' },
@@ -140,7 +289,7 @@ const FORMAT_PARTS = [
 
 function TheFormat() {
   return (
-    <section aria-labelledby="format-h" style={{ display: 'grid', gap: 18 }}>
+    <section className="scroll-reveal" aria-labelledby="format-h" style={{ display: 'grid', gap: 18 }}>
       <SectionHeading num="02" title="The format" note="180 working minutes" />
       <div className="timeline">
         {FORMAT_PARTS.map((p, i) => (
@@ -165,6 +314,8 @@ function TheFormat() {
   )
 }
 
+/* ---------- section: scoring ---------- */
+
 const SCORE_SEGMENTS = [
   { label: 'Functional tests', pct: 50, bg: 'var(--signal)' },
   { label: 'Code review', pct: 30, bg: 'var(--info)', fg: 'var(--ink)' },
@@ -173,7 +324,7 @@ const SCORE_SEGMENTS = [
 
 function Scoring() {
   return (
-    <section aria-labelledby="scoring-h" style={{ display: 'grid', gap: 18 }}>
+    <section className="scroll-reveal" aria-labelledby="scoring-h" style={{ display: 'grid', gap: 18 }}>
       <SectionHeading num="03" title="Scoring" note="provisional, frozen before the event" />
       <div className="scorebar" role="img" aria-label="Score split: functional tests 50 percent, code review 30 percent, evidence and report quality 20 percent">
         {SCORE_SEGMENTS.map((s) => (
@@ -204,6 +355,8 @@ function Scoring() {
   )
 }
 
+/* ---------- section: side quests ---------- */
+
 const SIDE_ITEMS = [
   {
     n: '1',
@@ -224,7 +377,7 @@ const SIDE_ITEMS = [
 
 function SideQuests() {
   return (
-    <section aria-labelledby="sidequests-h" style={{ display: 'grid', gap: 18 }}>
+    <section className="scroll-reveal" aria-labelledby="sidequests-h" style={{ display: 'grid', gap: 18 }}>
       <SectionHeading num="04" title="Side quests" note="optional CTF track" />
       <div className="grid-split">
         <p>
@@ -248,6 +401,8 @@ function SideQuests() {
   )
 }
 
+/* ---------- section: conduct ---------- */
+
 const CONDUCT_POINTS = [
   'Attack only the provided challenge application, on your own machine, inside the event window.',
   'The platform, venue network, other teams and any external system are out of bounds. Attacking them is grounds for disqualification.',
@@ -258,7 +413,7 @@ const CONDUCT_POINTS = [
 
 function Conduct() {
   return (
-    <section aria-labelledby="conduct-h" style={{ display: 'grid', gap: 18 }}>
+    <section className="scroll-reveal" aria-labelledby="conduct-h" style={{ display: 'grid', gap: 18 }}>
       <SectionHeading num="05" title="Conduct" note="scope and fair play" />
       <div className="grid-2">
         <div className="ruled panel">
@@ -300,6 +455,8 @@ function Conduct() {
   )
 }
 
+/* ---------- section: faq ---------- */
+
 const FAQ: { q: string; a: string }[] = [
   {
     q: 'Who can participate and how do we register?',
@@ -329,7 +486,7 @@ const FAQ: { q: string; a: string }[] = [
 
 function Faq() {
   return (
-    <section aria-labelledby="faq-h" style={{ display: 'grid', gap: 12 }}>
+    <section className="scroll-reveal" aria-labelledby="faq-h" style={{ display: 'grid', gap: 12 }}>
       <SectionHeading num="06" title="Questions" note="from the rules" />
       <div>
         {FAQ.map((item) => (
@@ -343,43 +500,56 @@ function Faq() {
   )
 }
 
+/* ---------- landing page ---------- */
+
 export default function Landing() {
   useServerOffset()
+  useScrollReveal()
 
   return (
     <div className="wrap page stack-lg">
       {/* Hero */}
-      <section aria-labelledby="hero-h" style={{ display: 'grid', gap: 22, paddingTop: 26 }}>
-        <div className="hero-meta">
-          <Chip tone="signal" size="lg">6 December 2026</Chip>
-          <Chip tone="muted" size="lg">VIT Bhopal University</Chip>
-          <Chip tone="muted" size="lg">Asia/Kolkata</Chip>
-          <Chip tone="muted" size="lg">Offline</Chip>
-        </div>
+      <section className="landing-hero" aria-labelledby="hero-h">
         <div>
-          <p className="overline-strong">Case file: Fall Back {'·'} a full-stack debugging challenge</p>
-          <h1 className="display" id="hero-h" style={{ maxWidth: '20ch' }}>
-            The app arrives broken. Your team closes the case.
+          <div className="landing-meta landing-reveal landing-d1">
+            <span>SDC, VIT Bhopal</span>
+            <span className="landing-meta-sep">·</span>
+            <span>6 December 2026</span>
+            <span className="landing-meta-sep">·</span>
+            <span>Offline</span>
+            <span className="landing-meta-sep">·</span>
+            <span>Teams of 4 to 5</span>
+          </div>
+          <h1 className="landing-title landing-reveal landing-d2" id="hero-h">
+            TheFallBack
           </h1>
-          <p style={{ maxWidth: '62ch', fontSize: 16.5 }}>
-            On event day, every team receives the same seeded full-stack application with defects planted across
-            backend routes, database access and front-end logic. Reproduce the failures, trace each one to its root
-            cause, repair the code, and file evidence-backed reports before the server clock runs out. Verified CTF
-            flags along the way pay capped bonus points.
+          <p className="landing-subtitle landing-reveal landing-d3">
+            A broken full-stack app. Your team. A working build.
           </p>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 18 }}>
+          <p className="landing-desc landing-reveal landing-d3">
+            Inspect the codebase, diagnose frontend and backend failures, restore
+            expected functionality, and capture optional CTF flags for bonus points.
+          </p>
+          <div className="landing-ctas landing-reveal landing-d4">
             <Link to="/login" className="btn btn-primary">
-              Sign in
+              Enter Competition
             </Link>
-            <Link to="/rules" className="btn btn-ghost">
-              Read the rules
+            <a href="#how-it-works" className="btn btn-ghost">
+              How it works
+            </a>
+            <Link to="/rules" className="landing-text-link">
+              Competition rules →
             </Link>
           </div>
         </div>
-        <EventStatusStrip />
+        <div className="landing-hero-illustration landing-reveal landing-d4">
+          <FlagIllustration />
+        </div>
       </section>
 
-      <TheBrief />
+      <EventStatusStrip />
+
+      <EventOverview />
       <TheFormat />
       <Scoring />
       <SideQuests />
@@ -387,36 +557,39 @@ export default function Landing() {
       <Faq />
 
       {/* Final call line */}
-      <Panel exhibit="EX-END" title="How to enter" className="panel">
-        <div className="grid-split">
-          <div>
-            <p className="serif-quote">
-              Registrations run through the club. Organizers create accounts through the admin panel; members then
-              sign in with their email id. Accept the rules and you are in. On event day, sign in and the lobby takes
-              over: round state, announcements and your assignment.
-            </p>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 14 }}>
-              <Link to="/login" className="btn btn-primary">Sign in</Link>
+      <div className="scroll-reveal">
+        <Panel exhibit="EX-END" title="How to enter" className="panel">
+          <div className="grid-split">
+            <div>
+              <p className="serif-quote">
+                Registrations run through the club. Organizers create accounts through the admin panel; members then
+                sign in with their email id. Accept the rules and you are in. On event day, sign in and the lobby takes
+                over: round state, announcements and your assignment.
+              </p>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 14 }}>
+                <Link to="/login" className="btn btn-primary">Enter Competition Lobby</Link>
+                <Link to="/rules" className="btn btn-ghost">Read Full Rules</Link>
+              </div>
+            </div>
+            <div className="ruled panel-2" style={{ padding: '6px 16px' }}>
+              <div className="kv-row">
+                <span className="kv-key">Round flow</span>
+                <span className="stage-flow">draft {'>'} sealed {'>'} armed {'>'} active {'>'} ended {'>'} evaluating {'>'} released</span>
+              </div>
+              <div className="kv-row">
+                <span className="kv-key">Surface</span>
+                <span className="stage-flow">editor {'+'} report desk {'+'} receipts</span>
+              </div>
+              <div className="kv-row" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <span className="kv-key">Bring</span>
+                <span className="stage-flow" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <TerminalCaretIcon size={13} /> your laptop, charger, student ID
+                </span>
+              </div>
             </div>
           </div>
-          <div className="ruled panel-2" style={{ padding: '6px 16px' }}>
-            <div className="kv-row">
-              <span className="kv-key">Round flow</span>
-              <span className="stage-flow">draft {'>'} sealed {'>'} armed {'>'} active {'>'} ended {'>'} evaluating {'>'} released</span>
-            </div>
-            <div className="kv-row">
-              <span className="kv-key">Surface</span>
-              <span className="stage-flow">editor {'+'} report desk {'+'} receipts</span>
-            </div>
-            <div className="kv-row" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <span className="kv-key">Bring</span>
-              <span className="stage-flow" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <TerminalCaretIcon size={13} /> your laptop, charger, student ID
-              </span>
-            </div>
-          </div>
-        </div>
-      </Panel>
+        </Panel>
+      </div>
     </div>
   )
 }
