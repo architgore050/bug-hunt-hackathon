@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from .. import security
 from ..audit import audit_write
@@ -26,6 +27,7 @@ from ..db import app_session, uuid7
 from ..deps import Principal, get_principal, rate_limit, require_role, require_rules_accepted
 from ..errors import ApiError
 from ..jobs import enqueue
+from ..tenancy import require_submission_in_tenant
 
 router = APIRouter(tags=["submissions"])
 
@@ -89,6 +91,7 @@ def _validate_report_fields(body: SubmissionIn, cfg: dict) -> None:
             raise ApiError("SUBMISSION_INVALID", details={"category": "Category must come from the taxonomy."})
 
 
+# MANUAL-REVALIDATION (REM-061): boundary contract tests (field/shape/limit, one above/below) still needed against docs/API_REFERENCE.md.
 @router.post("/submissions", status_code=202)
 def create_submission(
     body: SubmissionIn,
@@ -238,18 +241,51 @@ def create_submission(
                     if since < cooldown:
                         raise ApiError("SUBMISSION_COOLDOWN", details={"n": int(cooldown - since)})
         else:
-            # CTF flag: challenge binding same as reports
+            # CTF flag: challenge binding same as reports (REM-057: lock the assignment row like the
+            # bug_report branch locks its stage/assignment context before counting against caps).
             team_id = str(member["team_id"])
             ch = s.execute(
                 text(
                     "SELECT a.challenge_version_id FROM app.assignments a WHERE a.stage_id = CAST(:s AS uuid) "
-                    "AND (a.team_id IS NULL OR a.team_id = CAST(:t AS uuid)) LIMIT 1"
+                    "AND (a.team_id IS NULL OR a.team_id = CAST(:t AS uuid)) LIMIT 1 FOR UPDATE"
                 ),
                 {"s": str(stage["id"]), "t": team_id},
             ).first()
             if ch is None:
                 raise ApiError("SUBMISSION_INVALID", details={"challenge": "No challenge assigned to your team."})
             challenge_id = str(ch[0])
+            # REM-058: flags share the report cap/cooldown policy; dedicated cfg keys win when
+            # present, otherwise the same report values are reused.
+            max_flags_round = int(cfg.get("max_flags_per_round", cfg.get("max_reports_per_round", 80)))
+            flags_round = s.execute(
+                text(
+                    "SELECT count(*) FROM app.submissions WHERE stage_id = CAST(:s AS uuid) "
+                    "AND team_id = CAST(:t AS uuid) AND kind = 'ctf_flag'"
+                ),
+                {"s": str(stage["id"]), "t": team_id},
+            ).scalar_one()
+            if int(flags_round) >= max_flags_round:
+                raise ApiError(
+                    "SUBMISSION_CAP_REACHED",
+                    details={"round": True, "kind": "ctf_flag", "limit": max_flags_round},
+                )
+            flag_cooldown = int(cfg.get("flag_cooldown_s", cfg.get("file_cooldown_s", 20)))
+            if flag_cooldown > 0:
+                last_flag = s.execute(
+                    text(
+                        "SELECT received_at FROM app.submissions WHERE stage_id = CAST(:s AS uuid) "
+                        "AND team_id = CAST(:t AS uuid) AND kind = 'ctf_flag' "
+                        "ORDER BY received_at DESC LIMIT 1"
+                    ),
+                    {"s": str(stage["id"]), "t": team_id},
+                ).first()
+                if last_flag is not None:
+                    since = (now - last_flag[0]).total_seconds()
+                    if since < flag_cooldown:
+                        raise ApiError(
+                            "SUBMISSION_COOLDOWN",
+                            details={"retry_after_s": int(flag_cooldown - since), "kind": "ctf_flag"},
+                        )
 
         # The body value is untrusted. Persist the challenge version resolved from
         # this participant's team assignment, not the caller-supplied identifier.
@@ -260,40 +296,66 @@ def create_submission(
         submission_id = str(uuid7())
         receipt = security.receipt_code(submission_id, now)
         status0 = "received"
-        s.execute(
-            text(
-                "INSERT INTO app.submissions (id, tenant_id, event_id, stage_id, challenge_version_id, team_id, "
-                "author_id, kind, idempotency_key, payload, payload_hash, status, receipt_code, title, file_path, "
-                "line_start, line_end, category, flag_code, received_at) "
-                "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), CAST(:ev AS uuid), CAST(:st AS uuid), CAST(:cv AS uuid), "
-                "CAST(:team AS uuid), CAST(:au AS uuid), :kind, :idem, CAST(:payload AS jsonb), :ph, :status, :receipt, "
-                ":title, :fp, :ls, :le, :cat, :flag, :received_at)"
-            ),
-            {
-                "id": submission_id,
-                "t": str(member["tenant_id"]),
-                "ev": str(member["event_id"]),
-                "st": str(stage["id"]),
-                "cv": challenge_id,
-                "team": str(member["team_id"]),
-                "au": p.id,
-                "kind": body.kind,
-                "idem": idempotency_key,
-                "payload": __import__("json").dumps(persisted_payload, default=str),
-                "ph": payload_hash,
-                "status": status0,
-                "receipt": receipt,
-                "title": (body.title or ("Flag submission" if body.kind == "ctf_flag" else "Report"))[:160],
-                "fp": body.file_path,
-                "ls": body.line_start,
-                "le": body.line_end,
-                "cat": body.category,
-                "flag": body.flag_code,
-                "received_at": now,
-            },
-        )
+        # REM-053: the pre-check above can race with a concurrent same-(author, key) INSERT;
+        # a savepoint lets us catch the unique violation and converge to the stored receipt.
+        try:
+            with s.begin_nested():
+                s.execute(
+                    text(
+                        "INSERT INTO app.submissions (id, tenant_id, event_id, stage_id, challenge_version_id, team_id, "
+                        "author_id, kind, idempotency_key, payload, payload_hash, status, receipt_code, title, file_path, "
+                        "line_start, line_end, category, flag_code, received_at) "
+                        "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), CAST(:ev AS uuid), CAST(:st AS uuid), CAST(:cv AS uuid), "
+                        "CAST(:team AS uuid), CAST(:au AS uuid), :kind, :idem, CAST(:payload AS jsonb), :ph, :status, :receipt, "
+                        ":title, :fp, :ls, :le, :cat, :flag, :received_at)"
+                    ),
+                    {
+                        "id": submission_id,
+                        "t": str(member["tenant_id"]),
+                        "ev": str(member["event_id"]),
+                        "st": str(stage["id"]),
+                        "cv": challenge_id,
+                        "team": str(member["team_id"]),
+                        "au": p.id,
+                        "kind": body.kind,
+                        "idem": idempotency_key,
+                        "payload": __import__("json").dumps(persisted_payload, default=str),
+                        "ph": payload_hash,
+                        "status": status0,
+                        "receipt": receipt,
+                        "title": (body.title or ("Flag submission" if body.kind == "ctf_flag" else "Report"))[:160],
+                        "fp": body.file_path,
+                        "ls": body.line_start,
+                        "le": body.line_end,
+                        "cat": body.category,
+                        "flag": body.flag_code,
+                        "received_at": now,
+                    },
+                )
+        except IntegrityError as exc:
+            # concurrent same (author_id, idempotency_key) INSERT won the race
+            if "idempotency_key" not in str(exc.orig) and "uq_submissions_author_idempotency_key" not in str(exc.orig):
+                raise
+            raced = (
+                s.execute(
+                    text(
+                        "SELECT id, receipt_code, received_at, status, payload_hash FROM app.submissions "
+                        "WHERE author_id = CAST(:u AS uuid) AND idempotency_key = :k"
+                    ),
+                    {"u": p.id, "k": idempotency_key},
+                )
+                .mappings()
+                .first()
+            )
+            if raced is None:
+                raise
+            if raced["payload_hash"] != payload_hash:
+                raise ApiError("IDEMPOTENCY_CONFLICT") from exc
+            # same payload: converge to the winner's receipt
+            return _receipt(raced, member, replay=True)
         enqueue(s, "evaluate_submission", {"submission_id": submission_id, "rule_set_hash": stage["rule_set_hash"]})
         enqueue(s, "refresh_leaderboard", {"stage_id": str(stage["id"])})
+        # REM-016: delivered_at stays NULL here; only dispatch_outbox (evaluator.py) sets it after acknowledged delivery.
         s.execute(
             text(
                 "INSERT INTO app.outbox_events (id, event_type, payload) VALUES (CAST(:id AS uuid), 'submission_update', "
@@ -387,20 +449,9 @@ def my_submissions(p: Principal = Depends(get_principal)):
 def my_submission(submission_id: str, p: Principal = Depends(get_principal)):
     require_role("participant")(p)
     with app_session() as s:
-        r = (
-            s.execute(
-                text(
-                    "SELECT id, kind, title, file_path, line_start, line_end, category, status, receipt_code, "
-                    "received_at, payload, feedback_released, matched_bug_code, points_visible "
-                    "FROM app.submissions WHERE id = CAST(:sid AS uuid) AND author_id = CAST(:u AS uuid)"
-                ),
-                {"sid": submission_id, "u": p.id},
-            )
-            .mappings()
-            .first()
-        )
-    if r is None:
-        # 404, not 403: existence of others' submissions is not disclosed (SEC-02)
+        # REM-001: tenant-scoped lookup before the ownership check (404, not 403)
+        r = require_submission_in_tenant(s, submission_id, p.tenant_id)
+    if str(r["author_id"]) != p.id:
         raise ApiError("NOT_FOUND")
     return {
         "id": str(r["id"]),
@@ -427,23 +478,18 @@ class DisputeIn(BaseModel):
 def create_dispute(submission_id: str, body: DisputeIn, request: Request, p: Principal = Depends(get_principal)):
     require_role("participant")(p)
     with app_session() as s:
-        r = s.execute(
-            text(
-                "SELECT id, team_id, feedback_released FROM app.submissions "
-                "WHERE id = CAST(:sid AS uuid) AND author_id = CAST(:u AS uuid)"
-            ),
-            {"sid": submission_id, "u": p.id},
-        ).first()
-        if r is None:
+        # REM-001: tenant-scoped lookup, then ownership below (404, not 403)
+        r = require_submission_in_tenant(s, submission_id, p.tenant_id)
+        if str(r["author_id"]) != p.id:
             raise ApiError("NOT_FOUND")
-        if not r[2]:
+        if not r["feedback_released"]:
             raise ApiError("VALIDATION_ERROR", details={"dispute": "Disputes open after results are released."})
         s.execute(
             text(
                 "INSERT INTO app.disputes (id, submission_id, team_id, statement) VALUES "
                 "(CAST(:id AS uuid), CAST(:sid AS uuid), CAST(:t AS uuid), :st)"
             ),
-            {"id": str(uuid7()), "sid": submission_id, "t": str(r[1]), "st": body.statement},
+            {"id": str(uuid7()), "sid": submission_id, "t": str(r["team_id"]), "st": body.statement},
         )
         s.execute(
             text("UPDATE app.submissions SET status='disputed' WHERE id = CAST(:sid AS uuid)"), {"sid": submission_id}

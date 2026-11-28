@@ -104,6 +104,7 @@ def _has_component(session, submission_id: str, component: str) -> bool:
     return row is not None
 
 
+# MANUAL-REVALIDATION (REM-013): auto-accept thresholds need a measured blind-validation precision gate before production trust; decide/decide_multi are deterministic but uncalibrated.
 @jobs.handler("evaluate_submission")
 def evaluate_submission(payload: dict) -> None:
     submission_id = payload["submission_id"]
@@ -328,6 +329,7 @@ def verify_flag(payload: dict) -> None:
         )
 
 
+# ANSWER-PACK (REM-007): rescore re-runs this deterministic evaluator via the admin-triggered rescore endpoint; the full answer-pack/candidate-bug escalation pipeline is deferred (owner decision).
 @jobs.handler("apply_review_outcome")
 def apply_review_outcome(payload: dict) -> None:
     """Apply the reviewer decision into the ledger (code_review component)."""
@@ -399,20 +401,166 @@ def apply_review_outcome(payload: dict) -> None:
                 {"sid": submission_id},
             )
         elif decision == "reject_invalid":
+            # REM-011: a rejected report that was auto-awarded (evidence_report ledger
+            # entry + award claim) must net to zero: append one reversal entry per
+            # awarded component (append-only; reverses_entry_id points at the original)
+            # and release the submission's award claim so a later valid report can
+            # claim the unit.
+            entries = (
+                session.execute(
+                    text(
+                        "SELECT id, points, component, award_unit_id FROM app.score_ledger_entries "
+                        "WHERE submission_id = CAST(:sid AS uuid) AND kind = 'award' AND points > 0"
+                    ),
+                    {"sid": submission_id},
+                )
+                .mappings()
+                .all()
+            )
+            for entry in entries:
+                # idempotent guard: a retry of this job must not double-reverse
+                reversed_already = session.execute(
+                    text("SELECT 1 FROM app.score_ledger_entries WHERE reverses_entry_id = CAST(:id AS uuid)"),
+                    {"id": str(entry["id"])},
+                ).first()
+                if reversed_already:
+                    continue
+                add_ledger_entry(
+                    session,
+                    tenant_id=str(sub["tenant_id"]),
+                    event_id=str(sub["event_id"]),
+                    stage_id=str(sub["stage_id"]),
+                    team_id=str(sub["team_id"]),
+                    submission_id=submission_id,
+                    award_unit_id=entry["award_unit_id"],
+                    component=str(entry["component"]),
+                    kind="reversal",
+                    points=-float(entry["points"]),
+                    reason_code="REVIEW_REJECT_REVERSAL",
+                    reverses_entry_id=str(entry["id"]),
+                    note="REVIEW_REJECT_REVERSAL",
+                )
+            claim_row = session.execute(
+                text(
+                    "SELECT stage_id, team_id, award_unit_id FROM app.award_claims "
+                    "WHERE submission_id = CAST(:sid AS uuid) LIMIT 1"
+                ),
+                {"sid": submission_id},
+            ).first()
+            if claim_row:
+                session.execute(
+                    text(
+                        "DELETE FROM app.award_claims WHERE stage_id = CAST(:s AS uuid) "
+                        "AND team_id = CAST(:t AS uuid) AND award_unit_id = :u "
+                        "AND submission_id = CAST(:sid AS uuid)"
+                    ),
+                    {
+                        "s": str(claim_row[0]),
+                        "t": str(claim_row[1]),
+                        "u": claim_row[2],
+                        "sid": submission_id,
+                    },
+                )
             session.execute(
                 text("UPDATE app.submissions SET status='decided' WHERE id = CAST(:sid AS uuid)"),
                 {"sid": submission_id},
             )
         elif decision == "unplanned_valid":
-            # promotion is a P2 capability: route to organizer review, do not score automatically (INT-02)
+            # REM-012: a valid-but-unkeyed defect is treated as an accept and scored on
+            # the spot (code_review + evidence_report from the reviewer rubric); the
+            # submission and its review item land in terminal 'decided' states. The old
+            # path re-enqueued create_review_item for the same submission forever.
+            weights = (
+                (sub["event_config"] or {})
+                .get("scoring", {})
+                .get("weights", {"functional_test": 0.5, "code_review": 0.3, "evidence_report": 0.2})
+            )
+            severity_points = {"low": 10, "medium": 20, "high": 30, "critical": 50}
+            report = sub["payload"] or {}
+            bug_points = float(severity_points.get(str(report.get("claimed_severity") or "medium"), 20))
+            review_quality = max(
+                float(rubric.get("code_quality", 0)) * 0.4 + float(rubric.get("root_cause", 0)) * 0.6, 0.5
+            )
+            evidence_quality = max(float(rubric.get("evidence", 0)), 0.6)
+            pts = compute_award_points(
+                bug_points, weights, test_fraction=0.0, review_quality=review_quality, evidence_quality=evidence_quality
+            )
+            # unplanned defects have no gt code: a per-submission synthetic unit id keeps
+            # the (stage, team, award_unit) claim unique without colliding with gt codes
+            unit_id = str(payload.get("award_unit_id") or f"unplanned:{submission_id[:8]}")
+            already_claimed = session.execute(
+                text("SELECT 1 FROM app.award_claims WHERE submission_id = CAST(:sid AS uuid)"),
+                {"sid": submission_id},
+            ).first()
+            claimed = already_claimed is not None or claim_award_unit(
+                session,
+                event_id=str(sub["event_id"]),
+                stage_id=str(sub["stage_id"]),
+                team_id=str(sub["team_id"]),
+                award_unit_id=unit_id,
+                submission_id=submission_id,
+            )
+            if claimed:
+                if not _has_component(session, submission_id, "code_review"):
+                    add_ledger_entry(
+                        session,
+                        tenant_id=str(sub["tenant_id"]),
+                        event_id=str(sub["event_id"]),
+                        stage_id=str(sub["stage_id"]),
+                        team_id=str(sub["team_id"]),
+                        submission_id=submission_id,
+                        award_unit_id=unit_id,
+                        component="code_review",
+                        kind="award",
+                        points=pts["code_review"],
+                        reason_code="UNPLANNED_VALID",
+                        note=f"rubric={json.dumps(rubric, default=str)[:300]}",
+                    )
+                if not _has_component(session, submission_id, "evidence_report"):
+                    add_ledger_entry(
+                        session,
+                        tenant_id=str(sub["tenant_id"]),
+                        event_id=str(sub["event_id"]),
+                        stage_id=str(sub["stage_id"]),
+                        team_id=str(sub["team_id"]),
+                        submission_id=submission_id,
+                        award_unit_id=unit_id,
+                        component="evidence_report",
+                        kind="award",
+                        points=pts["evidence_report"],
+                        reason_code="UNPLANNED_VALID",
+                        note=f"rubric={json.dumps(rubric, default=str)[:300]}",
+                    )
+                session.execute(
+                    text("UPDATE app.submissions SET status='decided' WHERE id = CAST(:sid AS uuid)"),
+                    {"sid": submission_id},
+                )
+            else:
+                # another team already holds the unit: terminal duplicate, no requeue
+                session.execute(
+                    text("UPDATE app.submissions SET status='duplicate' WHERE id = CAST(:sid AS uuid)"),
+                    {"sid": submission_id},
+                )
+            # REM-012: every decision ends with the review item decided
             session.execute(
-                text("UPDATE app.submissions SET status='needs_review' WHERE id = CAST(:sid AS uuid)"),
+                text(
+                    "UPDATE app.review_items SET status='decided' "
+                    "WHERE submission_id = CAST(:sid AS uuid) AND status <> 'decided'"
+                ),
                 {"sid": submission_id},
             )
-            jobs.enqueue(
-                session,
-                "create_review_item",
-                {"submission_id": submission_id, "reason": "unplanned_valid", "priority": 2},
+        elif decision == "needs_second_review":
+            # REM-012: requeue for the second review instead of dead-ending. The router
+            # marked this item 'decided' and the queue only selects open/claimed rows,
+            # so the submission sat in 'in_review' with no visible work left. Reopen the
+            # item with no owner so a second reviewer can claim it; the next decision
+            # on it terminalizes the submission.
+            session.execute(
+                text(
+                    "UPDATE app.review_items SET status='open', claimed_by=NULL, claimed_at=NULL "
+                    "WHERE submission_id = CAST(:sid AS uuid) AND status = 'decided'"
+                ),
+                {"sid": submission_id},
             )
 
 
@@ -466,6 +614,7 @@ def apply_test_results(payload: dict) -> None:
 
 @jobs.handler("release_feedback")
 def release_feedback(payload: dict) -> None:
+    # MANUAL-REVALIDATION (REM-062): terminal-state (RELEASED→FINAL, DISPUTED→RESOLVED) and DB-time cutoff semantics need contract tests.
     """Stage release: penalties (capped, applied at release only, INT-01/INT-11),
     code_review defaults for unreviewed accepts, feedback visibility."""
     stage_id = payload["stage_id"]
@@ -495,6 +644,10 @@ def release_feedback(payload: dict) -> None:
         severity_points = {"low": 10, "medium": 20, "high": 30, "critical": 50}
 
         # 1. code_review defaults for decided accepts without a code_review entry
+        # (REM-071): collect every accept first, fetch ALL GT bug points in ONE
+        # gt_session query keyed by (code, challenge_version_id) into a dict, and
+        # compute the stage max ONCE per stage, instead of one GT session +
+        # stage-max query per submission (N+1). Same shape for the rejects below.
         accepts = (
             session.execute(
                 text(
@@ -508,15 +661,45 @@ def release_feedback(payload: dict) -> None:
             .mappings()
             .all()
         )
-        for a in accepts:
-            if _has_component(session, str(a["id"]), "code_review"):
-                continue
+        # (REM-071) one batch query for which accepts already have code_review,
+        # instead of one _has_component round trip per submission
+        done_ids = (
+            session.execute(
+                text(
+                    "SELECT submission_id FROM app.score_ledger_entries "
+                    "WHERE component = 'code_review' AND kind = 'award' AND submission_id IN "
+                    "(SELECT unnest(:sids::uuid[]))"
+                ),
+                {"sids": [str(a["id"]) for a in accepts]},
+            )
+            .scalars()
+            .all()
+        )
+        done_set = {str(d) for d in done_ids}
+        pending_accepts = [a for a in accepts if str(a["id"]) not in done_set]
+        gt_bug_points: dict[tuple[str, str], float] = {}
+        if pending_accepts:
             with gt_session() as gts:
-                bug = gts.execute(
-                    text("SELECT points FROM gt.gt_bugs WHERE code = :c AND challenge_version_id = CAST(:v AS uuid)"),
-                    {"c": a["matched_bug_code"], "v": str(a["challenge_version_id"])},
-                ).first()
-            bug_points = float(bug[0]) if bug else 0.0
+                bug_rows = (
+                    gts.execute(
+                        text(
+                            "SELECT b.code, b.challenge_version_id::text AS cid, b.points FROM gt.gt_bugs b "
+                            "WHERE (b.code, b.challenge_version_id) IN "
+                            "(SELECT unnest(:codes::varchar[]) AS code, unnest(:cids::uuid[]) AS cid)"
+                        ),
+                        {
+                            "codes": [a["matched_bug_code"] for a in pending_accepts],
+                            "cids": [str(a["challenge_version_id"]) for a in pending_accepts],
+                        },
+                    )
+                    .mappings()
+                    .all()
+                )
+            for br in bug_rows:
+                gt_bug_points[(br["code"], br["cid"])] = float(br["points"])
+        stage_max = _stage_max_points(session, stage_id)
+        for a in pending_accepts:
+            bug_points = gt_bug_points.get((a["matched_bug_code"], str(a["challenge_version_id"])), 0.0)
             pts = compute_award_points(
                 bug_points, weights, test_fraction=0.0, review_quality=default_review_quality, evidence_quality=0.0
             )
@@ -554,7 +737,8 @@ def release_feedback(payload: dict) -> None:
             )
             for r in rejects:
                 penalty_each = severity_points["low"] * float(penalty_cfg.get("fp_factor", 0.25))
-                cap = _stage_max_points(session, stage_id) * float(penalty_cfg.get("cap_fraction", 0.2))
+                # (REM-071) stage_max is computed once per stage above, not per team
+                cap = stage_max * float(penalty_cfg.get("cap_fraction", 0.2))
                 penalty_total = min(penalty_each * int(r["n"]), cap)
                 if penalty_total > 0:
                     add_ledger_entry(
@@ -590,6 +774,7 @@ def _stage_max_points(session, stage_id: str) -> float:
 
 @jobs.handler("refresh_leaderboard")
 def refresh_leaderboard(payload: dict) -> None:
+    # MANUAL-REVALIDATION (REM-062): terminal-state (RELEASED→FINAL, DISPUTED→RESOLVED) and DB-time cutoff semantics need contract tests.
     stage_id = payload["stage_id"]
     visibility = payload.get("visibility")
     with app_session() as session:
@@ -642,14 +827,15 @@ def refresh_leaderboard(payload: dict) -> None:
 
 @jobs.handler("dispatch_outbox")
 def dispatch_outbox(payload: dict) -> None:
+    # DEFERRED v2 (REM-016): real delivery sink (SSE) not yet implemented; delivered_at only set on acknowledged delivery.
     with app_session() as session:
         rows = session.execute(
             text("SELECT id FROM app.outbox_events WHERE delivered_at IS NULL LIMIT 100 FOR UPDATE SKIP LOCKED")
         ).all()
         for r in rows:
+            # attempts counts tried dispatches only; delivered_at stays NULL until a
+            # real consumer (SSE /v1/stream) acknowledges delivery — see the note above.
             session.execute(
-                text(
-                    "UPDATE app.outbox_events SET delivered_at = now(), attempts = attempts + 1 WHERE id = CAST(:id AS uuid)"
-                ),
+                text("UPDATE app.outbox_events SET attempts = attempts + 1 WHERE id = CAST(:id AS uuid)"),
                 {"id": str(r[0])},
             )

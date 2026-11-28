@@ -732,13 +732,33 @@ def team_score(p: Principal = Depends(get_principal)):
             .mappings()
             .all()
         )
+        # REM-009: feedback release is authoritative per stage (the
+        # release_feedback worker flips app.submissions.feedback_released for
+        # every submission of the stage). Only stages whose feedback has been
+        # released may expose points/components below; unreleased stages are
+        # redacted to status metadata so this endpoint cannot act as a
+        # verdict oracle while evaluation is still running (F-BSP-01).
+        released_by_stage = {
+            str(r["stage_id"]): bool(r["released"])
+            for r in s.execute(
+                text(
+                    "SELECT s.stage_id, COALESCE(BOOL_OR(s.feedback_released), false) AS released FROM app.submissions s "
+                    "JOIN app.stages st ON st.id = s.stage_id "
+                    "WHERE s.team_id = CAST(:t AS uuid) AND st.event_id = CAST(:e AS uuid) AND st.kind = 'level' "
+                    "GROUP BY s.stage_id"
+                ),
+                {"t": team_id, "e": event_id},
+            )
+            .mappings()
+            .all()
+        }
         rows = (
             s.execute(
                 text(
-                    "SELECT st.ordinal AS level_no, st.name, l.component, SUM(l.points) AS points "
+                    "SELECT st.id AS stage_id, st.ordinal AS level_no, st.name, l.component, SUM(l.points) AS points "
                     "FROM app.score_ledger_entries l JOIN app.stages st ON st.id = l.stage_id "
                     "WHERE l.team_id = CAST(:t AS uuid) AND st.event_id = CAST(:e AS uuid) AND st.kind = 'level' "
-                    "GROUP BY st.ordinal, st.name, l.component ORDER BY st.ordinal"
+                    "GROUP BY st.id, st.ordinal, st.name, l.component ORDER BY st.ordinal"
                 ),
                 {"t": team_id, "e": event_id},
             )
@@ -765,15 +785,8 @@ def team_score(p: Principal = Depends(get_principal)):
             .mappings()
             .all()
         }
-        total = s.execute(
-            text(
-                "SELECT COALESCE(SUM(l.points), 0) FROM app.score_ledger_entries l "
-                "JOIN app.stages st ON st.id = l.stage_id "
-                "WHERE l.team_id = CAST(:t AS uuid) AND st.event_id = CAST(:e AS uuid) AND st.kind = 'level'"
-            ),
-            {"t": team_id, "e": event_id},
-        ).scalar_one()
     by_level: dict[int, dict] = {}
+    total = 0.0
     for stage in stages:
         level_no = int(stage["ordinal"])
         evaluation = evaluations.get(stage["id"], {})
@@ -781,32 +794,40 @@ def team_score(p: Principal = Depends(get_principal)):
         evaluation_status = "not_submitted"
         if submission_count:
             evaluation_status = "evaluating" if evaluation.get("evaluating") else "complete"
+        released = bool(released_by_stage.get(str(stage["id"]), False))
         by_level[level_no] = {
             "level_no": level_no,
             "name": stage["name"],
             "components": {},
-            "total": 0.0,
-            "points": 0.0,
-            "score": 0.0,
+            "total": 0.0 if released else None,
+            "points": 0.0 if released else None,
+            "score": 0.0 if released else None,
             "max_points": _configured_max_points(stage["config"]),
             "evaluation_status": evaluation_status,
+            "released": released,
         }
     for r in rows:
         lvl = by_level[int(r["level_no"])]
+        if not lvl["released"]:
+            continue  # REM-009: no point-bearing fields before that stage's release
         points = float(r["points"])
         lvl["components"][r["component"]] = points
         lvl["total"] += points
     for lvl in by_level.values():
+        if not lvl["released"]:
+            continue
         lvl["points"] = lvl["total"]
         lvl["score"] = sum(points for component, points in lvl["components"].items() if component != "ctf_bonus")
-    released = member["event_status"] in ("closed", "finalized")
+        total += lvl["total"]
+    event_released = member["event_status"] in ("closed", "finalized")
+    released_any = any(lvl["released"] for lvl in by_level.values())
     return {
         "team_id": team_id,
         "levels": list(by_level.values()),
-        "total": float(total),
-        "points": float(total),
-        "released": released,
-        "released_total": float(total) if released else None,
+        "total": total if released_any else None,
+        "points": total if released_any else None,
+        "released": event_released,
+        "released_total": total if event_released else None,
     }
 
 
@@ -1314,6 +1335,7 @@ def submit_level(
                 {"sid": submission_id, "a": str(artifact_meta["id"])},
             )
         enqueue(s, "evaluate_level_submission", {"submission_id": submission_id, "level_no": level_no})
+        # MANUAL-REVALIDATION (REM-062): terminal-state/time semantics need contract tests.
         enqueue(s, "refresh_leaderboard", {"stage_id": str(stage["id"])})
         # REM-016: do NOT set delivered_at on insert; leave NULL. A row is marked
         # delivered only after a real consumer acknowledges delivery. The
