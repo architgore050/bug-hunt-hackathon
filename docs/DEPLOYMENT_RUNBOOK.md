@@ -38,7 +38,7 @@ Steps:
 6. Verify:
    - `curl http://127.0.0.1:8100/health` must show `database_app: up` and `database_gt: up`.
    - `python scripts/e2e_journey.py` must exit 0 (46 checks).
-   - `cd backend && python -m pytest` must show 34 passed.
+   - `cd backend && python -m pytest` must pass (75 tests at current HEAD: 36 v1 plus 39 four-level flow); record the exact count from the run for the commit under test.
 
 Environment variables (all optional in dev, see `backend/app/config.py`):
 
