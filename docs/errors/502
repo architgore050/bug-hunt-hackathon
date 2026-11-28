@@ -1,0 +1,120 @@
+# 502 on sign-in / admin console (`http://localhost:5173/login`)
+
+Repository: `tatha07/bug-hunt-hackathon`, commit `427f268`
+Investigated: 27 November 2026
+
+## Summary
+
+**The Vite dev server cannot reach the backend API at `127.0.0.1:8100`.** The frontend on port 5173 is running, but nothing is answering on 8100, so the Vite proxy returns `502 Bad Gateway`.
+
+This was reproduced in a clean cloud environment (Linux, Node 22, Python 3.13, PostgreSQL 16). Your machine was not inspected, so *why* your API is not running still needs the check below.
+
+## How the request flows
+
+```
+Browser -> localhost:5173 (Vite) --proxy /v1, /health--> 127.0.0.1:8100 (FastAPI) -> PostgreSQL 127.0.0.1:5434
+```
+
+`frontend/vite.config.ts`:
+
+```ts
+proxy: {
+  '/v1':     { target: 'http://127.0.0.1:8100', changeOrigin: false },
+  '/health': { target: 'http://127.0.0.1:8100', changeOrigin: false },
+},
+```
+
+The installed Vite (8.3.8) proxy error handler answers `502` with an empty body when it cannot forward a request. The UI therefore has no error message from the API and falls back to `Request failed with status 502.` (`frontend/src/lib/api.ts`).
+
+## Evidence
+
+| Scenario | `POST /v1/auth/login` via :5173 |
+| --- | --- |
+| API not running | **502**, Vite logs `http proxy error: /v1/auth/login` and `ECONNREFUSED 127.0.0.1:8100` |
+| API running, database not available | 500 `INTERNAL_ERROR` |
+| API running, database migrated and seeded | **200** |
+
+With the API running, `/v1/me`, `/v1/admin/events`, `/v1/admin/disputes`, `/v1/admin/system/health` and `/v1/admin/audit` all returned 200 for the organizer account. After stopping the API while keeping the same token, all five returned 502. So an API that stops *after* sign-in produces 502 errors on the admin page.
+
+## Confirm it on your machine
+
+1. Look at the terminal running `npm run dev`. Expect `http proxy error` with `ECONNREFUSED 127.0.0.1:8100`.
+2. Open `http://127.0.0.1:8100/health`.
+
+| Result | Meaning |
+| --- | --- |
+| Connection refused | API is not running. Apply the fix below. |
+| `"status":"degraded"` | API is up, database is not. Do steps 1, 2 and 4 of the fix. |
+| `"status":"ok"` | API is up now. Retry sign-in. If 502 persists, read the Vite log for the actual proxy error. |
+
+## Fix (macOS / Linux / WSL)
+
+Requires Python 3.12+, Node 22+ and PostgreSQL 16 or 17. Start from the repository root.
+
+```bash
+# 1. database and roles
+DB=bughunt scripts/dev_db.sh
+
+# 2. migrations
+DB=bughunt PGUSER=pgadmin scripts/migrate.sh
+
+# 3. Python dependencies
+(cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt)
+
+# 4. demo data. WARNING: --reset wipes existing data; use only on a dev database you can discard
+(cd backend && .venv/bin/python seed.py --reset)
+
+# 5. API: leave this terminal open
+cd backend && .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8100
+```
+
+In a second terminal (background jobs; sign-in worked without it in testing):
+
+```bash
+cd backend && .venv/bin/python worker.py
+```
+
+Keep `npm run dev` running in `frontend/`. Then sign in with `organizer@example.com` / `Dev-only!Passw0rd!` (dev-only seed account).
+
+If setup was already done once, `scripts/run_dev.sh --no-seed` starts the database, API and worker. Its logs are in `logs/api.log` and `logs/worker.log`.
+
+### Windows (not tested)
+
+The `.sh` scripts need a Bash environment; WSL is the simplest route. If the database is already set up natively, the API start command from `backend\` is:
+
+```powershell
+.venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8100
+```
+
+## If the API will not stay up
+
+Run step 5 in the foreground and read the last error. Things to check:
+
+| Symptom | Likely reason |
+| --- | --- |
+| `No module named ...` | Dependencies not installed in the Python being used (step 3) |
+| `cannot import name 'UTC' from 'datetime'` | Python older than 3.11; the project asks for 3.12+ |
+| `address already in use` | Another process holds port 8100 |
+| API listens on another port | It must be 8100. `uvicorn` defaults to 8000, so `--port 8100` is required |
+
+## Related repository issues
+
+**1. README quick start breaks if pasted into one shell.** Steps 3 to 5 each begin with `cd backend` (and then `cd frontend`) without returning to the root. After step 3 the shell is already in `backend/`, so the next `cd backend` fails with `No such file or directory`, and the API start command can be skipped. This is a possible way to end up with only the frontend running. Fix: wrap each in a subshell, as in the commands above.
+
+**2. The error message is unhelpful (optional improvement).** In `frontend/src/lib/api.ts`, inside `if (!res.ok)`, change the fallback message:
+
+```ts
+serverMessage:
+  envelope?.message ??
+  ([502, 503, 504].includes(res.status)
+    ? 'Cannot reach the platform API. Check that it is running, then retry.'
+    : `Request failed with status ${res.status}.`),
+```
+
+This only improves the message. It does not fix the 502, and it has not been tested.
+
+## Verification checklist
+
+- [ ] `http://127.0.0.1:8100/health` shows `status: ok`, `database_app: up`, `database_gt: up`
+- [ ] `http://localhost:5173/health` shows the same (proves the proxy works)
+- [ ] Organizer sign-in opens `/admin` with no 502 errors
