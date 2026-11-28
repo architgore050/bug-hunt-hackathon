@@ -421,8 +421,12 @@ def test_team_member_cap_is_enforced_for_registration_and_reassignment(client, m
 
     with app_engine.connect() as conn:
         current_team = conn.execute(
-            text("SELECT team_id FROM app.team_members WHERE user_id = CAST(:user AS uuid)"),
-            {"user": str(source_user)},
+            text(
+                "SELECT tm.team_id FROM app.team_members tm "
+                "JOIN app.teams t ON t.id = tm.team_id "
+                "WHERE tm.user_id = CAST(:user AS uuid) AND t.event_id = CAST(:event AS uuid)"
+            ),
+            {"user": str(source_user), "event": event_id},
         ).scalar_one()
         member_count = conn.execute(
             text("SELECT count(*) FROM app.team_members WHERE team_id = CAST(:team AS uuid)"),
