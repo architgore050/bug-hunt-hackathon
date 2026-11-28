@@ -97,7 +97,12 @@ def test_award_claim_uniqueness_blocks_double_award(seeded_db):
             )
         ).first()
         team_id, event_id, stage_id, tenant_id = str(team[0]), str(team[1]), str(team[2]), str(team[3])
-        challenge_version_id = str(s.execute(text("SELECT id FROM app.challenge_versions LIMIT 1")).scalar_one())
+        # pin the option-A (papyrus) challenge: the flag codes below match its
+        # ground truth only, and the seeded event also carries the option-B
+        # marina challenge, so an unordered LIMIT 1 could pick either one
+        challenge_version_id = str(
+            s.execute(text("SELECT id FROM app.challenge_versions WHERE slug = 'papyrus'")).scalar_one()
+        )
         user_id = str(s.execute(text("SELECT id FROM app.users WHERE role='participant' LIMIT 1")).scalar_one())
         submission_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
         for submission_id in submission_ids:
