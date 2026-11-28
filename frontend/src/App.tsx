@@ -1,4 +1,4 @@
-import { Route, Routes, Navigate } from 'react-router-dom'
+import { Route, Routes, Navigate, Outlet } from 'react-router-dom'
 import { PublicLayout, RequireRole, ConsoleShell } from './components/chrome'
 import Landing from './pages/Landing'
 import Rules from './pages/Rules'
@@ -22,6 +22,27 @@ import ReviewQueue from './pages/review/Queue'
 import ReviewItem from './pages/review/ItemDetail'
 import AdminDashboard from './pages/admin/Dashboard'
 import AdminChallenges from './pages/admin/Challenges'
+import { AdminShell } from './admin/AdminShell'
+import { AdminProvider } from './admin/store'
+import AdminOverview from './pages/admin/Overview'
+import AdminParticipantsTeams from './pages/admin/ParticipantsTeams'
+import AdminEvaluations from './pages/admin/Evaluations'
+import AdminScoreboard from './pages/admin/Scoreboard'
+import AdminMalpractice from './pages/admin/Malpractice'
+import AdminInfrastructure from './pages/admin/Infrastructure'
+import AdminEventConfig from './pages/admin/EventConfig'
+import AdminAccounts from './pages/admin/AdminAccounts'
+import AdminNotificationCentre from './pages/admin/NotificationCentre'
+import AdminLogin from './pages/admin/AdminLogin'
+import AdminPasswordReset from './pages/admin/AdminPasswordReset'
+
+function AdminResetWrapper() {
+  return (
+    <AdminProvider>
+      <AdminPasswordReset />
+    </AdminProvider>
+  )
+}
 
 export default function App() {
   return (
@@ -115,20 +136,35 @@ export default function App() {
         }
       />
 
-      {/* Organizer / admin console */}
+      {/* Admin authentication: single shared admin login entry point */}
+      <Route path="/admin/login" element={<AdminLogin />} />
+
+      {/* Password reset works without email and without an existing session */}
+      <Route path="/admin/admins/reset" element={<AdminResetWrapper />} />
+
+      {/* Organizer / admin console with persistent sidebar */}
       <Route
         path="/admin"
         element={
           <RequireRole roles={['organizer', 'admin']} devPreview>
-            <ConsoleShell area="/admin">
-              <Routes>
-                <Route index element={<AdminDashboard />} />
-                <Route path="challenges" element={<AdminChallenges />} />
-              </Routes>
-            </ConsoleShell>
+            <AdminShell>
+              <Outlet />
+            </AdminShell>
           </RequireRole>
         }
-      />
+      >
+        <Route index element={<AdminOverview />} />
+        <Route path="participants" element={<AdminParticipantsTeams />} />
+        <Route path="evaluations" element={<AdminEvaluations />} />
+        <Route path="scoreboard" element={<AdminScoreboard />} />
+        <Route path="malpractice" element={<AdminMalpractice />} />
+        <Route path="infrastructure" element={<AdminInfrastructure />} />
+        <Route path="event-config" element={<AdminEventConfig />} />
+        <Route path="admins" element={<AdminAccounts />} />
+        <Route path="notifications" element={<AdminNotificationCentre />} />
+        <Route path="operations" element={<AdminDashboard />} />
+        <Route path="challenges" element={<AdminChallenges />} />
+      </Route>
 
       <Route path="*" element={<NotFound />} />
     </Routes>
