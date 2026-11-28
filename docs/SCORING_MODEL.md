@@ -140,6 +140,8 @@ The evaluator's decision paths (deterministic matcher, then evaluator jobs):
   notes "(capped)" on the entry when truncated. Reason FLAG_VERIFIED.
 - Bonus entries are component ctf_bonus, kind bonus. They never interact with
   the main-score components or the penalty cap.
+- Concurrent verification is serialized by a team-row lock for the bonus cap
+  and a transaction-scoped advisory lock for each flag key's max_awards check.
 
 ## 5. Penalty model
 
