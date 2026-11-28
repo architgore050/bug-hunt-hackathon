@@ -1,4 +1,4 @@
-Status: describes the implementation as of 2026-11-28
+Status: describes the implementation as of 2026-11-28; exact-commit CI result remains pending for this branch
 
 # Testing Strategy
 
@@ -6,7 +6,7 @@ The pyramid as actually implemented:
 
 - A pytest integration-heavy suite against real PostgreSQL.
 - Pure-function unit tests for the deterministic matcher and scoring math.
-- One end-to-end journey script against a running stack (46 checks).
+- One end-to-end journey script against a running stack.
 - Frontend type-check, build, lint, and server-rendered security regression tests.
 - The gt-isolation tests that assert the database boundary itself.
 
@@ -25,18 +25,20 @@ Layout: `backend/tests/`, driven by `pytest.ini` (`testpaths = tests`, 120 s tim
 - Serves the app through Starlette's `TestClient` (no sockets).
 - `worker_drain()` runs pending jobs synchronously so evaluation paths are tested without the worker process.
 
-Per-file coverage:
+Behavioral coverage:
 
-| File | Tests | What it proves |
-| --- | --- | --- |
-| `test_auth.py` (6) | Generic login failures prevent account enumeration; password reset revokes sessions and bumps token_version; sensitive admin routes require step-up; refresh rotation reuses the successor inside grace and revokes the entire family outside grace; session caps evict the oldest live session; expired refresh-token families do not hold session slots |
-| `test_authorization.py` (7) | Cross-team submission read -> 404 (SEC-02 IDOR); participant/reviewer role boundaries; persisted challenge binding is the server-resolved assignment; unauthenticated requests rejected; traversal paths return exactly 400 `PATH_INVALID`; report text is preserved for the separately tested frontend renderer |
-| `test_gt_isolation.py` (5) | Real `app_api` role denied on `gt.gt_bugs` / `gt.gt_flags` / gt INSERT. `gt_admin` positive control. The platform never lists or serves `ORGANIZER_ANSWER_KEY.md` (DAT-03, AT-08) |
-| `test_idempotency.py` (4) | Same key five times -> one receipt (DAT-02). Same key different payload -> 409 `IDEMPOTENCY_CONFLICT`. Committed-key replay returns the ORIGINAL receipt even after the deadline. Cooldown races on the same file rejected with 429 (INT-05) |
-| `test_matching.py` (8) | Deterministic matcher units: exact overlap auto-accept; near location plus alias evidence accepts; wrong file needs review; thin unmatched report structurally rejected; span over cap rejected; already-awarded unit -> duplicate; `location_score` bounds; weighted alias fraction |
-| `test_scoring.py` (7) | Weight split math; database-enforced ledger immutability and reversal linkage; two independent transactions racing for an award unit produce one claim; seed-independent CTF flags exercise the 100-point cap; concurrent verification cannot exceed the team cap or a flag's max_awards; leaderboard tie-break ordering |
-| `test_root.py` (1) | Root endpoint returns 200 JSON with the app name and `ok` status |
-| `test_flow_*.py` (39) | Four-level gates, repository locks, submissions, uploads, and deadline auto-submit against real PostgreSQL |
+| Scope | What it proves |
+| --- | --- |
+| Authentication and security primitives | Generic login failures, token claims and rejection, password hashing, session and refresh lifecycle, admin-managed staff registration and first-password claims, role boundaries, rules acceptance, step-up, CSRF, and rate limits |
+| Admin event and challenge operations | Event schedules and readiness, config revisions, stage controls, admin-managed teams and participant registration, challenge upload/freeze/publish, ground-truth authoring, announcements, time adjustments, live ops, audit, exports, disputes, adjustments, and health |
+| Admin four-level operations | Repository lock and options, progress views, manual auto-submit, and idempotent level bootstrap |
+| Participant delivery and responses | Assignment ownership, safe file content/search, public event/rules allowlists, server time and state, leaderboard visibility, team-scoped results, submission masking, and disputes |
+| Reviewer workflow | Queue ordering, claim ownership and expiry, detail projection, decision validation, persisted review jobs, and audit effects |
+| Evaluator and scoring | Flag caps, unique claims, ledger immutability, review/test-result scoring for every claimed unit, release-time defaults and penalties, feedback visibility, and points |
+| Matching integrity | Single- and multi-location decisions, alias/category boundaries, duplicate awards, distinct location coverage, and conservative handling of missing candidates |
+| Worker and deadline flow | Queue leasing and retries, dead letters, auto-submit idempotency, progression, rollback, and gate boundaries |
+| Storage and HTTP safety | Content-addressed artifacts, ZIP path/type validation, database session atomicity, health/cache/security headers, CORS, and error envelopes |
+| Core v1 regressions | Existing authorization, idempotency, ground-truth isolation, matching, scoring, root, and four-level flow suites |
 
 Run:
 
@@ -46,6 +48,8 @@ cd backend && python -m pytest -v
 ```
 
 Passing status must be taken from the CI run for the exact commit, not inferred from this inventory.
+
+The latest local verification used statement and branch coverage. The measured result and any intentionally untested declarations or process-only paths are recorded in the PR, not treated as a quality score by themselves.
 
 ## 2. Deterministic matcher tests
 
@@ -61,7 +65,7 @@ Because `matching.decide` is a pure function of (report, candidates, rule set, c
 - Any rule change must update them.
 - Recorded feature values in ledger notes keep real decisions replayable (DAT-05).
 
-## 3. E2E journey (`scripts/e2e_journey.py`, 46 checks)
+## 3. E2E journey (`scripts/e2e_journey.py`)
 
 Runs against a live stack (`bash scripts/run_dev.sh` first; API on 8100, worker draining). One participant-team-organizer-reviewer journey exercising the P0 paths:
 
@@ -87,8 +91,8 @@ Run:
 bash scripts/run_dev.sh && python scripts/e2e_journey.py   # pass --base for a remote stack
 ```
 
-- Exit code 0 required; prints `46/46 checks passed` when green.
-- Note: the "reviewer records auditable decision" check and its "auto-matched" fallback are mutually exclusive by branch, so the total executed is 46 either way.
+- Exit code 0 required; prints the checks-passed summary when green.
+- Note: the "reviewer records auditable decision" check and its "auto-matched" fallback are mutually exclusive by branch, so the executed total does not change.
 
 ## 4. Frontend verification
 
@@ -127,11 +131,16 @@ Re-run the role tests against PRODUCTION after any database grant change; this i
 
 ## 6. CI wiring
 
-See `CI_CD_PIPELINE.md`. Contract:
+See `CI_CD_PIPELINE.md`. The committed workflow has seven logical jobs: secret scan, backend quality, six backend test shards, the backend coverage gate, backend e2e, frontend quality and source hygiene. Contract:
 
-- Backend job runs the pytest suite against a PostgreSQL 17 service container (conftest is already service-compatible: it calls `dev_db.sh`/`migrate.sh`, which need `psql` on PATH and `PGPORT=5433`).
-- Frontend job runs `npm ci`, `npm audit`, `npm run lint`, `npm test`, and `npm run build`.
-- The first real CI run must be verified on GitHub after push and the green run recorded as readiness evidence (OPS-02: never let the live event be the first full run).
+- `secret-scan`: gitleaks over the full pull-request commit range.
+- `backend-quality`: Ruff lint/format, Bandit and pip-audit.
+- `backend-test-shards`: six pytest runners, each with its own PostgreSQL 17 service container and migrations (conftest is service-compatible: it calls `dev_db.sh`/`migrate.sh`, which need `psql` on PATH and `PGPORT=5433`).
+- `backend-tests`: combines the six shard coverage artifacts and enforces the 65% branch and statement gate; this keeps the original backend tests check name.
+- `backend-e2e`: seeded PostgreSQL 17, API and worker, then the journey.
+- `frontend-quality`: npm audit, lint, rendering tests and production build on Node 22.
+- `source-hygiene`: frontend em-dash and platform placeholder gates.
+- Check the exact pull-request head commit on GitHub; the successful upstream `main` run is not evidence that this branch passes. Record the branch's successful run as readiness evidence only after it completes (OPS-02: never let the live event be the first full run).
 
 ## 7. Pre-event test gate list
 
@@ -148,8 +157,8 @@ All of these must be green before the event goes live. They map to the seeded `a
 
 Per-suite gates for every code change:
 
-- pytest 38 test functions.
-- e2e journey 46/46.
+- pytest suite.
+- e2e journey.
 - frontend build clean.
 - frontend SSR rendering regression test clean.
 - oxlint clean.

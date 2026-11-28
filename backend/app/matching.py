@@ -63,6 +63,7 @@ class GtBugView:
 @dataclass
 class MatchFeatures:
     location_score: float = 0.0
+    location_coverage: float = 0.0
     category_score: float = 0.0
     alias_evidence: float = 0.0
     span: int = 0
@@ -221,6 +222,8 @@ def decide_multi(
 
     if not locations:
         return MatchDecision("reject_invalid", None, MatchFeatures(), "no locations supplied")
+    if not candidates:
+        return MatchDecision("needs_review", None, MatchFeatures(), "no ground-truth candidates available")
 
     span_violation = any(
         int(loc.get("line_end", 0)) - int(loc.get("line_start", 0)) + 1 > max_span for loc in locations
@@ -232,16 +235,24 @@ def decide_multi(
     for bug in candidates:
         feats = MatchFeatures()
         per_location: list[float] = []
+        matched_locations: set[int] = set()
         for loc in locations:
             ls, le = int(loc.get("line_start", 0)), int(loc.get("line_end", 0))
             file_path = str(loc.get("file_path", ""))
             best = 0.0
-            for gt_loc in bug.locations:
+            best_index = None
+            for index, gt_loc in enumerate(bug.locations):
                 if gt_loc.file_path != file_path:
                     continue
-                best = max(best, location_score((ls, le), gt_loc, tol))
+                score = location_score((ls, le), gt_loc, tol)
+                if score > best:
+                    best = score
+                    best_index = index
             per_location.append(best)
+            if best_index is not None:
+                matched_locations.add(best_index)
         feats.location_score = sum(per_location) / len(per_location) if per_location else 0.0
+        feats.location_coverage = len(matched_locations) / len(bug.locations) if bug.locations else 0.0
         fam = CATEGORIES_FAMILIES.get(category, [])
         if category and bug.category == category:
             feats.category_score = 1.0
@@ -259,8 +270,8 @@ def decide_multi(
     if bug.code in already_awarded_units:
         return MatchDecision("duplicate", bug, feats, f"award unit {bug.code} already claimed")
 
-    auto_full = L >= 0.9 and C >= 0.6 and feats.alias_evidence >= 0.2
-    auto_partial = L >= 0.9 and C == 0
+    auto_full = L >= 0.9 and feats.location_coverage >= 0.9 and C >= 0.6 and feats.alias_evidence >= 0.2
+    auto_partial = L >= 0.9 and feats.location_coverage >= 0.9 and C == 0
     if auto_full:
         return MatchDecision("accept_full", bug, feats, "multi-location evidence aligned")
     if auto_partial:

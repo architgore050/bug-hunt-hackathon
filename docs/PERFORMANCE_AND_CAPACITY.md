@@ -24,8 +24,8 @@ These are testable targets, not promises: the master docs explicitly forbid clai
 Nothing that qualifies as a capacity measurement. Verified on 2026-11-22:
 
 - No load-test scripts and no `docs/LOAD_TEST_REPORT.md` exist in this repository (checked the whole tree). The intended home for the report is `docs/LOAD_TEST_REPORT.md`; when the first load test runs, its actual numbers go there and this section gets updated with the reference. Until then: UNRUN.
-- What HAS been exercised at low scale in development: the full e2e journey (`scripts/e2e_journey.py`, 46 checks) runs against a local dev stack with 11 seeded participants in 2 teams, exercising submission acceptance, idempotent replay, cooldown rejection, evaluation, review, release and dispute. This proves correctness of the paths, not capacity.
-- The pytest suite (34 tests) runs against a real PostgreSQL with the production migration (CI uses a PostgreSQL 17 service container; local dev clusters may run 16 or 17); no behavior has been validated against anything other than real PostgreSQL.
+- What HAS been exercised at low scale in development: the full e2e journey (`scripts/e2e_journey.py`) runs against a local dev stack with 11 seeded participants in 2 teams, exercising submission acceptance, idempotent replay, cooldown rejection, evaluation, review, release and dispute. This proves correctness of the paths, not capacity.
+- The pytest suite runs against a real PostgreSQL with the production migration (CI uses a PostgreSQL 17 service container; local dev clusters may run 16 or 17); no behavior has been validated against anything other than real PostgreSQL.
 
 Assumption (explicit): development-machine latency gives no basis for p95 claims on the D1 VM. Do not cite dev timings as benchmarks.
 

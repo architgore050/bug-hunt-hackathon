@@ -2,7 +2,6 @@ export type EventStatus = 'Upcoming' | 'Registration Open' | 'Live' | 'Paused' |
 
 export type RegistrationStatus = 'registered' | 'pending' | 'invited' | 'waitlisted'
 export type ParticipationStatus = 'active' | 'inactive' | 'disabled' | 'removed'
-export type TeamStatus = 'active' | 'inactive' | 'disqualified'
 
 export interface Participant {
   id: string
@@ -18,7 +17,6 @@ export interface Participant {
 export interface Team {
   id: string
   name: string
-  status: TeamStatus
   capacity: number
   createdAt: string
   joinCode: string

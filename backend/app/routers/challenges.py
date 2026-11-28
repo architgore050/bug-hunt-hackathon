@@ -78,7 +78,7 @@ def my_assignments(p: Principal = Depends(get_principal)):
             s.execute(
                 text(
                     "SELECT path, lang, size_bytes, line_count FROM app.challenge_files "
-                    "WHERE challenge_version_id = CAST(:c AS uuid) ORDER BY path"
+                    "WHERE challenge_version_id = CAST(:c AS uuid) ORDER BY lower(path), path"
                 ),
                 {"c": str(ch["id"])},
             )

@@ -1,4 +1,4 @@
-Status: describes the implementation as of 2026-11-22
+Status: describes the implementation as of 2026-11-28
 
 # Deployment Runbook
 
@@ -26,7 +26,7 @@ Steps:
    - Runs as `PGUSER=pgadmin` (the database owner).
    - Creates `app.schema_migrations` and applies `backend/migrations/*.sql` in order.
 3. Seed (dev only, known credentials): `cd backend && python seed.py` (add `--reset` to clear first).
-   - Prints staff/participant credentials (`Dev-only!Passw0rd!`) and the organizer invite token once.
+   - Prints seeded staff/participant credentials (`Dev-only!Passw0rd!`). No invitation tokens are generated.
    - Never run against a live deployment.
    - Shortcut: `bash scripts/run_dev.sh` performs steps 1-4 (add `--no-seed` / `--reset-seed`).
 4. API + worker:
@@ -37,8 +37,26 @@ Steps:
    - Vite on 5173 (strictPort), proxying `/v1` and `/health` to 8100 so the refresh cookie is first-party.
 6. Verify:
    - `curl http://127.0.0.1:8100/health` must show `database_app: up` and `database_gt: up`.
-   - `python scripts/e2e_journey.py` must exit 0 (46 checks).
-   - `cd backend && python -m pytest` must show 34 passed.
+   - `python scripts/e2e_journey.py` must exit 0.
+   - `cd backend && python -m pytest` must complete successfully against PostgreSQL; collection is not a passing test run.
+
+### Existing database upgrades
+
+1. Take and verify a backup. Stop API/worker traffic or schedule a maintenance window; `0004_stage_ordinal_unique.sql` adds a unique index and briefly takes an `ACCESS EXCLUSIVE` lock on `app.stages`.
+2. Check for duplicate ordinal groups before migrating:
+
+   ```sql
+   SELECT event_id, kind, ordinal, count(*), array_agg(id ORDER BY id) AS stage_ids
+   FROM app.stages
+   GROUP BY event_id, kind, ordinal
+   HAVING count(*) > 1;
+   ```
+
+   Resolve duplicates only after reviewing stage progression, submissions, and assignments. The migration intentionally refuses to delete or renumber them.
+3. Run one migrator as the database owner: `bash scripts/migrate.sh`. Set a bounded `lock_timeout` and `statement_timeout` for the session if the database client supports them.
+4. Verify `ux_stages_event_kind_ordinal` exists in `pg_constraint` and `0004_stage_ordinal_unique.sql` is recorded in `app.schema_migrations`. Smoke-test stage creation, level bootstrap, and participant stage selection before reopening traffic.
+5. Prefer rolling back application code while retaining the constraint. Do not drop it while the new bootstrap path is running. A schema rollback requires a reviewed forward fix or a restore that accounts for writes made after the migration.
+
 
 Environment variables (all optional in dev, see `backend/app/config.py`):
 
@@ -80,8 +98,26 @@ Procedure:
 8. First-boot checks (before any users):
    - `/health` shows both databases up.
    - Re-run the pytest role tests against the production database to prove the grant boundary.
-   - Organizer pass-through: create event -> readiness items visible -> create challenge, upload the 11 participant files, freeze, publish, enter ground truth via the gt endpoints (step-up required) -> invite one test participant -> submit one report and one flag end to end.
+   - Admin pass-through: create event and teams -> register a participant in Admin > Participants (email, name and team) -> verify the new account has no password -> first sign-in with that registered email sets the initial password -> subsequent sign-in checks that password -> create challenge, upload the participant files, freeze, publish, enter ground truth via the GT endpoints (step-up required) -> submit one report and one flag end to end.
 9. Backups before going live: see BACKUP_AND_RECOVERY.md; the restore drill is a readiness gate (`backup_restore`).
+
+## Upgrade ordering for the account-policy migrations
+
+For releases that apply migrations `0006_remove_legacy_account_tokens.sql`, `0007_remove_account_status.sql` or `0008_drop_team_status.sql`, do not run the old application against the new schema:
+
+1. Stop the old API and worker processes.
+2. Apply database migrations with `scripts/migrate.sh`.
+3. Start the application build that no longer references invite/password-reset tables, `app.users.status` or `app.teams.status`.
+4. Verify `/health`, sign in with one participant and one staff test account, and run the PostgreSQL-backed test suite before reopening the event.
+
+## Event-specific account lifecycle
+
+- Participant accounts are created only by an administrator from Admin > Participants. Registration requires a registered email address, participant name and event team.
+- No invitation token or activation URL is generated. The public `POST /v1/auth/activate` route is not registered for this event.
+- On first sign-in, the server checks the email against registered accounts. Only a passwordless participant who already belongs to a team may set an initial password. Staff accounts must have an administrator-assigned password. Unknown emails, passwordless staff and participants without team membership receive the generic invalid-credentials response.
+- This event deliberately does not verify mailbox ownership during participant first-password claim. Someone who knows a registered participant email can claim its initial password. This is an accepted risk; administrators must distribute registered participant emails through a controlled channel.
+- Password recovery is not self-service. Only an administrator can reset another account's password after fresh step-up confirmation. The reset revokes the target account's sessions and refresh tokens. Deliver the password in person or through an organization-approved authenticated one-to-one channel; never use email, public/team chat, event chat, tickets, or logs.
+- Legacy invite and public reset-token tables are dropped by migration `0006_remove_legacy_account_tokens.sql`. Account lifecycle status is removed by migration `0007_remove_account_status.sql`; disabled/disqualified legacy users have memberships detached, password hashes cleared and sessions revoked before the column is dropped. Migration `0008_drop_team_status.sql` removes the obsolete team status column; disqualification is represented by removing the member/team. User rows remain for scoring/audit foreign-key history.
 
 ## 3. Event-day launch sequence
 
@@ -123,8 +159,9 @@ Procedure:
   - Announce via a `critical` announcement and follow the scoring-correction runbook entry (master guide runbook list).
 - A wrong stage start can be adjusted with `extend` (1..3600 s) or per-user `time_adjustments` with reason codes.
   - Pause/resume has the partially-implemented ends_at restoration caveat documented in SYSTEM_ARCHITECTURE.md Section 5.2.
-  - Prefer `extend` after an outage rather than relying on `resume` time restoration.
-- A compromised account: revoke the session via the user's own endpoint, or set the user disqualified (every request 403s) and bump token_version via password reset.
+  - Resume restores the latest real pause window, including legacy `pause` transitions, capped at 7200 seconds. Extending while paused does not reset that window.
+  - Verify the resulting ends_at after an outage; use `extend` for any additional correction.
+- A compromised account: an administrator can reset the account password from Admin > Participants. The operation requires a fresh step-up check, increments token_version, and revokes all active sessions and refresh tokens. An admin cannot reset their own password through this endpoint.
 - Full host loss (D1): restore per BACKUP_AND_RECOVERY.md on a fresh VM; the SPA on Cloudflare Pages can display a status notice; do not claim automatic failover (master guide: no fake failover claims).
 - Change freeze: no code or config changes during an active round except the documented control actions (OPS-03).
   - If a fix is unavoidable, it goes through rehearsal on D0 first and is announced.

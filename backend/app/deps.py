@@ -47,7 +47,6 @@ class Principal:
         self.email = row.email
         self.name = row.name
         self.role = row.role
-        self.status = row.status
         self.session_id = str(row.session_id)
         self.token_version = int(row.token_version)
 
@@ -66,7 +65,7 @@ def get_principal(request: Request, creds: HTTPAuthorizationCredentials | None =
         row = (
             s.execute(
                 text(
-                    "SELECT u.id, u.email, u.name, u.role, u.status, u.token_version, s.id AS session_id, "
+                    "SELECT u.id, u.email, u.name, u.role, u.token_version, s.id AS session_id, "
                     "s.revoked_at FROM app.users u JOIN app.sessions s ON s.id = CAST(:sid AS uuid) "
                     "WHERE u.id = CAST(:uid AS uuid)"
                 ),
@@ -79,10 +78,6 @@ def get_principal(request: Request, creds: HTTPAuthorizationCredentials | None =
         raise ApiError("AUTH_SESSION_REVOKED")
     if row["revoked_at"] is not None:
         raise ApiError("AUTH_SESSION_REVOKED")
-    if row["status"] == "disqualified":
-        raise ApiError("AUTH_FORBIDDEN", message="This account was disqualified. Contact the organizers.")
-    if row["status"] != "active":
-        raise ApiError("AUTH_NOT_ACTIVATED")
     if int(claims.get("tv", 1)) != int(row["token_version"]):
         raise ApiError("AUTH_SESSION_REVOKED")
     return Principal(row)

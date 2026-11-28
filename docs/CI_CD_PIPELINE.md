@@ -1,91 +1,89 @@
-Status: describes the implementation as of 2026-11-22
+Status: sharded backend test workflow on 2026-11-28; upstream `main` run [#95](https://github.com/architgore050/bug-hunt-hackathon/actions/runs/46141529709) was green on the previous six-job workflow at `05796da64df844e8156dea4ad2b740397dd4e4b8`. This branch's run is pending.
 
 # CI/CD Pipeline
 
-Ownership note: the CI workflow is owned by the orchestrator track, not by this documentation pass. This document specifies the workflow contract that `.github/workflows/ci.yml` must implement.
+Ownership note: the CI workflow is owned by the orchestrator track. This document describes the workflow that is committed at `.github/workflows/ci.yml`.
 
-Deployment reality (verified 2026-11-22):
+Deployment reality (verified 2026-11-28 from the repository only):
 
-- There is NO `.github/` directory in this repository yet.
-- No workflow has ever run.
-- Everything below is the specification to implement, plus the mandatory verification step.
-- Nothing here should be described as "running" until the first green run is observed on GitHub.
+- The workflow file exists and defines seven logical jobs. Six of them are the separate runner jobs expanded from the `backend-test-shards` matrix, so twelve runners appear on a GitHub Actions run.
+- Upstream `main` run [#95](https://github.com/architgore050/bug-hunt-hackathon/actions/runs/46141529709) completed successfully on commit `05796da64df844e8156dea4ad2b740397dd4e4b8` across the previous six-job workflow. That is not evidence that the sharded workflow or this branch is green; the exact commit's run must be checked.
+- The job list below matches the committed file. A remote run is not implied by the job definitions.
 
 ## 1. Workflow contract: `.github/workflows/ci.yml`
 
 Triggers:
 
-- `push` (all branches).
-- `pull_request` to the main branch.
-- Concurrency group per ref with `cancel-in-progress: true` so stale runs do not waste free-plan minutes.
+- `push` to `main` only.
+- `pull_request` to `main` only.
+- `contents: read` permission.
+- Concurrency group per workflow and ref; `cancel-in-progress` is true for pull requests only.
 
-### Job 1: backend-tests
+### Job 1: secret-scan
 
-Purpose: run the 34-test pytest suite against a real PostgreSQL 17, because the suite's isolation and idempotency guarantees are database-enforced (unique constraints, role grants, SKIP LOCKED claims).
+Runs `gitleaks/gitleaks-action` with `fetch-depth: 0` so PR commits are available to the scanner. It uses the automatically provided `GITHUB_TOKEN`; no repository secret is configured.
 
-Steps:
+### Job 2: backend-quality
 
-1. `actions/checkout@v4`.
-2. Service container: `postgres:17` exposed on `127.0.0.1:5433` with a throwaway superuser password via `env:` (not a repository secret; test-only). Configure health options to wait for readiness.
-3. Install a PostgreSQL client (for example `apt-get install -y postgresql-client`) because `scripts/dev_db.sh` and `scripts/migrate.sh` shell out to `psql` / `pg_isready`.
-   - Export `PGPORT=5433` and credentials matching the service container.
-   - The scripts default `PG_BIN` to a local portable install but fall back to PATH tools, so the client package is sufficient; verify on first run and pin versions once known.
-4. Set up Python 3.12 and `pip install -r backend/requirements.txt`.
-5. Bootstrap: run `scripts/dev_db.sh` (creates roles/grants inside the service container database) and `scripts/migrate.sh` against a CI database.
-   - `tests/conftest.py` itself creates and migrates `bughunt_test`, so the explicit bootstrap mainly validates that the scripts run in CI.
-6. Run `python -m pytest backend/tests -v`, expecting 34 passed.
-   - The suite self-contains its secrets (`conftest.py` sets a test-only `JWT_SECRET` and dev role passwords scoped to the throwaway database), so NO repository secrets are required for this job.
-7. Upload the pytest report as a workflow artifact on failure.
+Runs `ruff check .`, `ruff format --check .`, `bandit -q -r backend/app -ll` and `pip-audit` on Python 3.12 with both runtime and dev requirements installed.
 
-Job-level sanity checks worth adding cheaply (grep assertions, not tests):
+### Job 3: backend-test-shards (six matrix runners)
 
-- `! grep -r "dangerouslySetInnerHTML" frontend/src`.
-- A docs placeholder sweep.
-- Keep the required set minimal so the pipeline stays green and meaningful.
+Purpose: run the pytest suite against a real PostgreSQL 17, because the suite's isolation and idempotency guarantees are database-enforced (unique constraints, role grants, SKIP LOCKED claims). The suite reseeds the database before every test, so it cannot share one database across parallel processes. The matrix gives each file group its own PostgreSQL service and its own `bughunt_test` database. `fail-fast` is off, so one failing shard does not hide the others.
 
-### Job 2: frontend-build
+Each runner:
 
-Purpose: prove the SPA type-checks, lints and builds.
+1. Checks out and sets up Python 3.12 with the runtime and dev requirements.
+2. Starts a PostgreSQL 17 service container on `127.0.0.1:5433` with trust auth and a health check.
+3. Creates `bughunt_test`, the three schemas and the `app_api` / `gt_admin` / `scheduler` roles plus grants directly on the service.
+4. Applies `backend/migrations/` in order with `scripts/migrate.sh`.
+5. Runs `python -m pytest <shard paths> -q --cov=app --cov-branch --timeout=120` from `backend/`. `COVERAGE_FILE` is `coverage.<group>` so each runner writes its own data file, uploaded as a `coverage.<group>` artifact.
+   - `tests/conftest.py` sets a test-only `JWT_SECRET` and dev role passwords for the throwaway database, so no repository secrets are needed for these runners.
+   - The shard paths are literals in the workflow `include` list and cover every `backend/tests/test_*.py` file exactly once. Adding a test file requires adding it to a shard.
 
-Steps:
+### Job 4: backend-tests (coverage gate, required check)
 
-1. `actions/setup-node@v4` (Node 22, matching the repo tooling).
-2. `npm ci` in `frontend/`.
-3. `npm run lint` (oxlint).
-4. `npm run build` (`tsc -b && vite build`).
-5. No secrets required.
-6. Upload `frontend/dist` as an artifact so a deployment job (future) consumes an immutable build rather than rebuilding.
+This job keeps the original `Backend tests (pytest + coverage)` check name so branch protection does not need a new entry for every shard. It runs even when a shard fails (`if: !cancelled()`) and fails immediately when any shard result is `failure` or `cancelled`. Otherwise it downloads the six coverage artifacts, runs `coverage combine` and enforces `coverage report --fail-under=65` on the combined data. A per-shard threshold would be wrong here because each group covers only part of `app`.
 
-### Job 3 (future, do not fake): e2e journey
+### Job 5: backend-e2e
 
-- The e2e journey needs the API + worker + seeded database running.
-- It CAN be composed from Job 1's service container plus `run_dev.sh` + `python scripts/e2e_journey.py`.
-- Add it once Jobs 1-2 are verified stable; treat 46/46 as a required gate before event readiness, in CI or manually per release.
+PostgreSQL 17 service on port 5433, roles and migrations as in the shard runners, `python seed.py --reset`, API on `127.0.0.1:8100` and `worker.py`, a health wait loop, then `python scripts/e2e_journey.py`. The script exits nonzero when a check fails. The job is active, not a future item.
+
+### Job 6: frontend-quality
+
+Node 22: `npm ci`, `npm audit --audit-level=high`, `npm run lint`, `npm test` and `npm run build` (`tsc -b && vite build`) in `frontend/`.
+
+### Job 7: source-hygiene
+
+Greps for em dashes in frontend source and for TODO/Lorem/XXX in platform code. The placeholder ban deliberately excludes the challenge-app vendor product, which keeps its documented TODO.
+
+### E2E journey gate
+
+The e2e journey needs the API, worker and a seeded database; Job 5 provides them. Treat its 46 checks as a required gate before event readiness. It currently exercises the v1 journey; the four-level flow is not yet in the journey script.
 
 ## 2. Secrets needed
 
-- None for the two required jobs:
-  - Backend tests use the conftest-provided test secret and dev role credentials scoped to the throwaway service database.
-  - Frontend build needs nothing.
+- No repository secrets are required by the seven jobs. The secret scan reads the automatically provided `GITHUB_TOKEN`; backend test shards use the conftest-provided test secret and dev role credentials scoped to their own throwaway service database; frontend jobs need nothing.
 - If deployment automation is added later (image build/push, Pages deploy, SSH to the VM), introduce exactly the tokens those steps need (`GH_TOKEN`/deploy key, Cloudflare API token, registry credentials) as GitHub Actions secrets, least-privilege, and never echo them.
 - Secret hygiene (SEC-04 area): no production JWT secret in CI; the production `JWT_SECRET` lives only in the VM env file.
 
 ## 3. What CI deliberately does NOT do (yet)
 
-- No dependency vulnerability scanning (SEC-04 follow-up: add Dependabot plus an image scanner when images exist).
-- No arm64 image builds (no Dockerfiles exist; the D1 guide requires arm64-tested images before event day).
 - No deployment job: deploys are manual per `DEPLOYMENT_RUNBOOK.md` until a compose-based pipeline is proven on the real VM.
+- No arm64 image builds or image scanning (no Dockerfiles exist; the D1 guide requires arm64-tested images before event day).
+- No load rehearsal and no external penetration test: both are readiness gates that a workflow cannot satisfy.
+- Branch protection is a GitHub repository setting, not a workflow step; its status must be checked on GitHub and cannot be inferred from this file.
 
 ## 4. Mandatory first-run verification (OPS-02)
 
-The first real CI run MUST be verified on GitHub after push, not assumed:
+The first real CI run MUST be verified on GitHub, not assumed from the committed workflow:
 
-1. Commit `.github/workflows/ci.yml` per the contract above and push.
-2. Open the Actions tab; both jobs must be green on the actual runner (Ubuntu-latest).
-   - Common first-run failures to expect and fix: missing `psql` in the backend job, service-container health timing, Node/Python version mismatches, oxlint strictness differences.
+1. `.github/workflows/ci.yml` is committed; on any change to it, observe the next Actions run on the exact commit.
+2. Open the Actions tab; all seven logical jobs must be green on the actual runner (Ubuntu-latest). Confirm that twelve runner jobs appear: six shard runners plus secret scan, backend quality, coverage gate, e2e, frontend quality and source hygiene.
+   - Common first-run failures to expect and fix: service-container health timing, Node/Python version mismatches, linter strictness differences, missing `psql` in the backend jobs, coverage artifacts not uploaded or not combining.
 3. Record the green run URL and date in the readiness evidence alongside `runbooks`.
    - The master docs' rule applies: the live event must never be the first full run of any pipeline.
-4. Branch protection: once green, require the backend + frontend jobs to pass before merging to main, so the event branch cannot regress silently.
+4. Branch protection: once green, require all seven logical jobs (secret scan, backend quality, the six backend test shards, the backend coverage gate, backend e2e, frontend quality and source hygiene) before merging to main, so the event branch cannot regress silently. The sharded runners are separate check names; the coverage gate keeps the original backend tests check name.
 
 ## 5. Release flow (manual, documented)
 

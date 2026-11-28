@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiRequestError } from '../../lib/api'
 import type {
   AdminEvent,
@@ -128,7 +128,7 @@ function EventsSection({
       {q.isLoading && <LoadingShell label="Loading events" />}
       {q.isError && <ErrorBanner error={q.error} onRetry={() => void q.refetch()} />}
       {q.data && q.data.events.length === 0 && (
-        <EmptyState title="No events yet" note="Create the event record first; stages, teams and invites attach to it." />
+        <EmptyState title="No events yet" note="Create the event record first; stages and teams attach to it." />
       )}
       {q.data && q.data.events.length > 0 && (
         <div className="table-scroll">
@@ -643,9 +643,18 @@ function AuditSection() {
 
 function DisputesSection() {
   const queryClient = useQueryClient()
-  const q = useQuery({
+  const pageSize = 50
+  const q = useInfiniteQuery({
     queryKey: ['admin-disputes'],
-    queryFn: () => api<{ disputes: Dispute[] }>('/v1/admin/disputes'),
+    queryFn: ({ pageParam }) =>
+      api<{ disputes: Dispute[]; total: number; limit: number; offset: number }>(
+        `/v1/admin/disputes?limit=${pageSize}&offset=${pageParam}`,
+      ),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) =>
+      lastPage.offset + lastPage.disputes.length < lastPage.total
+        ? lastPage.offset + lastPage.disputes.length
+        : undefined,
     refetchInterval: 20_000,
   })
   const [busy, setBusy] = useState<string | null>(null)
@@ -677,7 +686,8 @@ function DisputesSection() {
   if (q.isLoading) return <LoadingShell label="Loading disputes" />
   if (q.isError) return <ErrorBanner error={q.error} onRetry={() => void q.refetch()} />
 
-  const disputes = q.data?.disputes ?? []
+  const disputes = q.data?.pages.flatMap((page) => page.disputes) ?? []
+  const total = q.data?.pages[0]?.total ?? 0
 
   return (
     <Panel exhibit="EX-08" title="Disputes">
@@ -723,6 +733,16 @@ function DisputesSection() {
           </div>
         )
       })}
+      {disputes.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10 }}>
+          <span className="muted small">Showing {disputes.length} of {total}</span>
+          {q.hasNextPage && (
+            <Button size="sm" disabled={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()}>
+              {q.isFetchingNextPage ? 'Loading' : 'Load more'}
+            </Button>
+          )}
+        </div>
+      )}
     </Panel>
   )
 }

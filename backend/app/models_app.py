@@ -19,6 +19,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    desc,
     func,
     text,
 )
@@ -65,9 +66,6 @@ class User(AppBase):
     # participant | reviewer | organizer | admin  (integrity_officer folded into reviewer for v1, documented)
     role: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     password_hash: Mapped[str | None] = mapped_column(String(256))
-    status: Mapped[str] = mapped_column(
-        String(20), default="pending", server_default=text("'pending'"), nullable=False
-    )  # pending|active|disqualified
     token_version: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"), nullable=False)
     registration_id: Mapped[str | None] = mapped_column(String(64))
     accommodation_note: Mapped[str | None] = mapped_column(Text)
@@ -118,18 +116,6 @@ class Acceptance(AppBase):
     rules_version: Mapped[int] = mapped_column(Integer, nullable=False)
     accepted_at: Mapped[datetime] = ts()
     ip_hash: Mapped[str | None] = mapped_column(String(64))
-
-
-class PasswordReset(AppBase):
-    __tablename__ = "password_resets"
-    __table_args__ = {"schema": "app"}
-
-    id: Mapped[uuid.UUID] = pk()
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.users.id"), nullable=False, index=True)
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    created_at: Mapped[datetime] = ts()
 
 
 # --- events ------------------------------------------------------------------
@@ -213,9 +199,6 @@ class Team(AppBase):
     event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.events.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     join_code: Mapped[str] = mapped_column(String(12), unique=True, nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(20), default="active", server_default=text("'active'"), nullable=False
-    )  # active|disqualified
     seat_label: Mapped[str | None] = mapped_column(String(40))
     created_at: Mapped[datetime] = ts()
 
@@ -229,23 +212,6 @@ class TeamMember(AppBase):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.users.id"), nullable=False, index=True)
     seat_label: Mapped[str | None] = mapped_column(String(40))
     joined_at: Mapped[datetime] = ts()
-
-
-class Invite(AppBase):
-    __tablename__ = "invites"
-    __table_args__ = {"schema": "app"}
-
-    id: Mapped[uuid.UUID] = pk()
-    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.events.id"), nullable=False, index=True)
-    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    team_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("app.teams.id"))
-    role: Mapped[str] = mapped_column(
-        String(20), default="participant", server_default=text("'participant'"), nullable=False
-    )
-    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    created_at: Mapped[datetime] = ts()
 
 
 # --- stages (the spec's "rounds"; see SOURCE_OF_TRUTH_AND_TRACEABILITY R-013) --
@@ -435,6 +401,10 @@ class Submission(AppBase):
     feedback_released: Mapped[bool] = mapped_column(default=False, server_default=text("false"), nullable=False)
     matched_bug_code: Mapped[str | None] = mapped_column(String(40))
     points_visible: Mapped[float] = mapped_column(Numeric(10, 2), default=0, server_default=text("0"), nullable=False)
+    evaluation_state: Mapped[str] = mapped_column(
+        String(20), default="RECEIVED", server_default=text("'RECEIVED'"), nullable=False
+    )
+    evaluation_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = ts()
 
 
@@ -609,3 +579,63 @@ class ExportFile(AppBase):
     content_hash: Mapped[str] = mapped_column(String(80), nullable=False)
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.users.id"), nullable=False)
     created_at: Mapped[datetime] = ts()
+
+
+class SubmissionFlagResult(AppBase):
+    __tablename__ = "submission_flag_results"
+    __table_args__ = (UniqueConstraint("submission_id", "flag_index"), {"schema": "app"})
+
+    id: Mapped[uuid.UUID] = pk()
+    submission_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.submissions.id"), nullable=False, index=True)
+    flag_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    outcome: Mapped[str] = mapped_column(String(24), nullable=False)
+    matched_bug_code: Mapped[str | None] = mapped_column(String(40))
+    location_score: Mapped[float] = mapped_column(Numeric(5, 4), default=0, server_default=text("0"), nullable=False)
+    category_score: Mapped[float] = mapped_column(Numeric(5, 4), default=0, server_default=text("0"), nullable=False)
+    alias_evidence: Mapped[float] = mapped_column(Numeric(5, 4), default=0, server_default=text("0"), nullable=False)
+    claimed_award: Mapped[bool] = mapped_column(default=False, server_default=text("false"), nullable=False)
+    created_at: Mapped[datetime] = ts()
+
+
+class SubmissionScore(AppBase):
+    __tablename__ = "submission_scores"
+    __table_args__ = (
+        Index("ix_app_submission_scores_stage_team", "stage_id", "team_id", desc("total_points")),
+        {"schema": "app"},
+    )
+
+    id: Mapped[uuid.UUID] = pk()
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.events.id"), nullable=False)
+    stage_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.stages.id"), nullable=False)
+    team_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.teams.id"), nullable=False)
+    submission_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.submissions.id"), unique=True, nullable=False)
+    author_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.users.id"), nullable=False)
+    total_points: Mapped[float] = mapped_column(Numeric(10, 2), default=0, server_default=text("0"), nullable=False)
+    components: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"), nullable=False)
+    is_team_best: Mapped[bool] = mapped_column(default=False, server_default=text("false"), nullable=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = ts()
+
+
+class RunnerEvaluation(AppBase):
+    __tablename__ = "runner_evaluations"
+    __table_args__ = {"schema": "app"}
+
+    id: Mapped[uuid.UUID] = pk()
+    submission_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("app.submissions.id"), index=True)
+    artifact_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("app.submission_artifacts.id"))
+    challenge_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.challenge_versions.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="queued", server_default=text("'queued'"), nullable=False)
+    exit_code: Mapped[int | None] = mapped_column(Integer)
+    tests_passed: Mapped[int | None] = mapped_column(Integer)
+    tests_total: Mapped[int | None] = mapped_column(Integer)
+    variant_results: Mapped[dict] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb"), nullable=False
+    )
+    side_quest_passed: Mapped[bool | None] = mapped_column()
+    stdout_truncated: Mapped[str | None] = mapped_column(Text)
+    stderr_truncated: Mapped[str | None] = mapped_column(Text)
+    error_code: Mapped[str | None] = mapped_column(String(40))
+    created_at: Mapped[datetime] = ts()
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

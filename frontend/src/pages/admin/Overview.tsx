@@ -31,8 +31,9 @@ export default function Overview() {
 
   const metrics = useMemo(() => {
     const participants = state.participants.filter((p) => p.participationStatus !== 'removed')
-    const activeTeams = state.teams.filter((t) => t.status === 'active')
     const activeParticipants = participants.filter((p) => p.participationStatus === 'active')
+    const activeTeamIds = new Set(activeParticipants.map((p) => p.teamId).filter((teamId): teamId is string => teamId !== null))
+    const activeTeams = state.teams.filter((team) => activeTeamIds.has(team.id))
     const currentRound = state.rounds.find((r) => r.id === state.event.currentRoundId) ?? state.rounds.find((r) => r.status === 'active') ?? null
     const evaluationsCompleted = state.evaluations.filter((e) => e.status === 'published').length
     const questionsConfigured = state.questions.length

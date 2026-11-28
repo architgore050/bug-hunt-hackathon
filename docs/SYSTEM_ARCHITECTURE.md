@@ -1,4 +1,4 @@
-Status: describes the implementation as of 2026-11-22
+Status: describes the implementation as of 2026-11-28
 
 # System Architecture
 
@@ -15,7 +15,7 @@ Code locations:
 | Domain services | `backend/app/matching.py`, `scoring.py`, `evaluator.py`, `audit.py`, `jobs.py`, `security.py` | No scoring logic lives in HTTP handlers |
 | Models | `backend/app/models_app.py`, `models_gt.py` | SQLAlchemy 2.0, two engines (see Section 3) |
 | Worker | `backend/worker.py` | Single loop, polls every 2 s, drains up to 20 jobs per pass |
-| Migrations | `backend/migrations/0001_init.sql` | Applied by `scripts/migrate.sh`, tracked in `app.schema_migrations` |
+| Migrations | Ordered SQL files in `backend/migrations/` (0001 through 0008) | Applied by `scripts/migrate.sh`, tracked in `app.schema_migrations` |
 | Seed | `backend/seed.py` | Dev-only demo data (tenant, event, stage, challenge files, ground truth) |
 | Frontend | `frontend/` | React 19 + Vite + TypeScript + Tailwind 4, TanStack Query polling |
 | Challenge app | `challenge-app/` | Node 22.5+ / Express 4 / `node:sqlite`, 10 planted bugs (275 points) + 2 flags (60 points) |
@@ -113,11 +113,11 @@ draft -> sealed -> armed -> active -> paused -> active (resume)
 ```
 
 - `start` sets `started_at = clock_timestamp()` and `ends_at = started_at + event.duration_minutes` in the same statement.
-- `pause` / `resume` / `end` / `extend` all require a reason string; every transition inserts a row into `app.stage_transitions` with from-status, to-status (recorded as the action name), actor and reason code (ADM-LV-02, TIM-05).
+- `pause` / `resume` / `end` / `extend` all require a reason string; every transition inserts a row into `app.stage_transitions` with from-status, resulting to-status, actor and reason code (ADM-LV-02, TIM-05). `extend` records a status self-transition.
 - `extend` shifts `ends_at` by 1..3600 seconds. Per-user or per-team make-up time is a separate mechanism: `app.time_adjustments` rows (reason codes ACCOMMODATION | OUTAGE | DEVICE_FAILURE | OTHER) are summed into the effective end for deadline checks and the `/v1/state` readout.
 - `evaluate` moves ended -> evaluating and enqueues `release_feedback`; `release` moves to released, enqueues `release_feedback` and `refresh_leaderboard` with visibility public.
 
-Known rough edge, honestly noted: the `resume` action in `control_stage` contains a SQL shift of `ends_at` by the elapsed pause duration whose comment says it is "superseded by the explicit pause-end tracking", but no pause-end timestamp is tracked, and the resume path never writes a `stage_transitions` to_status distinct from the action name. The effective working-time restore on resume (TIM-05) is therefore only partially correct in v1; verify behavior at rehearsal before relying on mid-round pause/resume.
+`resume` compensates `ends_at` from the latest real active-to-paused transition, not from stage start or an `extend` self-transition. Legacy `pause` rows are recognized, the compensation is capped at 7200 seconds, and the stage row lock serializes concurrent control actions. Verify the resulting deadline during rehearsal.
 
 ### 5.3 Submission
 
@@ -138,7 +138,7 @@ Statuses visible to participants are coarsened to `received` until `feedback_rel
 
 ## 6. Job queue and worker
 
-`app.jobs` is a durable PostgreSQL queue (ADR-003). Claiming is a single `UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP LOCKED)` that sets `status='running'` and a 120 s lease (`jobs.py::claim_next`). The handler runs OUTSIDE the claim transaction. Failures retry with backoff [10, 60, 300, 900] s up to `max_attempts` (default 5), then go to `dead` and surface in `/v1/admin/system/health` and the live-ops view. On worker start (and each loop pass) expired leases are requeued, so a crashed worker's in-flight jobs are retried: delivery is at-least-once, and exactly-once business outcomes come from unique constraints plus idempotent handlers, e.g. `award_claims UNIQUE (stage_id, team_id, award_unit_id)` (DAT-01) and `_has_component` checks before inserting ledger entries.
+`app.jobs` is a durable PostgreSQL queue (ADR-003). Claiming is a single `UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP LOCKED)` that sets `status='running'` and a 120 s lease (`jobs.py::claim_next`). The handler runs OUTSIDE the claim transaction. Failures retry with backoff [10, 60, 300, 900] s up to `max_attempts` (default 5), then go to `dead` and surface in `/v1/admin/system/health` and the live-ops view. On worker start (and each loop pass) expired leases are requeued, so a crashed worker's in-flight jobs are retried: delivery is at-least-once, and exactly-once business outcomes come from unique constraints plus idempotent handlers, e.g. `award_claims UNIQUE (stage_id, team_id, award_unit_id)` (DAT-01), ground-truth flag-row IDs as the version-scoped CTF award unit, and `_has_component` checks before inserting ledger entries.
 
 Handlers (all in `backend/app/evaluator.py`): `evaluate_submission`, `create_review_item`, `verify_flag`, `apply_review_outcome`, `apply_test_results`, `release_feedback`, `refresh_leaderboard`, `dispatch_outbox`. `worker.py` polls every 2 s and drains up to 20 jobs per pass. Tests run handlers synchronously via `conftest.worker_drain()`.
 

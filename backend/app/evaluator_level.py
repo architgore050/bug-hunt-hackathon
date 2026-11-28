@@ -101,6 +101,13 @@ def evaluate_level_submission(payload: dict) -> None:
         sub = _submission(session, submission_id)
         if sub is None:
             raise ValueError(f"submission {submission_id} not found")
+        if sub["kind"] not in ("level_artifact", "level_report"):
+            # Unsupported kind: do not touch evaluation_state.
+            return
+        session.execute(
+            text("UPDATE app.submissions SET evaluation_state = 'EVALUATING' WHERE id = CAST(:sid AS uuid)"),
+            {"sid": submission_id},
+        )
         if sub["kind"] == "level_artifact":
             existing = session.execute(
                 text("SELECT 1 FROM app.review_items WHERE submission_id = CAST(:sid AS uuid) AND status <> 'decided'"),
@@ -114,8 +121,10 @@ def evaluate_level_submission(payload: dict) -> None:
                     ),
                     {"id": str(uuid.uuid4()), "sid": submission_id},
                 )
-            return
-        if sub["kind"] != "level_report":
+            session.execute(
+                text("UPDATE app.submissions SET evaluation_state = 'NEEDS_REVIEW' WHERE id = CAST(:sid AS uuid)"),
+                {"sid": submission_id},
+            )
             return
         team_id = str(sub["team_id"])
         stage_id = str(sub["stage_id"])
@@ -138,14 +147,33 @@ def evaluate_level_submission(payload: dict) -> None:
                 {"s": stage_id, "t": team_id},
             ).all()
         }
+        existing_flags = {
+            int(r["flag_index"]): dict(r)
+            for r in session.execute(
+                text(
+                    "SELECT flag_index, outcome, matched_bug_code FROM app.submission_flag_results "
+                    "WHERE submission_id = CAST(:sid AS uuid)"
+                ),
+                {"sid": submission_id},
+            )
+            .mappings()
+            .all()
+        }
         level_no = int(payload_data.get("level_no") or payload.get("level_no") or 1)
 
     with gt_session() as gts:
         candidates = _candidates_for_version(gts, challenge_version_id)
 
     outcomes: list[str] = []
+    first_matched_code: str | None = None
     with app_session() as session:
-        for flag in flags:
+        for idx, flag in enumerate(flags):
+            if idx in existing_flags:
+                prev = existing_flags[idx]
+                outcomes.append(prev["outcome"])
+                if first_matched_code is None and prev["matched_bug_code"]:
+                    first_matched_code = prev["matched_bug_code"]
+                continue
             locations = flag.get("locations") or []
             report_text = f"{flag.get('description') or ''} {flag.get('evidence') or ''}"
             if level_no >= 2 and len(locations) > 1:
@@ -168,8 +196,10 @@ def evaluate_level_submission(payload: dict) -> None:
                     "category": flag.get("category") or "",
                 }
                 decision = decide(report, candidates, rule_set, awarded)
-            outcomes.append(decision.outcome)
-            if decision.outcome == "accept_full" and decision.bug is not None:
+            outcome = decision.outcome
+            matched_code = decision.bug.code if decision.bug is not None else None
+            claimed_award = False
+            if outcome == "accept_full" and decision.bug is not None:
                 bug = decision.bug
                 claimed = claim_award_unit(
                     session,
@@ -180,7 +210,10 @@ def evaluate_level_submission(payload: dict) -> None:
                     submission_id=submission_id,
                 )
                 if claimed:
+                    claimed_award = True
                     awarded.add(bug.code)
+                    if first_matched_code is None:
+                        first_matched_code = bug.code
                     weights = (
                         (sub["event_config"] or {})
                         .get("scoring", {})
@@ -206,6 +239,7 @@ def evaluate_level_submission(payload: dict) -> None:
                         points=points["evidence_report"],
                         reason_code="MATCH_FULL",
                         note=f"bug={bug.code} L={decision.features.location_score:.2f} C={decision.features.category_score:.2f} A={decision.features.alias_evidence:.2f}",
+                        dedupe_award=True,
                     )
                     jobs.enqueue(
                         session,
@@ -213,23 +247,69 @@ def evaluate_level_submission(payload: dict) -> None:
                         {"submission_id": submission_id, "reason": "auto_accept_confirm", "priority": 7},
                     )
                 else:
-                    outcomes[-1] = "duplicate"
-            elif decision.outcome in ("accept_partial", "needs_review") and decision.bug is not None:
+                    outcome = "duplicate"
+            elif outcome in ("accept_partial", "needs_review") and decision.bug is not None:
                 jobs.enqueue(
                     session,
                     "create_review_item",
-                    {"submission_id": submission_id, "reason": f"level{level_no}_{decision.outcome}", "priority": 5},
+                    {"submission_id": submission_id, "reason": f"level{level_no}_{outcome}", "priority": 5},
                 )
+            outcomes.append(outcome)
+            session.execute(
+                text(
+                    "INSERT INTO app.submission_flag_results "
+                    "(id, submission_id, flag_index, outcome, matched_bug_code, "
+                    "location_score, category_score, alias_evidence, claimed_award) "
+                    "VALUES (CAST(:id AS uuid), CAST(:sid AS uuid), :idx, :out, :mbc, :ls, :cs, :ae, :ca) "
+                    "ON CONFLICT (submission_id, flag_index) DO NOTHING"
+                ),
+                {
+                    "id": str(uuid.uuid4()),
+                    "sid": submission_id,
+                    "idx": idx,
+                    "out": outcome,
+                    "mbc": matched_code,
+                    "ls": round(float(decision.features.location_score), 4),
+                    "cs": round(float(decision.features.category_score), 4),
+                    "ae": round(float(decision.features.alias_evidence), 4),
+                    "ca": claimed_award,
+                },
+            )
         # aggregate the LEVEL submission status (verdict detail stays hidden until release)
         if any(o == "accept_full" for o in outcomes):
             new_status = "matched_auto"
+            eval_state = "SCORED"
         elif any(o in ("accept_partial", "needs_review") for o in outcomes):
             new_status = "needs_review"
+            eval_state = "SCORED"
+        elif outcomes and all(o == "duplicate" for o in outcomes):
+            new_status = "duplicate"
+            eval_state = "SCORED"
         elif outcomes and all(o in ("reject_invalid", "duplicate") for o in outcomes):
             new_status = "rejected_auto"
+            eval_state = "SCORED"
         else:
             new_status = "received"  # explicit empty submission: nothing to match
+            eval_state = "SCORED"
         session.execute(
-            text("UPDATE app.submissions SET status = :st WHERE id = CAST(:sid AS uuid)"),
-            {"st": new_status, "sid": submission_id},
+            text(
+                "UPDATE app.submissions SET status = :st, "
+                "matched_bug_code = COALESCE(matched_bug_code, :mbc), "
+                "evaluation_state = :es "
+                "WHERE id = CAST(:sid AS uuid)"
+            ),
+            {"st": new_status, "mbc": first_matched_code, "es": eval_state, "sid": submission_id},
+        )
+        from .scoring import finalize_submission_score
+
+        finalize_submission_score(
+            session,
+            submission_id=submission_id,
+            stage_id=stage_id,
+            team_id=team_id,
+            event_id=event_id,
+            author_id=str(sub["author_id"]),
+            tenant_id=str(sub["tenant_id"]),
+            received_at=sub["received_at"],
+            kind=sub["kind"],
         )

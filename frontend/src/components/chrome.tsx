@@ -1,5 +1,5 @@
-import { NavLink, Link, Outlet, Navigate, useLocation } from 'react-router-dom'
-import type { ReactNode } from 'react'
+import { NavLink, Link, Outlet, Navigate, useLocation, useNavigationType } from 'react-router-dom'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { useAuth, homePathFor } from '../lib/auth'
 import { Button, LoadingShell, Panel, Chip } from '../ui/components'
 import { ShieldIcon } from '../ui/icons'
@@ -23,12 +23,44 @@ function roleLabel(role: string): string {
 
 export function PublicLayout() {
   const { user } = useAuth()
+  const location = useLocation()
+  const navigationType = useNavigationType()
+  const progressBarRef = useRef<HTMLDivElement>(null)
+
+  // Scroll to top on push/replace navigations, unless heading to an anchor
+  // hash. Back/forward (POP) keeps the browser's scroll restoration.
+  // behavior:'instant' overrides the global html{scroll-behavior:smooth} so
+  // the jump does not animate through the page on every route change.
+  useEffect(() => {
+    if (navigationType !== 'POP' && !location.hash) {
+      window.scrollTo({ top: 0, behavior: 'instant' })
+    }
+  }, [location.pathname, location.hash, navigationType])
+
+  // Track scroll progress down the document. Writes go straight to the bar
+  // element so scroll events never re-render the layout tree.
+  useEffect(() => {
+    const bar = progressBarRef.current
+    if (!bar) return
+    const onScroll = () => {
+      const el = document.documentElement
+      const total = el.scrollHeight - el.clientHeight
+      const pct = total > 0 ? (window.scrollY / total) * 100 : 0
+      bar.style.width = `${pct}%`
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [location.pathname])
+
   return (
     <div>
+      <div ref={progressBarRef} className="scroll-progress-bar" aria-hidden="true" />
       <header className="topbar">
         <div className="wrap topbar-inner">
           <Wordmark />
           <nav className="topnav" aria-label="Site">
+            <a href="/#how-it-works" className="hide-sm">How it works</a>
             <NavLink to="/rules">Rules</NavLink>
             {user ? (
               <NavLink to={homePathFor(user.role)}>Open console</NavLink>
@@ -38,7 +70,7 @@ export function PublicLayout() {
           </nav>
         </div>
       </header>
-      <main id="main">
+      <main id="main" key={location.pathname} className="page-transition">
         <Outlet />
       </main>
       <SiteFooter />
@@ -95,6 +127,10 @@ const NAV: Record<string, { to: string; label: string; roles: string[] }[]> = {
   '/admin': [
     { to: '/admin', label: 'Operations', roles: ['organizer', 'admin'] },
     { to: '/admin/challenges', label: 'Challenges', roles: ['organizer', 'admin'] },
+    { to: '/admin/setup', label: 'Setup & scoring', roles: ['organizer', 'admin'] },
+    { to: '/admin/participants', label: 'Participants', roles: ['organizer', 'admin'] },
+    { to: '/admin/ground-truth-bugs', label: 'Ground-truth bugs', roles: ['organizer', 'admin'] },
+    { to: '/admin/ground-truth-flags', label: 'Ground-truth flags', roles: ['organizer', 'admin'] },
   ],
 }
 

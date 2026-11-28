@@ -22,7 +22,6 @@ import type {
   ScoreAdjustment,
   ServiceStatus,
   Team,
-  TeamStatus,
 } from './types'
 
 const STORAGE_KEY = 'bhctf.admin.workspace.v1'
@@ -81,7 +80,6 @@ interface AdminCtx {
   importParticipants: (rows: CsvImportRow[]) => CsvImportResult
   addTeam: (name: string, capacity: number) => Team
   updateTeam: (id: string, patch: Partial<Team>) => void
-  setTeamStatus: (id: string, status: TeamStatus) => void
   removeTeam: (id: string) => void
   addRound: (input: Partial<Round> & { name: string }) => Round
   updateRound: (id: string, patch: Partial<Round>) => void
@@ -266,13 +264,12 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       return { created, duplicates, failed }
     },
     addTeam: (name, capacity) => {
-      const team: Team = { id: uid('team'), name, status: 'active', capacity, createdAt: nowIso(), joinCode: uid('FB').slice(0, 8).toUpperCase(), functionalScore: 0, evaluationScore: 0, ctfBonus: 0, penalties: 0 }
+      const team: Team = { id: uid('team'), name, capacity, createdAt: nowIso(), joinCode: uid('FB').slice(0, 8).toUpperCase(), functionalScore: 0, evaluationScore: 0, ctfBonus: 0, penalties: 0 }
       mutate((s) => ({ ...s, teams: [team, ...s.teams] }))
       logActivity({ admin: 'admin', action: 'team.created', targetType: 'team', targetId: team.id, targetLabel: name })
       return team
     },
     updateTeam: (id, patch) => mutate((s) => ({ ...s, teams: s.teams.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
-    setTeamStatus: (id, status) => mutate((s) => ({ ...s, teams: s.teams.map((t) => (t.id === id ? { ...t, status } : t)) })),
     removeTeam: (id) => mutate((s) => ({ ...s, teams: s.teams.filter((t) => t.id !== id), participants: s.participants.map((p) => (p.teamId === id ? { ...p, teamId: null } : p)) })),
     addRound: (input) => {
       const round: Round = { id: uid('round'), name: input.name, description: input.description ?? '', active: input.active ?? true, durationMinutes: input.durationMinutes ?? 60, instructions: input.instructions ?? '', order: input.order ?? stateRef.current.rounds.length + 1, status: input.status ?? 'draft' }

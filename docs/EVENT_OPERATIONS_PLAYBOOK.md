@@ -189,23 +189,24 @@ committed report stays valid even if the clock moved.
 - Pause (`{"action": "pause"}`): active to paused. Submissions reject with
   ROUND_PAUSED; participant countdowns show "Timer stopped". Use for venue
   emergencies only; it stops the clock but costs momentum.
-- Resume (`{"action": "resume"}`): paused to active. The design intent is to
-  shift ends_at by the pause duration so teams keep the promised working time
-  (TIM-05). Implementation caution: the resume SQL in the current build
-  compensates from started_at rather than the pause window and its comment
-  says the precise approach is pending. After any resume, compare the stage
-  ends_at shown in Stage control against what you intend, and correct with an
-  extend or a time adjustment if the numbers are off. Rehearse this in the
-  dry run (readiness item dry_run).
+- Resume (`{"action": "resume"}`): paused to active. The server shifts ends_at
+  by the latest real active-to-paused window so teams keep the promised working
+  time (TIM-05), capped at 7200 seconds per resume. Extending while paused does
+  not replace the original pause timestamp. Legacy transitions that recorded
+  `pause` are recognized. After any resume, compare the stage ends_at shown in
+  Stage control against what you intend and correct with an extend or a time
+  adjustment if needed. Rehearse this in the dry run (readiness item dry_run).
 - Extend (`{"action": "extend", "seconds": N}`, N in 1..3600): shifts ends_at
   forward. Use for short recoveries; announce immediately (severity warning)
   with the new end time in IST.
 - Per-user time adjustments: `POST /v1/admin/events/{event_id}/time-adjustment`
   with stage_id, delta_seconds, reason_code (ACCOMMODATION, OUTAGE,
   DEVICE_FAILURE, OTHER), and optionally user_id. Use for accessibility
-  accommodations and single-team device failures. The effective end time in
-  `/v1/state` includes these, so the affected participant's countdown is
-  correct without a global change.
+  accommodations and single-team device failures. Each call accepts a nonzero
+  delta with an absolute value of at most 3600 seconds. The stage must belong
+  to the event in the path, and a supplied user must belong to that event. The
+  effective end time in `/v1/state` includes these, so the affected
+  participant's countdown is correct without a global change.
 - End (`{"action": "end"}`): active or paused to ended. Submissions after end
   reject with ROUND_ENDED (committed-key replays still return their original
   receipt). The ConfirmButton arms twice on purpose.

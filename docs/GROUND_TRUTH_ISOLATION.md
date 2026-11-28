@@ -79,7 +79,7 @@ Step 3 of the journey fetches `GET /v1/challenges/{id}/files/content?path=ORGANI
 
 ```bash
 bash scripts/run_dev.sh          # starts API + worker, waits for /health
-python scripts/e2e_journey.py    # 46 checks, exit code 0 required
+python scripts/e2e_journey.py    # exit code 0 required
 ```
 
 Both tests must be green before the `gt_isolation` readiness item ("app_api cannot read gt, tested with the real role") is checked for an event; going live is blocked by the readiness gate while it is unchecked.

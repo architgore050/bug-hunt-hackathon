@@ -194,7 +194,7 @@ def admin_progress(event_id: str, p: Principal = Depends(require_organizer)):
         teams = (
             s.execute(
                 text(
-                    "SELECT t.id, t.name, t.status, c.option_key, c.lock_source FROM app.teams t "
+                    "SELECT t.id, t.name, c.option_key, c.lock_source FROM app.teams t "
                     "LEFT JOIN app.team_repo_choices c ON c.team_id = t.id "
                     "WHERE t.event_id = CAST(:e AS uuid) ORDER BY t.name"
                 ),
@@ -210,7 +210,6 @@ def admin_progress(event_id: str, p: Principal = Depends(require_organizer)):
                 {
                     "team_id": str(t["id"]),
                     "team_name": t["name"],
-                    "team_status": t["status"],
                     "repo_option": t["option_key"],
                     "lock_source": t["lock_source"],
                     "members": [
@@ -267,14 +266,18 @@ def admin_bootstrap_levels(event_id: str, request: Request, p: Principal = Depen
             ).first()
             if exists:
                 continue
-            s.execute(
+            # F-C-16: the exists-check above races under concurrent bootstrap
+            # calls; ux_stages_event_kind_ordinal (migration 0004) arbitrates,
+            # and ON CONFLICT keeps the documented create-if-missing behavior.
+            result = s.execute(
                 text(
                     "INSERT INTO app.stages (id, event_id, name, kind, ordinal, status, grace_seconds, config) "
-                    "VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :name, 'level', :n, 'draft', 3, CAST(:c AS jsonb))"
+                    "VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :name, 'level', :n, 'draft', 3, CAST(:c AS jsonb)) "
+                    "ON CONFLICT (event_id, kind, ordinal) DO NOTHING"
                 ),
                 {"id": str(uuid.uuid4()), "e": event_id, "name": names[n], "n": n, "c": "{}"},
             )
-            created += 1
+            created += result.rowcount or 0
         audit_write(
             s,
             actor_id=p.id,
