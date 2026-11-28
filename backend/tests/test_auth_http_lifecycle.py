@@ -86,10 +86,8 @@ def _state_counts() -> dict:
                     "SELECT (SELECT count(*) FROM app.users) AS users, "
                     "(SELECT count(*) FROM app.sessions) AS sessions, "
                     "(SELECT count(*) FROM app.refresh_tokens) AS refresh_tokens, "
-                    "(SELECT count(*) FROM app.invites) AS invites, "
                     "(SELECT count(*) FROM app.acceptances) AS acceptances, "
                     "(SELECT count(*) FROM app.team_members) AS team_members, "
-                    "(SELECT count(*) FROM app.password_resets) AS password_resets, "
                     "(SELECT count(*) FROM audit.entries) AS audit_entries"
                 )
             )
@@ -104,56 +102,6 @@ def _event_and_team() -> tuple[str, str]:
         event_id = str(session.execute(text("SELECT id FROM app.events ORDER BY created_at LIMIT 1")).scalar_one())
         team_id = str(session.execute(text("SELECT id FROM app.teams ORDER BY created_at LIMIT 1")).scalar_one())
     return event_id, team_id
-
-
-def _insert_invite(
-    *,
-    email: str,
-    expires_at: datetime | None = None,
-    used_at: datetime | None = None,
-    team_id: str | None = None,
-) -> tuple[str, str]:
-    event_id, default_team_id = _event_and_team()
-    raw = security.new_refresh_token()
-    invite_id = str(uuid.uuid4())
-    with app_session() as session:
-        session.execute(
-            text(
-                "INSERT INTO app.invites "
-                "(id, event_id, email, token_hash, team_id, role, used_at, expires_at) VALUES "
-                "(CAST(:id AS uuid), CAST(:event AS uuid), :email, :token_hash, CAST(:team AS uuid), "
-                "'participant', :used_at, :expires_at)"
-            ),
-            {
-                "id": invite_id,
-                "event": event_id,
-                "email": email.lower(),
-                "token_hash": security.token_hash(raw),
-                "team": team_id or default_team_id,
-                "used_at": used_at,
-                "expires_at": expires_at or datetime.now(UTC) + timedelta(hours=1),
-            },
-        )
-    return invite_id, raw
-
-
-def _insert_reset(email: str, *, expires_at: datetime | None = None) -> tuple[str, str]:
-    raw = security.new_refresh_token()
-    reset_id = str(uuid.uuid4())
-    with app_session() as session:
-        session.execute(
-            text(
-                "INSERT INTO app.password_resets (id, user_id, token_hash, expires_at) "
-                "SELECT CAST(:id AS uuid), id, :token_hash, :expires_at FROM app.users WHERE email = :email"
-            ),
-            {
-                "id": reset_id,
-                "token_hash": security.token_hash(raw),
-                "expires_at": expires_at or datetime.now(UTC) + timedelta(minutes=30),
-                "email": email.lower(),
-            },
-        )
-    return reset_id, raw
 
 
 def _refresh_rows(session_id: str) -> list[dict]:
@@ -184,7 +132,6 @@ def test_login_success_persists_hashed_refresh_state_and_a_scoped_cookie(client)
     body = response.json()
     assert body["user"]["email"] == "p1.team1@example.com"
     assert body["user"]["role"] == "participant"
-    assert body["user"]["status"] == "active"
     claims = security.decode_access_token(body["access_token"])
     assert claims["sub"] == body["user"]["id"]
     assert claims["role"] == "participant"
@@ -264,12 +211,14 @@ def test_login_failures_are_generic_and_have_no_persistent_side_effects(client):
     assert _state_counts() == before
 
 
-@pytest.mark.parametrize("role", ["participant", "reviewer", "organizer", "admin"])
-def test_admin_registration_creates_active_accounts_for_each_valid_role(client, role):
+@pytest.mark.parametrize("role", ["reviewer", "organizer", "admin"])
+def test_admin_registration_creates_staff_accounts_with_assigned_passwords(client, role):
     admin = _login(client, "admin@example.com").json()["access_token"]
     email = f"New.{role}.{uuid.uuid4().hex[:8]}@Example.com"
     password = "Registered-Password-123!"
 
+    step_up = client.post("/v1/auth/step-up", headers=_auth(admin), json={"password": STAFF_PW})
+    assert step_up.status_code == 200, step_up.text
     response = client.post(
         "/v1/auth/register",
         headers=_auth(admin),
@@ -280,13 +229,15 @@ def test_admin_registration_creates_active_accounts_for_each_valid_role(client, 
     assert response.json() == {
         "ok": True,
         "email": email.lower(),
-        "message": "Account created. The user can now sign in.",
+        "role": role,
+        "message": "Staff account registered with an administrator-assigned password.",
+        "password_setup_required": False,
     }
     with app_session() as session:
         user = (
             session.execute(
                 text(
-                    "SELECT id, email, name, role, status, password_hash, token_version FROM app.users "
+                    "SELECT id, email, name, role, password_hash, token_version FROM app.users "
                     "WHERE lower(email) = :email"
                 ),
                 {"email": email.lower()},
@@ -316,7 +267,6 @@ def test_admin_registration_creates_active_accounts_for_each_valid_role(client, 
     assert user["email"] == email.lower()
     assert user["name"] == f"New {role.title()}"
     assert user["role"] == role
-    assert user["status"] == "active"
     assert user["token_version"] == 1
     assert security.verify_password(password, user["password_hash"])
     assert session_count == 0
@@ -339,7 +289,7 @@ def test_non_admin_registration_is_denied_without_creating_an_account(client, em
             "email": target,
             "name": "Blocked Registration",
             "password": "Registered-Password-123!",
-            "role": "participant",
+            "role": "reviewer",
         },
     )
 
@@ -357,6 +307,9 @@ def test_non_admin_registration_is_denied_without_creating_an_account(client, em
 
 def test_duplicate_registration_is_generic_and_does_not_change_the_existing_account(client):
     admin = _login(client, "admin@example.com").json()["access_token"]
+    step_up = client.post("/v1/auth/step-up", headers=_auth(admin), json={"password": STAFF_PW})
+    assert step_up.status_code == 200, step_up.text
+
     with app_session() as session:
         password_hash_before = session.execute(
             text("SELECT password_hash FROM app.users WHERE email = 'admin@example.com'")
@@ -370,7 +323,7 @@ def test_duplicate_registration_is_generic_and_does_not_change_the_existing_acco
             "email": "ADMIN@example.com",
             "name": "Duplicate Admin",
             "password": "Replacement-Password-123!",
-            "role": "participant",
+            "role": "reviewer",
         },
     )
 
@@ -597,216 +550,14 @@ def test_logout_without_authentication_has_no_side_effects(client):
     assert client.get("/v1/me", headers=_auth(login.json()["access_token"])).status_code == 200
 
 
-@pytest.mark.parametrize("invite_state", ["unknown", "expired", "used"])
-def test_activation_rejects_unknown_expired_and_used_invites_without_side_effects(client, invite_state):
-    email = f"activation-{invite_state}@example.com"
-    raw = security.new_refresh_token()
-    if invite_state == "expired":
-        _, raw = _insert_invite(email=email, expires_at=datetime.now(UTC) - timedelta(minutes=1))
-    elif invite_state == "used":
-        _, raw = _insert_invite(email=email, used_at=datetime.now(UTC) - timedelta(minutes=1))
+def test_legacy_activation_route_is_not_registered(client):
     before = _state_counts()
-
     response = client.post(
         "/v1/auth/activate",
-        json={"invite_token": raw, "password": NEW_PASSWORD, "accept_rules": True},
+        json={"invite_token": security.new_refresh_token(), "password": NEW_PASSWORD, "accept_rules": True},
     )
-
-    error = _assert_error(response, 404, "NOT_FOUND")
-    assert error["message"] == "This invite is invalid or expired. Request a new invite from the organizers."
+    assert response.status_code == 404
     assert _state_counts() == before
-    with app_session() as session:
-        assert (
-            session.execute(
-                text("SELECT count(*) FROM app.users WHERE lower(email) = :email"),
-                {"email": email},
-            ).scalar_one()
-            == 0
-        )
-        if invite_state != "unknown":
-            invite = (
-                session.execute(
-                    text("SELECT used_at, expires_at FROM app.invites WHERE lower(email) = :email"),
-                    {"email": email},
-                )
-                .mappings()
-                .one()
-            )
-            if invite_state == "used":
-                assert invite["used_at"] is not None
-            else:
-                assert invite["used_at"] is None
-                assert invite["expires_at"] < datetime.now(UTC)
-
-
-def test_activation_requires_rules_consent_before_consuming_the_invite(client):
-    email = "activation-consent@example.com"
-    invite_id, raw = _insert_invite(email=email)
-    before = _state_counts()
-
-    response = client.post(
-        "/v1/auth/activate",
-        json={"invite_token": raw, "password": NEW_PASSWORD, "accept_rules": False},
-    )
-
-    _assert_error(response, 403, "RULES_NOT_ACCEPTED")
-    assert _state_counts() == before
-    with app_session() as session:
-        assert (
-            session.execute(
-                text("SELECT used_at FROM app.invites WHERE id = CAST(:id AS uuid)"),
-                {"id": invite_id},
-            ).scalar_one()
-            is None
-        )
-        assert (
-            session.execute(
-                text("SELECT count(*) FROM app.users WHERE lower(email) = :email"),
-                {"email": email},
-            ).scalar_one()
-            == 0
-        )
-
-
-def test_activation_creates_a_new_participant_and_consents_to_current_rules_once(client):
-    event_id, team_id = _event_and_team()
-    email = "new.participant@example.com"
-    with app_session() as session:
-        session.execute(
-            text("UPDATE app.events SET status = 'ready' WHERE id = CAST(:event AS uuid)"), {"event": event_id}
-        )
-        rules_version = session.execute(
-            text("SELECT rules_version FROM app.events WHERE id = CAST(:event AS uuid)"),
-            {"event": event_id},
-        ).scalar_one()
-    invite_id, raw = _insert_invite(email=email, team_id=team_id)
-
-    request_id = f"activation-{uuid.uuid4().hex[:8]}"
-    response = client.post(
-        "/v1/auth/activate",
-        headers={"X-Request-Id": request_id},
-        json={"invite_token": raw, "password": NEW_PASSWORD, "accept_rules": True},
-    )
-
-    assert response.status_code == 200, response.text
-    assert response.json() == {"ok": True, "email": email}
-    with app_session() as session:
-        user = (
-            session.execute(
-                text(
-                    "SELECT id, email, name, role, status, password_hash, registration_id FROM app.users "
-                    "WHERE lower(email) = :email"
-                ),
-                {"email": email},
-            )
-            .mappings()
-            .one()
-        )
-        invite = (
-            session.execute(
-                text("SELECT used_at FROM app.invites WHERE id = CAST(:id AS uuid)"),
-                {"id": invite_id},
-            )
-            .mappings()
-            .one()
-        )
-        membership = session.execute(
-            text("SELECT team_id FROM app.team_members WHERE user_id = CAST(:uid AS uuid)"),
-            {"uid": str(user["id"])},
-        ).scalar_one()
-        acceptance = (
-            session.execute(
-                text(
-                    "SELECT rules_version, ip_hash FROM app.acceptances "
-                    "WHERE user_id = CAST(:uid AS uuid) AND rules_version = :version"
-                ),
-                {"uid": str(user["id"]), "version": rules_version},
-            )
-            .mappings()
-            .one()
-        )
-        audit = (
-            session.execute(
-                text(
-                    "SELECT actor_id, actor_role, action, entity_id FROM audit.entries "
-                    "WHERE action = 'auth.activated' AND request_id = :request_id"
-                ),
-                {"request_id": request_id},
-            )
-            .mappings()
-            .one()
-        )
-    assert user["name"] == "new.participant"
-    assert user["role"] == "participant"
-    assert user["status"] == "active"
-    assert user["registration_id"]
-    assert security.verify_password(NEW_PASSWORD, user["password_hash"])
-    assert invite["used_at"] is not None
-    assert str(membership) == team_id
-    assert acceptance["rules_version"] == rules_version
-    assert acceptance["ip_hash"] is None
-    assert str(audit["actor_id"]) == str(user["id"])
-    assert audit["actor_role"] == "participant"
-    assert audit["entity_id"] == str(user["id"])
-
-    login = _login(client, email, password=NEW_PASSWORD)
-    profile = client.get("/v1/me", headers=_auth(login.json()["access_token"]))
-    assert profile.status_code == 200, profile.text
-    assert profile.json()["rules_accepted"] is True
-    assert profile.json()["rules_version"] == rules_version
-    assert profile.json()["team"]["id"] == team_id
-
-    before_replay = _state_counts()
-    password_hash_before = user["password_hash"]
-    replay = client.post(
-        "/v1/auth/activate",
-        json={"invite_token": raw, "password": "Another-Password-123!", "accept_rules": True},
-    )
-    _assert_error(replay, 404, "NOT_FOUND")
-    assert _state_counts() == before_replay
-    with app_session() as session:
-        assert (
-            session.execute(
-                text("SELECT password_hash FROM app.users WHERE id = CAST(:uid AS uuid)"),
-                {"uid": str(user["id"])},
-            ).scalar_one()
-            == password_hash_before
-        )
-
-
-def test_activation_cannot_overwrite_an_existing_account(client):
-    email = "admin@example.com"
-    invite_id, raw = _insert_invite(email=email)
-    with app_session() as session:
-        before = (
-            session.execute(
-                text("SELECT id, password_hash, status, role, token_version FROM app.users WHERE email = :email"),
-                {"email": email},
-            )
-            .mappings()
-            .one()
-        )
-
-    response = client.post(
-        "/v1/auth/activate",
-        json={"invite_token": raw, "password": NEW_PASSWORD, "accept_rules": True},
-    )
-
-    _assert_error(response, 403, "AUTH_FORBIDDEN")
-    with app_session() as session:
-        after = (
-            session.execute(
-                text("SELECT id, password_hash, status, role, token_version FROM app.users WHERE email = :email"),
-                {"email": email},
-            )
-            .mappings()
-            .one()
-        )
-        used_at = session.execute(
-            text("SELECT used_at FROM app.invites WHERE id = CAST(:id AS uuid)"), {"id": invite_id}
-        ).scalar_one()
-    assert after == before
-    assert used_at is None
 
 
 def test_step_up_wrong_password_is_generic_and_records_no_success(client):
@@ -938,167 +689,21 @@ def test_step_up_success_updates_the_session_audit_and_unlocks_a_sensitive_route
         )
 
 
-def test_reset_request_is_generic_and_only_creates_a_hashed_token_for_an_existing_account(client):
-    request_id = "generic-reset-request"
-    before = _state_counts()
-
-    existing = client.post(
-        "/v1/auth/password/reset-request",
-        json={"email": "P1.Team1@Example.com"},
-        headers={"X-Request-Id": request_id},
-    )
-    unknown = client.post(
-        "/v1/auth/password/reset-request",
-        json={"email": "unknown-reset@example.com"},
-        headers={"X-Request-Id": request_id},
-    )
-
-    assert existing.status_code == 200, existing.text
-    assert unknown.status_code == 200, unknown.text
-    assert (
-        existing.json()
-        == unknown.json()
-        == {
-            "ok": True,
-            "message": "If the address is registered, a reset link has been created.",
-        }
-    )
-    with app_session() as session:
-        reset = (
-            session.execute(
-                text(
-                    "SELECT r.user_id, r.token_hash, r.used_at, r.expires_at, u.email "
-                    "FROM app.password_resets r JOIN app.users u ON u.id = r.user_id"
-                ),
-            )
-            .mappings()
-            .one()
-        )
-        audit_count = session.execute(text("SELECT count(*) FROM audit.entries")).scalar_one()
-    assert reset["email"] == "p1.team1@example.com"
-    assert re.fullmatch(r"[0-9a-f]{64}", reset["token_hash"])
-    assert reset["used_at"] is None
-    assert datetime.now(UTC) < reset["expires_at"] <= datetime.now(UTC) + timedelta(minutes=31)
-    assert reset["token_hash"] not in existing.text
-    assert _state_counts()["password_resets"] == before["password_resets"] + 1
-    assert _state_counts()["audit_entries"] == audit_count == before["audit_entries"]
-
-
-def test_unknown_reset_token_is_denied_without_changing_password_or_sessions(client):
+def test_legacy_password_reset_routes_are_not_registered(client):
     login = _login(client, "p1.team1@example.com")
     before = _state_counts()
-    with app_session() as session:
-        password_hash_before = session.execute(
-            text("SELECT password_hash FROM app.users WHERE email = 'p1.team1@example.com'")
-        ).scalar_one()
-
-    response = client.post(
+    reset_request = client.post(
+        "/v1/auth/password/reset-request",
+        json={"email": "p1.team1@example.com"},
+    )
+    reset = client.post(
         "/v1/auth/password/reset",
         json={"token": security.new_refresh_token(), "password": NEW_PASSWORD},
     )
-
-    error = _assert_error(response, 404, "NOT_FOUND")
-    assert error["message"] == "This reset link is invalid or expired."
+    assert reset_request.status_code == 404
+    assert reset.status_code == 404
     assert _state_counts() == before
-    with app_session() as session:
-        assert (
-            session.execute(
-                text("SELECT password_hash FROM app.users WHERE email = 'p1.team1@example.com'")
-            ).scalar_one()
-            == password_hash_before
-        )
     assert client.get("/v1/me", headers=_auth(login.json()["access_token"])).status_code == 200
-
-
-def test_successful_password_reset_rotates_password_revokes_all_sessions_and_consumes_token(client):
-    email = "p2.team1@example.com"
-    first = _login(client, email)
-    second = _login(client, email)
-    first_raw = _refresh_cookie(first).value
-    first_claims = security.decode_access_token(first.json()["access_token"])
-    reset_id, raw_reset = _insert_reset(email)
-    with app_session() as session:
-        version_before = session.execute(
-            text("SELECT token_version FROM app.users WHERE email = :email"),
-            {"email": email},
-        ).scalar_one()
-        old_password_hash = session.execute(
-            text("SELECT password_hash FROM app.users WHERE email = :email"),
-            {"email": email},
-        ).scalar_one()
-
-    request_id = f"password-reset-{uuid.uuid4().hex[:8]}"
-    response = client.post(
-        "/v1/auth/password/reset",
-        headers={"X-Request-Id": request_id},
-        json={"token": raw_reset, "password": NEW_PASSWORD},
-    )
-
-    assert response.status_code == 200, response.text
-    assert response.json() == {"ok": True}
-    with app_session() as session:
-        user = (
-            session.execute(
-                text("SELECT password_hash, token_version FROM app.users WHERE email = :email"),
-                {"email": email},
-            )
-            .mappings()
-            .one()
-        )
-        reset = session.execute(
-            text("SELECT used_at FROM app.password_resets WHERE id = CAST(:id AS uuid)"),
-            {"id": reset_id},
-        ).scalar_one()
-        revoked_sessions = session.execute(
-            text("SELECT count(*) FROM app.sessions WHERE user_id = CAST(:uid AS uuid) AND revoked_at IS NULL"),
-            {"uid": first_claims["sub"]},
-        ).scalar_one()
-        active_refresh = session.execute(
-            text("SELECT count(*) FROM app.refresh_tokens WHERE user_id = CAST(:uid AS uuid) AND status <> 'revoked'"),
-            {"uid": first_claims["sub"]},
-        ).scalar_one()
-        audit = (
-            session.execute(
-                text(
-                    "SELECT actor_id, actor_role, action, entity_id FROM audit.entries "
-                    "WHERE action = 'auth.password_reset' AND request_id = :request_id"
-                ),
-                {"request_id": request_id},
-            )
-            .mappings()
-            .one()
-        )
-    assert user["password_hash"] != old_password_hash
-    assert not security.verify_password(STAFF_PW, user["password_hash"])
-    assert security.verify_password(NEW_PASSWORD, user["password_hash"])
-    assert user["token_version"] == version_before + 1
-    assert reset is not None
-    assert revoked_sessions == 0
-    assert active_refresh == 0
-    assert str(audit["actor_id"]) == first_claims["sub"]
-    assert audit["actor_role"] == "user"
-    assert audit["entity_id"] == first_claims["sub"]
-    _assert_error(client.get("/v1/me", headers=_auth(first.json()["access_token"])), 401, "AUTH_SESSION_REVOKED")
-    _assert_error(client.get("/v1/me", headers=_auth(second.json()["access_token"])), 401, "AUTH_SESSION_REVOKED")
-    client.cookies.clear()
-    client.cookies.set(REFRESH_COOKIE, first_raw)
-    _assert_error(client.post("/v1/auth/refresh", headers=CSRF_HEADERS), 401, "AUTH_SESSION_REVOKED")
-
-    before_replay = _state_counts()
-    replay = client.post("/v1/auth/password/reset", json={"token": raw_reset, "password": "Another-Password-123!"})
-    _assert_error(replay, 404, "NOT_FOUND")
-    assert _state_counts() == before_replay
-    with app_session() as session:
-        assert (
-            session.execute(
-                text("SELECT token_version FROM app.users WHERE email = :email"),
-                {"email": email},
-            ).scalar_one()
-            == version_before + 1
-        )
-    old_login = client.post("/v1/auth/login", json={"email": email, "password": STAFF_PW})
-    _assert_error(old_login, 401, "AUTH_INVALID_CREDENTIALS")
-    assert _login(client, email, password=NEW_PASSWORD).json()["user"]["status"] == "active"
 
 
 def test_profile_and_session_listing_are_scoped_to_the_token_owner(client):
@@ -1120,7 +725,6 @@ def test_profile_and_session_listing_are_scoped_to_the_token_owner(client):
     assert body["id"] == claims["sub"]
     assert body["email"] == email
     assert body["role"] == "participant"
-    assert body["status"] == "active"
     assert body["team"] is not None
     listed = sessions.json()
     assert {item["id"] for item in listed} == {first_session, claims["sid"]}
