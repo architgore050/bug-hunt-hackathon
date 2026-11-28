@@ -867,3 +867,115 @@ def test_best_member_late_auto_submit_beats_manual(seeded_db):
         assert scores[sub_b]["is_team_best"] is True
         assert float(scores[sub_b]["total_points"]) == 15.0
         assert float(scores[sub_a]["total_points"]) == 10.0
+
+
+def test_best_member_overtaking_reverses_previous_best(seeded_db):
+    """Regression: a higher-scoring submission must reverse the previous best.
+
+    A (+10, received 10:00) is best. B (+15, received 10:02) overtakes A:
+    B becomes is_team_best, A is unflagged, a BEST_MEMBER_REPLACED reversal is
+    appended for A's award entry, and the team's ledger total is 15.0 (not
+    25.0). Before the fix, the current-best lookup ran after the current
+    submission's upsert, so it found the submission itself and the reversal
+    branch never fired (previous best stayed flagged, team total 25.0).
+    """
+    from datetime import UTC, datetime
+
+    from app.db import app_session
+
+    base = datetime(2026, 11, 28, 10, 0, 0, tzinfo=UTC)
+    with app_session() as s:
+        team_id, event_id, stage_id, tenant_id, members = _best_member_setup(s)
+        assert len(members) >= 2
+        sub_a, sub_b = str(uuid.uuid4()), str(uuid.uuid4())
+
+        _best_member_make_submission(s, sub_a, tenant_id, event_id, stage_id, team_id, members[0], base)
+        _best_member_add_award(s, tenant_id, event_id, stage_id, team_id, sub_a, 10.0)
+        _best_member_finalize(s, sub_a, stage_id, team_id, event_id, members[0], tenant_id, base)
+
+        _best_member_make_submission(
+            s, sub_b, tenant_id, event_id, stage_id, team_id, members[1], base.replace(minute=2)
+        )
+        _best_member_add_award(s, tenant_id, event_id, stage_id, team_id, sub_b, 15.0)
+        _best_member_finalize(s, sub_b, stage_id, team_id, event_id, members[1], tenant_id, base.replace(minute=2))
+
+        scores = _best_member_scores(s, team_id)
+        assert scores[sub_b]["is_team_best"] is True
+        assert scores[sub_a]["is_team_best"] is False
+        assert float(scores[sub_b]["total_points"]) == 15.0
+
+        team_total = s.execute(
+            text(
+                "SELECT COALESCE(SUM(points), 0) FROM app.score_ledger_entries "
+                "WHERE stage_id = CAST(:st AS uuid) AND team_id = CAST(:t AS uuid)"
+            ),
+            {"st": stage_id, "t": team_id},
+        ).scalar_one()
+        assert float(team_total) == 15.0
+
+        reversals = (
+            s.execute(
+                text(
+                    "SELECT points FROM app.score_ledger_entries "
+                    "WHERE stage_id = CAST(:st AS uuid) AND team_id = CAST(:t AS uuid) "
+                    "AND reason_code = 'BEST_MEMBER_REPLACED'"
+                ),
+                {"st": stage_id, "t": team_id},
+            )
+            .scalars()
+            .all()
+        )
+        assert len(reversals) == 1
+        assert float(reversals[0]) == -10.0
+
+
+def test_best_member_tie_does_not_churn_existing_award(seeded_db):
+    """A later submission tying the previous best's total must not take over.
+
+    A (+10, received 10:00) is best. B (+10, received 10:05) ties and loses
+    the tie-break: A keeps is_team_best and no reversal row is appended
+    (no churn on tie per the documented tie-break policy).
+    """
+    from datetime import UTC, datetime
+
+    from app.db import app_session
+
+    base = datetime(2026, 11, 28, 10, 0, 0, tzinfo=UTC)
+    with app_session() as s:
+        team_id, event_id, stage_id, tenant_id, members = _best_member_setup(s)
+        assert len(members) >= 2
+        sub_a, sub_b = str(uuid.uuid4()), str(uuid.uuid4())
+
+        _best_member_make_submission(s, sub_a, tenant_id, event_id, stage_id, team_id, members[0], base)
+        _best_member_add_award(s, tenant_id, event_id, stage_id, team_id, sub_a, 10.0)
+        _best_member_finalize(s, sub_a, stage_id, team_id, event_id, members[0], tenant_id, base)
+
+        _best_member_make_submission(
+            s, sub_b, tenant_id, event_id, stage_id, team_id, members[1], base.replace(minute=5)
+        )
+        _best_member_add_award(s, tenant_id, event_id, stage_id, team_id, sub_b, 10.0)
+        _best_member_finalize(s, sub_b, stage_id, team_id, event_id, members[1], tenant_id, base.replace(minute=5))
+
+        scores = _best_member_scores(s, team_id)
+        assert scores[sub_a]["is_team_best"] is True
+        assert scores[sub_b]["is_team_best"] is False
+
+        reversals = (
+            s.execute(
+                text(
+                    "SELECT count(*) FROM app.score_ledger_entries "
+                    "WHERE stage_id = CAST(:st AS uuid) AND team_id = CAST(:t AS uuid) "
+                    "AND reason_code = 'BEST_MEMBER_REPLACED'"
+                ),
+                {"st": stage_id, "t": team_id},
+            )
+            .scalars()
+            .one()
+        )
+        assert reversals == 0
+
+        # Known design decision (see finalize_submission_score docstring): on a
+        # tie the earlier submission keeps the active award with no churn, so
+        # the later member's award entries stay live in the append-only ledger
+        # until a strict overtake reverses them. Only flags and reversal
+        # absence are asserted here; the team ledger total is not.

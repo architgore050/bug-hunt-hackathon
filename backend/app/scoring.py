@@ -301,6 +301,11 @@ def finalize_submission_score(
     )
 
     # Current best for this (stage_id, team_id), tie-broken by received_at then id.
+    # The current submission is excluded from the lookup: its row was just
+    # upserted above, so including it would return the submission itself
+    # whenever it has the highest total — the overtaking branch would then
+    # never fire, the previous best would stay is_team_best, and its ledger
+    # points would never be reversed (double-counted team total).
     current_best = (
         session.execute(
             text(
@@ -308,10 +313,11 @@ def finalize_submission_score(
                 "FROM app.submission_scores ss "
                 "JOIN app.submissions s ON s.id = ss.submission_id "
                 "WHERE ss.stage_id = CAST(:stid AS uuid) AND ss.team_id = CAST(:tid AS uuid) "
+                "AND ss.submission_id <> CAST(:sid AS uuid) "
                 "ORDER BY ss.total_points DESC, s.received_at ASC, s.id ASC "
                 "LIMIT 1"
             ),
-            {"stid": stage_id, "tid": team_id},
+            {"stid": stage_id, "tid": team_id, "sid": submission_id},
         )
         .mappings()
         .first()
@@ -370,6 +376,10 @@ def finalize_submission_score(
                     reverses_entry_id=str(row["id"]),
                     note="superseded by better member submission",
                 )
+            # app_session runs with autoflush=False: flush the ORM-appended
+            # reversal rows now so later raw-SQL ledger reads inside the same
+            # transaction (points_visible recomputation, snapshots) see them.
+            session.flush()
             session.execute(
                 text("UPDATE app.submission_scores SET is_team_best = false WHERE submission_id = CAST(:ps AS uuid)"),
                 {"ps": prev_sub_id},
