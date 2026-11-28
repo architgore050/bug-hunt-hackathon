@@ -15,14 +15,14 @@ from datetime import UTC, datetime, timedelta
 import psycopg
 import pytest
 from app.db import app_engine
-from conftest import GT_URL, PGPORT, STAFF_PW, participant_client
+from conftest import GT_URL, PGPORT, STAFF_PW, TEST_DB, participant_client
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 ORG_EMAIL = "organizer@example.com"
 ADMIN_EMAIL = "admin@example.com"
 GT_DSN = GT_URL.replace("+psycopg", "")
-PGADMIN_DSN = f"host=127.0.0.1 port={PGPORT} dbname=bughunt_test user=pgadmin"
+PGADMIN_DSN = f"host=127.0.0.1 port={PGPORT} dbname={TEST_DB} user=pgadmin"
 
 
 # --- helpers -------------------------------------------------------------------

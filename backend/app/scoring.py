@@ -43,8 +43,47 @@ def add_ledger_entry(
     actor_id: str | None = None,
     reverses_entry_id: str | None = None,
     note: str | None = None,
-) -> str:
+    dedupe_award: bool = False,
+) -> str | None:
+    """Append a ledger row.
+
+    Award entries are deduplicated by the partial unique index from migration
+    0005, so concurrent evaluators cannot score one unit twice. Corrections,
+    bonuses, penalties and adjustments keep the normal append-only path.
+    """
     entry_id = str(uuid7())
+    if dedupe_award:
+        if not submission_id or not award_unit_id:
+            raise ValueError("dedupe_award requires submission_id and award_unit_id")
+        inserted_id = session.execute(
+            text(
+                "INSERT INTO app.score_ledger_entries "
+                "(id, tenant_id, event_id, stage_id, team_id, submission_id, award_unit_id, component, kind, "
+                "points, reason_code, actor_id, reverses_entry_id, note) "
+                "VALUES (CAST(:id AS uuid), CAST(:tenant AS uuid), CAST(:event AS uuid), CAST(:stage AS uuid), "
+                "CAST(:team AS uuid), CAST(:submission AS uuid), :unit, :component, :kind, :points, :reason, "
+                "CAST(:actor AS uuid), CAST(:reverses AS uuid), :note) "
+                "ON CONFLICT (submission_id, award_unit_id, component) WHERE kind = 'award' DO NOTHING "
+                "RETURNING id"
+            ),
+            {
+                "id": entry_id,
+                "tenant": tenant_id,
+                "event": event_id,
+                "stage": stage_id,
+                "team": team_id,
+                "submission": submission_id,
+                "unit": award_unit_id,
+                "component": component,
+                "kind": kind,
+                "points": round(float(points), 2),
+                "reason": reason_code,
+                "actor": actor_id,
+                "reverses": reverses_entry_id,
+                "note": note,
+            },
+        ).scalar_one_or_none()
+        return str(inserted_id) if inserted_id is not None else None
     row = ScoreLedgerEntry(
         id=uuid.UUID(entry_id),
         tenant_id=uuid.UUID(tenant_id),

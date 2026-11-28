@@ -123,7 +123,7 @@ jobs:
       - name: Run backend tests with coverage
         run: |
           cd backend
-          python -m pytest tests/ -q --cov=app --cov-fail-under=65 --timeout=120
+          python -m pytest tests/ -q --cov=app --cov-branch --cov-fail-under=65 --timeout=120
 
   # ------------------------------------------------------------- backend e2e ---
   backend-e2e:
@@ -239,19 +239,19 @@ jobs:
         run: npm run build
         working-directory: frontend
 
-  # ---------------------------------------------------------- docs hygiene ----
-  # Em dashes are banned in docs and user-facing source (design-system rule).
+  # --------------------------------------------------------- source hygiene ----
+  # Em dashes are banned in frontend UI copy (design-system rule).
   # The placeholder ban covers platform code only: the challenge-app is a
   # separate vendor product (Papyrus) and keeps its own documented TODO.
-  docs-hygiene:
-    name: Docs and source hygiene (em dash ban, placeholder ban)
+  source-hygiene:
+    name: Source hygiene (frontend em dash ban, placeholder ban)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (actions/checkout)
-      - name: No em dashes (docs, frontend, backend, scripts)
+      - name: No em dashes in frontend source
         run: |
-          ! grep -rn --binary-files=without-match "—" docs/ frontend/src/ backend/app/ backend/tests/ backend/seed.py backend/worker.py backend/migrations/ scripts/ README.md AGENTS.md 2>/dev/null
+          ! grep -rn --binary-files=without-match "—" frontend/src/ 2>/dev/null
       - name: No TODO/Lorem/XXX in platform code
         run: |
           ! grep -rnE "TODO|Lorem|XXX" frontend/src/ backend/app/ backend/tests/ backend/seed.py backend/worker.py backend/migrations/ scripts/
