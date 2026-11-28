@@ -1,7 +1,8 @@
 """Development seed for the Bug Hunt CTF platform (DEV/TEST PROFILES ONLY).
 
 Creates deterministic demo data that exercises every role and state:
-- tenant, users (admin, organizer, 2 reviewers, 6 participants in 2 teams)
+- tenant, users (5 staff: admin, 2 organizers, 2 reviewers; 9 participants in
+  2 teams - Team Lambda with 4 members, Team Vector with 5)
 - the "Fall Back" event with the official proposal preset (schedule, scoring
   weights, CTF policy) and readiness checklist
 - one stage with frozen rule set, challenge "papyrus" ingested from
@@ -513,7 +514,6 @@ def main(reset: bool) -> None:
                 "DELETE FROM app.stage_transitions",
                 "DELETE FROM app.time_adjustments",
                 "DELETE FROM app.stages",
-                "",
                 "DELETE FROM app.team_members",
                 "DELETE FROM app.teams",
                 "DELETE FROM app.acceptances",
@@ -582,7 +582,7 @@ def main(reset: bool) -> None:
                 "INSERT INTO app.events (id, tenant_id, slug, name, status, timezone, duration_minutes, "
                 "max_participants, max_teams, rules_version, config) VALUES "
                 "(CAST(:i AS uuid), CAST(:t AS uuid), 'fall-back-2026', 'Fall Back - Full-Stack Software Debugging Challenge', "
-                "'configured', 'Asia/Kolkata', 180, 50, 10, 1, CAST(:c AS jsonb))"
+                "'configured', 'Asia/Kolkata', 180, 50, 12, 1, CAST(:c AS jsonb))"
             ),
             {"i": event_id, "t": tenant_id, "c": json.dumps(EVENT_CONFIG)},
         )
@@ -871,7 +871,7 @@ def main(reset: bool) -> None:
     )
     print("  staff: admin@ / organizer@ / reviewer1@ / reviewer2@ example.com - password Dev-only!Passw0rd!")
     print(
-        "  participants: p1..p5.team1@ / p1..p5.team2@ example.com - password Dev-only!Passw0rd! (first member is the team lead)"
+        "  participants: p1..p4.team1@ / p1..p5.team2@ example.com - password Dev-only!Passw0rd! (first member is the team lead)"
     )
 
 

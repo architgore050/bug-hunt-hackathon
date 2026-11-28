@@ -38,7 +38,7 @@ Steps:
 6. Verify:
    - `curl http://127.0.0.1:8100/health` must show `database_app: up` and `database_gt: up`.
    - `python scripts/e2e_journey.py` must exit 0 (46 checks).
-   - `cd backend && python -m pytest` must complete successfully against PostgreSQL. At the 2026-11-28 review snapshot, 81 tests were collected; collection is not a passing test run.
+   - `cd backend && python -m pytest` must complete successfully against PostgreSQL. At the 2026-11-28 review snapshot, 84 tests were collected; collection is not a passing test run.
 
 Environment variables (all optional in dev, see `backend/app/config.py`):
 
@@ -85,7 +85,12 @@ Procedure:
 
 ## Upgrade ordering for the account-policy migrations
 
-For releases that apply migrations 0005 or 0006, do not run the old application against the new schema:
+For releases that apply migrations 0005, 0006 or 0007, stop the old
+application before migrating. 0005 breaks only the invite/reset routes it
+removes, but 0006 and 0007 drop `app.users.status` and `app.teams.status`,
+which the pre-delta build SELECTs on authenticated routes (every authenticated
+request reads `users.status`), so a running old build 500s across the API, not
+just on removed routes, until the new build is up.
 
 1. Stop the old API and worker processes.
 2. Apply database migrations with `scripts/migrate.sh`.

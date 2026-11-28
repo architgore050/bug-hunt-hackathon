@@ -194,7 +194,7 @@ def admin_progress(event_id: str, p: Principal = Depends(require_organizer)):
         teams = (
             s.execute(
                 text(
-                    "SELECT t.id, t.name, t.status, c.option_key, c.lock_source FROM app.teams t "
+                    "SELECT t.id, t.name, c.option_key, c.lock_source FROM app.teams t "
                     "LEFT JOIN app.team_repo_choices c ON c.team_id = t.id "
                     "WHERE t.event_id = CAST(:e AS uuid) ORDER BY t.name"
                 ),
@@ -210,7 +210,6 @@ def admin_progress(event_id: str, p: Principal = Depends(require_organizer)):
                 {
                     "team_id": str(t["id"]),
                     "team_name": t["name"],
-                    "team_status": t["status"],
                     "repo_option": t["option_key"],
                     "lock_source": t["lock_source"],
                     "members": [

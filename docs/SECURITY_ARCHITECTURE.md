@@ -32,7 +32,7 @@ Verified by `tests/test_auth.py::test_refresh_rotation_and_reuse_detection`.
 
 ## 4. Rate limits (identity-based, NET-01/SEC-07)
 
-In-process sliding window (`deps.rate_limit`): login 20/min per IP and 10/min per email; step-up failures 5 per 300 s per user; submissions 30/min per user; assignments 30/min; file content 120/min; search 30/min; step-up failures 5 per 300 s per user. Keys are identity or identity+action wherever authenticated, because the venue shares one public IP (NET-01). Honest limits (SEC-07): the bucket is per-process, resets on restart, and does not coordinate across replicas; a single-replica D1 deployment makes this correct, and a Redis-backed shared limiter is the documented multi-replica fix. `max_concurrent_requests_per_user` in `config.py` is declared but not enforced by any middleware yet. The authoritative anti-abuse controls for scoring are the database-side caps (Section 6), not these buckets.
+In-process sliding window (`deps.rate_limit`): login 20/min per IP and 10/min per email; step-up failures 5 per 300 s per user; submissions 30/min per user; assignments 30/min; file content 120/min; search 30/min. Keys are identity or identity+action wherever authenticated, because the venue shares one public IP (NET-01). Honest limits (SEC-07): the bucket is per-process, resets on restart, and does not coordinate across replicas; a single-replica D1 deployment makes this correct, and a Redis-backed shared limiter is the documented multi-replica fix. `max_concurrent_requests_per_user` in `config.py` is declared but not enforced by any middleware yet. The authoritative anti-abuse controls for scoring are the database-side caps (Section 6), not these buckets.
 
 ## 5. Step-up re-authentication (AUTH-09)
 

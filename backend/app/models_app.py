@@ -198,9 +198,6 @@ class Team(AppBase):
     event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app.events.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     join_code: Mapped[str] = mapped_column(String(12), unique=True, nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(20), default="active", server_default=text("'active'"), nullable=False
-    )  # active|disqualified
     seat_label: Mapped[str | None] = mapped_column(String(40))
     created_at: Mapped[datetime] = ts()
 

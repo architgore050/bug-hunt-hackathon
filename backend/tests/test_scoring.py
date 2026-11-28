@@ -208,8 +208,10 @@ def ctf_flag_scenario(seeded_db, request):
 
     run_id = uuid.uuid4().hex[:12]
     flags = [(f"TEST-CAP-{run_id}-{index}", f"FLAG{{ctf_cap_{run_id}_{index}}}") for index in range(flag_count)]
+    flag_unit_ids = []
     with gt_session() as gt:
         for flag_key, code in flags:
+            flag_row_id = str(uuid.uuid4())
             gt.execute(
                 text(
                     "INSERT INTO gt.gt_flags "
@@ -217,13 +219,14 @@ def ctf_flag_scenario(seeded_db, request):
                     "VALUES (CAST(:id AS uuid), CAST(:challenge AS uuid), :key, :hash, 30, :max_awards)"
                 ),
                 {
-                    "id": str(uuid.uuid4()),
+                    "id": flag_row_id,
                     "challenge": challenge_version_id,
                     "key": flag_key,
                     "hash": flag_code_hash(code),
                     "max_awards": max_awards,
                 },
             )
+            flag_unit_ids.append(flag_row_id)
 
     submissions = []
     with app_session() as s:
@@ -260,7 +263,7 @@ def ctf_flag_scenario(seeded_db, request):
     return {
         "stage_id": stage_id,
         "team_ids": [team_id for team_id, _ in submitters],
-        "flag_keys": [flag_key for flag_key, _ in flags],
+        "flag_unit_ids": flag_unit_ids,
         "submissions": submissions,
     }
 
@@ -282,7 +285,7 @@ def test_ctf_bonus_is_capped(ctf_flag_scenario):
             {"stage": stage_id, "team": team_id},
         ).all()
 
-    assert {row.award_unit_id for row in awards} == {key for key, _, _ in ctf_flag_scenario["submissions"]}
+    assert {row.award_unit_id for row in awards} == set(ctf_flag_scenario["flag_unit_ids"])
     assert sorted(float(row.points) for row in awards) == [10.0, 30.0, 30.0, 30.0]
     assert round(sum(float(row.points) for row in awards), 2) == 100.0
 
@@ -363,13 +366,13 @@ def test_flag_max_awards_holds_for_concurrent_teams(ctf_flag_scenario):
     from app.db import app_session
 
     stage_id = ctf_flag_scenario["stage_id"]
-    flag_key = ctf_flag_scenario["flag_keys"][0]
+    flag_unit_id = ctf_flag_scenario["flag_unit_ids"][0]
     submissions = ctf_flag_scenario["submissions"]
 
     with app_session() as blocker:
         blocker.execute(
-            text("SELECT pg_advisory_xact_lock(hashtextextended('ctf_flag:' || :flag_key, 0))"),
-            {"flag_key": flag_key},
+            text("SELECT pg_advisory_xact_lock(hashtextextended('ctf_flag:' || :u, 0))"),
+            {"u": flag_unit_id},
         )
         # Without the advisory lock both workers can read max_awards=1 before
         # either insert. This lock forces them to reach that race deterministically.
@@ -413,8 +416,8 @@ def test_flag_max_awards_holds_for_concurrent_teams(ctf_flag_scenario):
 
     with app_session() as s:
         claim_count = s.execute(
-            text("SELECT count(*) FROM app.award_claims WHERE award_unit_id = :flag_key"),
-            {"flag_key": flag_key},
+            text("SELECT count(*) FROM app.award_claims WHERE award_unit_id = :u"),
+            {"u": flag_unit_id},
         ).scalar_one()
         awards = s.execute(
             text(
@@ -435,6 +438,120 @@ def test_flag_max_awards_holds_for_concurrent_teams(ctf_flag_scenario):
     assert int(claim_count) == 1
     assert [float(row.points) for row in awards] == [30.0]
     assert sorted(statuses) == ["duplicate", "matched_auto"]
+
+
+def test_verify_flag_redelivery_keeps_awarded_status(seeded_db):
+    """Redelivery after the scoring commit must not flip a paid flag to duplicate."""
+    from app import evaluator
+    from app.db import app_session, gt_session
+    from app.security import flag_code_hash
+
+    with app_session() as s:
+        event = (
+            s.execute(
+                text(
+                    "SELECT e.id AS event_id, e.tenant_id AS tenant_id, st.id AS stage_id "
+                    "FROM app.events e JOIN app.stages st ON st.event_id = e.id AND st.kind = 'main' "
+                    "ORDER BY e.id, st.ordinal LIMIT 1"
+                )
+            )
+            .mappings()
+            .one()
+        )
+        event_id, tenant_id, stage_id = str(event["event_id"]), str(event["tenant_id"]), str(event["stage_id"])
+        member = (
+            s.execute(
+                text(
+                    "SELECT t.id AS team_id, tm.user_id AS user_id FROM app.teams t "
+                    "JOIN app.team_members tm ON tm.team_id = t.id "
+                    "WHERE t.event_id = CAST(:event AS uuid) ORDER BY t.id, tm.user_id LIMIT 1"
+                ),
+                {"event": event_id},
+            )
+            .mappings()
+            .one()
+        )
+        team_id, user_id = str(member["team_id"]), str(member["user_id"])
+        challenge_version_id = str(
+            s.execute(
+                text("SELECT id FROM app.challenge_versions WHERE event_id = CAST(:event AS uuid) ORDER BY id LIMIT 1"),
+                {"event": event_id},
+            ).scalar_one()
+        )
+
+    flag_key = f"TEST-RETRY-{uuid.uuid4().hex[:12]}"
+    code = f"FLAG{{retry_{uuid.uuid4().hex[:8]}}}"
+    flag_row_id = str(uuid.uuid4())
+    with gt_session() as gt:
+        gt.execute(
+            text(
+                "INSERT INTO gt.gt_flags "
+                "(id, challenge_version_id, flag_key, code_hash, points, max_awards) "
+                "VALUES (CAST(:id AS uuid), CAST(:challenge AS uuid), :key, :hash, 30, 1)"
+            ),
+            {
+                "id": flag_row_id,
+                "challenge": challenge_version_id,
+                "key": flag_key,
+                "hash": flag_code_hash(code),
+            },
+        )
+
+    submission_id = str(uuid.uuid4())
+    with app_session() as s:
+        s.execute(
+            text(
+                "INSERT INTO app.submissions (id, tenant_id, event_id, stage_id, challenge_version_id, team_id, author_id, kind, "
+                "idempotency_key, payload, payload_hash, status, receipt_code, title, flag_code, received_at) VALUES "
+                "(CAST(:id AS uuid), CAST(:t AS uuid), CAST(:ev AS uuid), CAST(:st AS uuid), CAST(:cv AS uuid), CAST(:team AS uuid), "
+                "CAST(:au AS uuid), 'ctf_flag', :k, CAST(:p AS jsonb), :ph, 'received', :r, 'flag', :flag, now())"
+            ),
+            {
+                "id": submission_id,
+                "t": tenant_id,
+                "ev": event_id,
+                "st": stage_id,
+                "cv": challenge_version_id,
+                "team": team_id,
+                "au": user_id,
+                "k": f"flag-retry-{submission_id[:8]}",
+                "p": "{}",
+                "ph": "x",
+                "r": f"RETRY-{submission_id[:8].upper()}",
+                "flag": code,
+            },
+        )
+
+    # First delivery scores and pays the flag. A worker crash between the
+    # scoring commit and jobs.complete() redelivers the same job.
+    evaluator.verify_flag({"submission_id": submission_id})
+    evaluator.verify_flag({"submission_id": submission_id})
+
+    with app_session() as s:
+        sub = (
+            s.execute(
+                text("SELECT status, matched_bug_code FROM app.submissions WHERE id = CAST(:sid AS uuid)"),
+                {"sid": submission_id},
+            )
+            .mappings()
+            .one()
+        )
+        ledger_rows = s.execute(
+            text(
+                "SELECT count(*) FROM app.score_ledger_entries "
+                "WHERE submission_id = CAST(:sid AS uuid) AND component = 'ctf_bonus'"
+            ),
+            {"sid": submission_id},
+        ).scalar_one()
+        claim_rows = s.execute(
+            text("SELECT count(*) FROM app.award_claims WHERE submission_id = CAST(:sid AS uuid)"),
+            {"sid": submission_id},
+        ).scalar_one()
+
+    assert sub["status"] == "matched_auto"
+    assert sub["matched_bug_code"] == flag_key
+    assert int(ledger_rows) == 1
+    assert int(claim_rows) == 1
 
 
 def test_leaderboard_tie_break_order(seeded_db):

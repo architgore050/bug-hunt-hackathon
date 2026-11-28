@@ -78,7 +78,7 @@ Implemented in `backend/app/main.py`:
 
 1. Request ID: taken from the incoming `X-Request-Id` header or generated as a 16-hex-char id; stored on `request.state` and echoed on every response.
 2. Body size limit: if `Content-Length` exceeds `max_body_bytes` (512 KiB), a 413 with the standard error envelope is returned immediately.
-3. CORS: exact-origin allow-list from `settings.frontend_origin`, credentials allowed, no wildcards (NET-05). Allowed headers: `Authorization`, `Content-Type`, `Idempotency-Key`, `X-BHCTF-Client`, `X-Step-Up`.
+3. CORS: exact-origin allow-list from `settings.frontend_origin`, credentials allowed, no wildcards (NET-05). Allowed headers: `Authorization`, `Content-Type`, `Idempotency-Key`, `X-BHCTF-Client`.
 4. Authentication: `get_principal` (`deps.py`) decodes the pinned-algorithm JWT (HS256, iss `bughunt-api`, aud `bughunt-participant` or `bughunt-admin`), then re-reads the user and session rows from the database so revocation, disqualification and `token_version` changes take effect immediately (AUTH-01).
 5. Authorization: `require_role`, `require_staff` (reviewer/organizer/admin), `require_organizer`, `require_admin`, and `step_up_verified` for sensitive routes (AUTH-09).
 6. Validation: Pydantic models per endpoint; participant-visible config values come from the stage row, never from the client.
