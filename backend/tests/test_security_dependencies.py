@@ -51,7 +51,7 @@ def _principal(client, email: str) -> deps.Principal:
         row = (
             session.execute(
                 text(
-                    "SELECT u.id, u.email, u.name, u.role, u.status, u.token_version, s.id AS session_id "
+                    "SELECT u.id, u.email, u.name, u.role, u.token_version, s.id AS session_id "
                     "FROM app.users u JOIN app.sessions s ON s.user_id = u.id "
                     "WHERE u.id = CAST(:uid AS uuid) AND s.id = CAST(:sid AS uuid)"
                 ),
@@ -109,31 +109,31 @@ def test_rate_limit_uses_frozen_monotonic_window_and_isolates_keys(_clear_rate_l
     assert deps._bucket["login:test-client"] == [110.0]
 
 
-def test_rate_limit_http_failure_uses_error_envelope_without_creating_reset_tokens(client, monkeypatch):
+def test_rate_limit_http_failure_uses_error_envelope_without_creating_auth_state(client, monkeypatch):
     clock = SimpleNamespace(now=500.0)
     monkeypatch.setattr(deps.time, "monotonic", lambda: clock.now)
+    before = _state_counts()
+    email = "throttled-login@example.com"
 
     responses = [
         client.post(
-            "/v1/auth/password/reset-request",
-            json={"email": f"unknown-{index}@example.com"},
+            "/v1/auth/login",
+            json={"email": email, "password": "Wrong-Password-For-Test-123!"},
             headers={"X-Request-Id": f"rate-limit-{index}"},
         )
-        for index in range(3)
+        for index in range(10)
     ]
-    assert all(response.status_code == 200 for response in responses)
-    assert len({response.json()["message"] for response in responses}) == 1
+    assert all(response.status_code == 401 for response in responses)
 
     denied = client.post(
-        "/v1/auth/password/reset-request",
-        json={"email": "unknown-final@example.com"},
+        "/v1/auth/login",
+        json={"email": email, "password": "Wrong-Password-For-Test-123!"},
         headers={"X-Request-Id": "rate-limit-final"},
     )
     error = _assert_error(denied, 429, "AUTH_RATE_LIMITED")
-    assert error["details"] == {"n": 600}
-    assert "600 seconds" in error["message"]
-    with app_session() as session:
-        assert session.execute(text("SELECT count(*) FROM app.password_resets")).scalar_one() == 0
+    assert error["details"] == {"n": 60}
+    assert "60 seconds" in error["message"]
+    assert _state_counts() == before
 
 
 @pytest.mark.parametrize(
@@ -198,25 +198,13 @@ def test_principal_rejects_revoked_session(client):
     _assert_error(client.get("/v1/me", headers=_auth(login["access_token"])), 401, "AUTH_SESSION_REVOKED")
 
 
-@pytest.mark.parametrize(
-    ("status", "code"),
-    [("pending", "AUTH_NOT_ACTIVATED"), ("disqualified", "AUTH_FORBIDDEN")],
-)
-def test_principal_requires_an_active_account(client, status, code):
-    login = _login(client, "p1.team1@example.com")
-    user_id = security.decode_access_token(login["access_token"])["sub"]
-    with app_session() as session:
-        session.execute(
-            text("UPDATE app.users SET status = :status WHERE id = CAST(:uid AS uuid)"),
-            {"status": status, "uid": user_id},
-        )
-    before = _state_counts()
+def test_principal_uses_session_and_role_without_account_lifecycle_status(client):
+    principal = _principal(client, "p1.team1@example.com")
+    assert principal.role == "participant"
+    assert principal.email == "p1.team1@example.com"
+    assert not hasattr(principal, "status")
 
-    error = _assert_error(client.get("/v1/me", headers=_auth(login["access_token"])), 403, code)
 
-    if status == "disqualified":
-        assert error["message"] == "This account was disqualified. Contact the organizers."
-    assert _state_counts() == before
 
 
 def test_http_role_boundaries_cover_participant_staff_organizer_and_admin(client):
@@ -226,6 +214,8 @@ def test_http_role_boundaries_cover_participant_staff_organizer_and_admin(client
     admin = _login(client, "admin@example.com")["access_token"]
     with app_session() as session:
         stage_id = str(session.execute(text("SELECT id FROM app.stages WHERE kind = 'main'")).scalar_one())
+    step_up = client.post("/v1/auth/step-up", headers=_auth(organizer), json={"password": STAFF_PW})
+    assert step_up.status_code == 200, step_up.text
     before = _state_counts()
 
     _assert_error(client.get("/v1/admin/events", headers=_auth(participant)), 403, "AUTH_FORBIDDEN")
