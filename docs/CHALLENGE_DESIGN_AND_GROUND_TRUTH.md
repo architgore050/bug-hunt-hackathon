@@ -1,11 +1,39 @@
-Status: describes the implementation as of 2026-11-22
+Status: expanded catalog generated 2026-11-28; sections 2+ below describe the
+v1 fixture and remain the reference for Option B's mirrored fixture
 
 # Challenge Design and Ground Truth (Papyrus, Fall Back)
 
-RESTRICTED: organizer material. This document restates contents of
-`challenge-app/ORGANIZER_ANSWER_KEY.md`. Neither this file nor the answer key
-ever ships to participants, the participant API, or any frontend bundle. The
-platform serves participants only the eleven files listed in section 6.
+RESTRICTED: organizer material. Neither this file nor the answer key ever
+ships to participants, the participant API, or any frontend bundle.
+
+## 0. Generated catalog supersedes the v1 fixture (2026-11-28)
+
+Option A's ground truth is no longer handwritten here or in `backend/seed.py`.
+The expansion (`docs/CHALLENGE_APP_EXPANSION_SPEC.md`) introduced a two-tree
+pipeline:
+
+- `papyrus-reference/` is the clean, fully tested ten-slice app (source of
+  truth; 46 green tests gate it).
+- `scripts/build_papyrus_challenge.py` copies it to `challenge-app/`, injects
+  22 award units from `organizer/injection-manifest.json` (12 guided Level 1
+  units worth 200 points, 10 cross-file Level 2 chains worth 425 points),
+  runs the leakage lint, resolves anchors into `organizer/gt-manifest.json`
+  and writes `challenge-app/PARTICIPANT_FILES.json`.
+- `backend/seed.py` ingests exactly that manifest: level-scoped bugs
+  (`gt.gt_bugs.level`, migration 0010, filtered in
+  `evaluator_level._candidates_for_version`), plus the side quest flag hashes
+  from `organizer/sidequest-flags.json`. Repair set R totals 315 points
+  across the ten Level 3 tickets.
+- `organizer/answer-key.md` (generated) holds reproduction, root cause, fix
+  guidance, decoy patches and the seed-account passwords. Regenerate instead
+  of editing. Offline hidden tests live in `organizer/hidden_tests/`; every
+  unit must fail on the injected build and pass on the repaired build.
+- The shipped `npm test` in the participant tree is green by construction
+  (weakened tests bless shipped behaviour); `npm run test:all` fails exactly
+  at the one strict search integration check, which is award unit P2-03.
+
+Per-unit details live in the generated answer key; the sections below keep
+the v1 design rationale and the Option B fixture description.
 
 ## 1. Design goals
 

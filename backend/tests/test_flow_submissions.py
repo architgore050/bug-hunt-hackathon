@@ -9,9 +9,11 @@ from flow_helpers import (
     TEAM1,
     TEAM2,
     enter_workspace,
-    find_line_in_file,
     flow_client,
     go_live,
+    gt_bug_locations,
+    gt_bug_report,
+    gt_level_points,
     lock_repo,
     open_level_window,
     submit_empty,
@@ -34,24 +36,7 @@ def test_l2_multilocation_flag_matches_cross_file_bug(client):
     ws = enter_workspace(p1, 2)
     assert ws.status_code == 200, ws.text
     assert ws.json()["editable"] is False
-    primary_line = find_line_in_file(p1, "routes/notes.js", "db.q.deleteNote.run(note.author_id)")
-    secondary_line = find_line_in_file(p1, "db.js", "deleteNote: db.prepare")
-    r = submit_flags(
-        p1,
-        2,
-        [
-            {
-                "title": "Deleting a note removes a different note",
-                "category": "data_handling",
-                "description": "The delete route passes the author id where the query matches the note id, and the query itself lives in db.js.",
-                "evidence": "DELETE /api/notes/2 removed note 1 for user id 1.",
-                "locations": [
-                    {"file_path": "routes/notes.js", "line_start": primary_line - 1, "line_end": primary_line + 1},
-                    {"file_path": "db.js", "line_start": secondary_line - 1, "line_end": secondary_line + 1},
-                ],
-            }
-        ],
-    )
+    r = submit_flags(p1, 2, [gt_bug_report("BUG-13")])
     assert r.status_code == 202, r.text
     worker_drain()
 
@@ -60,12 +45,12 @@ def test_l2_multilocation_flag_matches_cross_file_bug(client):
     from sqlalchemy import text
 
     with app_session() as s:
-        claim = s.execute(text("SELECT award_unit_id FROM app.award_claims WHERE award_unit_id = 'BUG-05'")).first()
+        claim = s.execute(text("SELECT award_unit_id FROM app.award_claims WHERE award_unit_id = 'BUG-13'")).first()
         assert claim is not None
         total = s.execute(
             text(
                 "SELECT COALESCE(SUM(points), 0) FROM app.score_ledger_entries l "
-                "JOIN app.stages st ON st.id = l.stage_id WHERE st.kind = 'level' AND l.award_unit_id = 'BUG-05'"
+                "JOIN app.stages st ON st.id = l.stage_id WHERE st.kind = 'level' AND l.award_unit_id = 'BUG-13'"
             )
         ).scalar_one()
         assert float(total) > 0
@@ -83,7 +68,7 @@ def test_team_points_show_completed_level_score_and_cumulative_points(client):
 
     levels = pc.get("/v1/levels").json()["levels"]
     assert len(levels) == 4
-    assert all(level["max_points"] == 275 for level in levels)
+    assert all(level["max_points"] == gt_level_points(level["level_no"]) for level in levels)
 
     initial = pc.get("/v1/team/score").json()
     assert initial["points"] == 0
@@ -103,7 +88,7 @@ def test_team_points_show_completed_level_score_and_cumulative_points(client):
     level_one = next(level for level in completed if level["level_no"] == 1)
     assert level_one["evaluation_status"] == "complete"
     assert level_one["score"] == 0
-    assert level_one["max_points"] == 275
+    assert level_one["max_points"] == gt_level_points(1)
 
     from app.db import app_session
     from app.scoring import add_ledger_entry
@@ -157,20 +142,11 @@ def test_team_dedupe_second_teammate_does_not_double_award(client):
     open_level_window(2)
     enter_workspace(pcs[TEAM2[0]], 2).raise_for_status()
     enter_workspace(pcs[TEAM2[1]], 2).raise_for_status()
-    line = find_line_in_file(pcs[TEAM2[0]], "routes/notes.js", "db.q.deleteNote.run(note.author_id)")
-    flag = {
-        "title": "Delete targets the wrong row",
-        "category": "data_handling",
-        "description": "The delete route passes note.author_id where the query expects the note id.",
-        "locations": [{"file_path": "routes/notes.js", "line_start": line - 1, "line_end": line + 1}],
-    }
+    flag = gt_bug_report("BUG-13")
     r1 = submit_flags(pcs[TEAM2[0]], 2, [flag])
     assert r1.status_code == 202
     # a teammate reports the same bug in their own level submission
-    line2 = find_line_in_file(pcs[TEAM2[1]], "routes/notes.js", "db.q.deleteNote.run(note.author_id)")
-    flag2 = dict(flag)
-    flag2["locations"] = [{"file_path": "routes/notes.js", "line_start": line2 - 1, "line_end": line2 + 1}]
-    r2 = submit_flags(pcs[TEAM2[1]], 2, [flag2])
+    r2 = submit_flags(pcs[TEAM2[1]], 2, [gt_bug_report("BUG-13")])
     assert r2.status_code == 202
     worker_drain()
 
@@ -178,7 +154,7 @@ def test_team_dedupe_second_teammate_does_not_double_award(client):
     from sqlalchemy import text
 
     with app_session() as s:
-        claims = s.execute(text("SELECT count(*) FROM app.award_claims WHERE award_unit_id = 'BUG-05'")).scalar_one()
+        claims = s.execute(text("SELECT count(*) FROM app.award_claims WHERE award_unit_id = 'BUG-13'")).scalar_one()
         # exactly one award claim for the team, even though two teammates matched
         assert int(claims) == 1
 
@@ -188,13 +164,7 @@ def test_idempotent_level_submission_replay_and_conflict(client):
     pc = flow_client(client, TEAM1[0])
     lock_repo(pc).raise_for_status()
     enter_workspace(pc, 1).raise_for_status()
-    line = find_line_in_file(pc, "routes/notes.js", "db.q.deleteNote.run(note.author_id)")
-    flag = {
-        "title": "Delete uses author id as note id",
-        "category": "data_handling",
-        "description": "The delete route passes note.author_id into a query that matches by note id.",
-        "locations": [{"file_path": "routes/notes.js", "line_start": line - 1, "line_end": line + 1}],
-    }
+    flag = gt_bug_report("BUG-01")
     key = str(uuid.uuid4())
     r1 = submit_flags(pc, 1, [flag], key=key)
     assert r1.status_code == 202
@@ -250,11 +220,11 @@ def test_l1_crash_resumes_without_double_scoring_or_duplicate(client):
     lock_repo(pc).raise_for_status()
     enter_workspace(pc, 1).raise_for_status()
     flag = {
-        "title": "SQL injection in notes search endpoint",
-        "category": "injection",
-        "description": "User query is concatenated directly into SQLite query string.",
-        "evidence": "GET /api/notes?q=test",
-        "locations": [{"file_path": "routes/notes.js", "line_start": 10, "line_end": 20}],
+        "title": "Session cookie lifetime is far too short",
+        "category": "configuration",
+        "description": "The session TTL constant lost three digits, so max-age is minutes not days.",
+        "evidence": "Set-Cookie Max-Age is 604.",
+        "locations": gt_bug_locations("BUG-01"),
     }
     r = submit_flags(pc, 1, [flag])
     assert r.status_code == 202
@@ -374,8 +344,8 @@ def test_negative_flag_rejections(client):
                 "description": "User submitted flag with two locations",
                 "evidence": "GET /api/notes?q=test",
                 "locations": [
-                    {"file_path": "routes/notes.js", "line_start": 1, "line_end": 2},
-                    {"file_path": "routes/notes.js", "line_start": 3, "line_end": 4},
+                    {"file_path": "http/routes/notes.js", "line_start": 1, "line_end": 2},
+                    {"file_path": "http/routes/notes.js", "line_start": 3, "line_end": 4},
                 ],
             },
         ],
@@ -395,12 +365,12 @@ def test_negative_flag_rejections(client):
                 "description": "User submitted too many ordered locations",
                 "evidence": "test evidence",
                 "locations": [
-                    {"file_path": "routes/notes.js", "line_start": 1, "line_end": 2},
-                    {"file_path": "routes/notes.js", "line_start": 3, "line_end": 4},
-                    {"file_path": "routes/notes.js", "line_start": 5, "line_end": 6},
-                    {"file_path": "routes/notes.js", "line_start": 7, "line_end": 8},
-                    {"file_path": "routes/notes.js", "line_start": 9, "line_end": 10},
-                    {"file_path": "routes/notes.js", "line_start": 11, "line_end": 12},
+                    {"file_path": "http/routes/notes.js", "line_start": 1, "line_end": 2},
+                    {"file_path": "http/routes/notes.js", "line_start": 3, "line_end": 4},
+                    {"file_path": "http/routes/notes.js", "line_start": 5, "line_end": 6},
+                    {"file_path": "http/routes/notes.js", "line_start": 7, "line_end": 8},
+                    {"file_path": "http/routes/notes.js", "line_start": 9, "line_end": 10},
+                    {"file_path": "http/routes/notes.js", "line_start": 11, "line_end": 12},
                 ],
             },
         ],
@@ -437,7 +407,7 @@ def test_negative_flag_rejections(client):
                 "category": "injection",
                 "description": "User reported line range extending beyond file end",
                 "evidence": "test",
-                "locations": [{"file_path": "routes/notes.js", "line_start": 1, "line_end": 999}],
+                "locations": [{"file_path": "http/routes/notes.js", "line_start": 1, "line_end": 999}],
             },
         ],
     )

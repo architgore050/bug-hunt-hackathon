@@ -36,6 +36,7 @@ def _submission(session, submission_id: str):
             text(
                 "SELECT s.id, s.kind, s.payload, s.status, s.stage_id, s.event_id, s.team_id, s.author_id, "
                 "s.challenge_version_id, s.received_at, e.tenant_id, st.config AS stage_config, "
+                "st.kind AS stage_kind, st.ordinal AS stage_ordinal, "
                 "e.config AS event_config FROM app.submissions s "
                 "JOIN app.stages st ON st.id = s.stage_id JOIN app.events e ON e.id = s.event_id "
                 "WHERE s.id = CAST(:sid AS uuid)"
@@ -47,8 +48,11 @@ def _submission(session, submission_id: str):
     )
 
 
-def _candidates_for_version(gt_session_, challenge_version_id: str):
-    """Same candidate shape as the v1 evaluator (gt schema, restricted engine)."""
+def _candidates_for_version(gt_session_, challenge_version_id: str, level: int):
+    """Candidate bugs for one challenge version, scoped to the submission's
+    level (expansion spec 1.4). Rows with level NULL are legacy fixtures and
+    stay matchable on every level, which keeps older seeded catalogs working.
+    Same candidate shape as the v1 evaluator (gt schema, restricted engine)."""
     rows = (
         gt_session_.execute(
             text(
@@ -60,9 +64,9 @@ def _candidates_for_version(gt_session_, challenge_version_id: str):
                 "LEFT JOIN (SELECT bug_id, json_agg(json_build_object('file_path', file_path, 'line_start', line_start, "
                 "           'line_end', line_end, 'is_primary', is_primary)) AS locations "
                 "           FROM gt.gt_locations GROUP BY bug_id) loc ON loc.bug_id = b.id "
-                "WHERE b.challenge_version_id = CAST(:c AS uuid)"
+                "WHERE b.challenge_version_id = CAST(:c AS uuid) AND (b.level IS NULL OR b.level = :lvl)"
             ),
-            {"c": challenge_version_id},
+            {"c": challenge_version_id, "lvl": level},
         )
         .mappings()
         .all()
@@ -159,10 +163,14 @@ def evaluate_level_submission(payload: dict) -> None:
             .mappings()
             .all()
         }
-        level_no = int(payload_data.get("level_no") or payload.get("level_no") or 1)
+        level_no = (
+            int(sub["stage_ordinal"])
+            if sub["stage_kind"] == "level" and sub["stage_ordinal"] is not None
+            else int(payload_data.get("level_no") or payload.get("level_no") or 1)
+        )
 
     with gt_session() as gts:
-        candidates = _candidates_for_version(gts, challenge_version_id)
+        candidates = _candidates_for_version(gts, challenge_version_id, level_no)
 
     outcomes: list[str] = []
     first_matched_code: str | None = None

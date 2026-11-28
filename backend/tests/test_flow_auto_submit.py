@@ -21,14 +21,14 @@ def test_auto_submit_converts_server_draft_when_browser_closed(client):
     pcs = {e: flow_client(client, e) for e in TEAM1}
     lock_repo(pcs[TEAM1[0]]).raise_for_status()
     # the lead saved a flag draft, then the browser died before submitting
-    line_a = 40
+    line_a = 20
     draft = {
         "flags": [
             {
                 "title": "Search never matches notes",
                 "category": "input_validation",
                 "description": "The LIKE comparison binds the raw term so wildcards are never applied.",
-                "locations": [{"file_path": "db.js", "line_start": line_a, "line_end": line_a + 1}],
+                "locations": [{"file_path": "config/env.js", "line_start": line_a, "line_end": line_a + 1}],
             }
         ]
     }
@@ -124,7 +124,7 @@ def test_manual_submit_beats_the_scan_exactly_once(client):
                 "title": "Late manual attempt after auto-submit",
                 "category": "logic",
                 "description": "This manual attempt arrives after the scheduler already submitted the level.",
-                "locations": [{"file_path": "db.js", "line_start": 40, "line_end": 42}],
+                "locations": [{"file_path": "config/env.js", "line_start": 20, "line_end": 22}],
             }
         ],
     )

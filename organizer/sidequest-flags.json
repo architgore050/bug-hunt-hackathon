@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "note": "HMAC hashes only; plaintext lives in answer-key.md",
+  "flags": [
+    {
+      "flag_key": "SQ-1",
+      "code_hash": "7d4a11c209501910d01d4e404985e66b23623956cc9118689116671eb58432bd",
+      "points": 30,
+      "max_awards": 99,
+      "position_label": "field notes"
+    },
+    {
+      "flag_key": "SQ-2",
+      "code_hash": "1d1ca97af0c86f1fbe9cd75e2aa36d4953f19c7dbc1c31376809523225cdf09c",
+      "points": 30,
+      "max_awards": 99,
+      "position_label": "gateway log"
+    },
+    {
+      "flag_key": "SQ-3",
+      "code_hash": "c8ce304597b8647ee8be00c64f9118fc46c52e11500a1c0f10440e07bc129a9e",
+      "points": 30,
+      "max_awards": 99,
+      "position_label": "ghost bundle"
+    },
+    {
+      "flag_key": "SQ-4",
+      "code_hash": "0d53406689440e2094c0faca30a0a8166a4cd74ca75136da795625bea6feb552",
+      "points": 40,
+      "max_awards": 99,
+      "position_label": "notice board"
+    },
+    {
+      "flag_key": "SQ-5",
+      "code_hash": "89c5bf20b0c96617ba8cd2668af11e3810343680a2697cced876e8eea586b442",
+      "points": 40,
+      "max_awards": 99,
+      "position_label": "campus photo"
+    }
+  ]
+}

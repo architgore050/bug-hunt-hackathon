@@ -109,7 +109,7 @@ def test_assignment_and_content_expose_exact_participant_fields(client):
             .mappings()
             .one()
         )
-    summary = next(item for item in assignment["files"] if item["path"] == "db.js")
+    summary = next(item for item in assignment["files"] if item["path"] == "config/env.js")
     assert summary == {
         "path": stored["path"],
         "lang": stored["lang"],
@@ -231,7 +231,7 @@ def test_team_assignments_are_isolated_for_listing_content_and_search(client):
 
     probes = []
     for pc, foreign_challenge, foreign_path in (
-        (team_one, challenge_ids["papyrus"], "db.js"),
+        (team_one, challenge_ids["papyrus"], "config/env.js"),
         (team_two, challenge_ids["marina"], "main.py"),
     ):
         for suffix, params in (
@@ -273,7 +273,7 @@ def test_rules_acceptance_gates_content_and_search_but_not_listing(client):
     listing = pc.get("/v1/assignments")
     assert listing.status_code == 200
     for suffix, params in (
-        ("files/content", {"path": "db.js"}),
+        ("files/content", {"path": "config/env.js"}),
         ("search", {"q": "search"}),
     ):
         response = pc.get(f"/v1/challenges/{assignment['challenge_id']}/{suffix}", params=params)
@@ -295,7 +295,7 @@ def test_unreleased_stage_blocks_all_challenge_material(client):
     assert listing.status_code == 409
     assert listing.json()["error"]["code"] == "ROUND_NOT_ACTIVE"
     for suffix, params in (
-        ("files/content", {"path": "db.js"}),
+        ("files/content", {"path": "config/env.js"}),
         ("search", {"q": "search"}),
     ):
         response = pc.get(f"/v1/challenges/{assignment['challenge_id']}/{suffix}", params=params)
@@ -317,7 +317,7 @@ def test_unpublished_assignment_is_not_disclosed(client):
         "message": "No challenge assigned yet.",
     }
     for suffix, params in (
-        ("files/content", {"path": "db.js"}),
+        ("files/content", {"path": "config/env.js"}),
         ("search", {"q": "search"}),
     ):
         response = pc.get(f"/v1/challenges/{assignment['challenge_id']}/{suffix}", params=params)

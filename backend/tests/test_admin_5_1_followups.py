@@ -526,6 +526,7 @@ class TestF_C_12_TestResultsReferences:
 
     def test_valid_submission_enqueues_and_pays_exactly_once(self, client):
         from conftest import worker_drain
+        from flow_helpers import gt_manifest
 
         oc = _stepped_up(client)
         challenge = _q("SELECT id FROM app.challenge_versions ORDER BY created_at LIMIT 1", one=True)["id"]
@@ -548,8 +549,10 @@ class TestF_C_12_TestResultsReferences:
             {"s": sub},
         )
         assert len(entries) == 1, entries
-        # BUG-01 is worth 25 points; frozen weights functional_test = 0.5; 3/4 passed
-        assert abs(float(entries[0]["points"]) - 25 * 0.5 * 0.75) < 0.01
+        # BUG-01's points come from the generated manifest; frozen weights
+        # functional_test = 0.5; 3/4 passed
+        bug_points = next(b["points"] for b in gt_manifest()["bugs"] if b["code"] == "BUG-01")
+        assert abs(float(entries[0]["points"]) - bug_points * 0.5 * 0.75) < 0.01
         assert entries[0]["note"] == "passed 3/4"
 
         # duplicate request: at-least-once delivery stays harmless (idempotent handler)

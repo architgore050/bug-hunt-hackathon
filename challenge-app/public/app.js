@@ -1,150 +1,260 @@
-// Papyrus frontend. Vanilla JS on purpose: fewer layers, clearer bugs.
-const $ = (sel) => document.querySelector(sel);
+import { setBase } from "./modules/api.js";
+import * as auth from "./modules/auth.js";
+import * as notes from "./modules/notes.js";
+import * as comments from "./modules/comments.js";
+import * as search from "./modules/search.js";
+import * as tags from "./modules/tags.js";
+import * as bookmarks from "./modules/bookmarks.js";
+import { noteCard, noteDetail, commentList, errorBox } from "./modules/render.js";
+import * as router from "./modules/router.js";
+import { esc, fmtDate } from "./modules/util.js";
 
-// TODO(devops): ship the onboarding hint below with the next release.
-// const ONBOARDING_TOKEN = atob("RkxBR3tiYXNlNjRfMXNfbjB0X2VuY3J5cHQxMG5fNDRlMn0=");
-// (kept for the welcome-banner experiment, remove before launch)
+setBase("");
+router.setContainer(document.getElementById("page"));
 
-async function api(path, options = {}) {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    ...options,
-  });
-  if (!res.ok) {
-    let message = `HTTP ${res.status}`;
-    try {
-      const data = await res.json();
-      message = data.error || message;
-    } catch {
-      // server returned a non-JSON error page
-    }
-    throw new Error(message);
-  }
-  return res.json();
+let currentUser = null;
+
+async function refreshSession() {
+  const res = await auth.me();
+  currentUser = res.status === 200 ? res.body.user : null;
+  renderSessionBox();
 }
 
-let me = null;
-
-async function loadMe() {
-  try {
-    const data = await api("/api/auth/me");
-    me = data.user;
-    $("#userbox").textContent = `${me.display_name} (${me.stats.notes_total} notes total)`;
-    $("#composer").classList.remove("hidden");
-    $("#comment-form").classList.remove("hidden");
-    $("#auth-panel").classList.add("hidden");
-  } catch {
-    me = null;
-    $("#userbox").textContent = "not signed in";
-    $("#auth-panel").classList.remove("hidden");
-    $("#composer").classList.add("hidden");
-    $("#comment-form").classList.add("hidden");
-  }
-}
-
-$("#login-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const form = new FormData(e.target);
-  try {
-    await api("/api/auth/login", { method: "POST", body: JSON.stringify(Object.fromEntries(form)) });
-    await loadMe();
-  } catch (err) {
-    alert(err.message);
-  }
-});
-
-$("#register-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const form = new FormData(e.target);
-  try {
-    await api("/api/auth/register", { method: "POST", body: JSON.stringify(Object.fromEntries(form)) });
-    await loadMe();
-  } catch (err) {
-    alert(err.message);
-  }
-});
-
-$("#note-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const form = new FormData(e.target);
-  try {
-    const created = await api("/api/notes", { method: "POST", body: JSON.stringify(Object.fromEntries(form)) });
-    // BUG-02 shows here: the response id is wrong, so the banner links to note 1.
-    $("#save-result").textContent = `Saved. View note #${created.id}`;
-    await loadNotes();
-  } catch (err) {
-    $("#save-result").textContent = err.message;
-  }
-});
-
-// BUG-10 (frontend): the click handler queries ".search-go" (a class selector),
-// but the button only has the id "search-go". Clicking the button therefore
-// never runs; pressing Enter still submits the form normally.
-document.querySelector(".search-go").addEventListener("click", async (e) => {
-  e.preventDefault();
-  await runSearch();
-});
-
-$("#search-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  await runSearch();
-});
-
-async function runSearch() {
-  const term = $("#search-input").value.trim();
-  if (!term) return loadNotes();
-  const data = await api(`/api/notes/search?q=${encodeURIComponent(term)}`);
-  renderNotes(data.notes);
-}
-
-async function loadNotes() {
-  const data = await api("/api/notes");
-  renderNotes(data.notes);
-}
-
-function renderNotes(notes) {
-  const list = $("#note-list");
-  list.innerHTML = "";
-  for (const note of notes) {
-    const li = document.createElement("li");
-    li.innerHTML = `<a href="#" data-note="${note.id}">${note.title}</a>
-      <span class="muted">by ${note.author_name} | ${note.subject} | ${note.comment_count} comments</span>`;
-    list.appendChild(li);
-  }
-  list.querySelectorAll("a[data-note]").forEach((a) => {
-    a.addEventListener("click", (e) => {
-      e.preventDefault();
-      openNote(Number(a.dataset.note));
+function renderSessionBox() {
+  const box = document.getElementById("session-box");
+  if (currentUser) {
+    box.innerHTML = `<span class="muted">${esc(currentUser.name)}</span>
+      <button id="logout-btn">Sign out</button>`;
+    box.querySelector("#logout-btn").addEventListener("click", async () => {
+      await auth.logout();
+      currentUser = null;
+      renderSessionBox();
+      router.navigate();
     });
+  } else {
+    box.innerHTML = `<a href="#/login">Sign in</a>`;
+  }
+}
+
+function sessionGate(message) {
+  if (currentUser) {
+    return null;
+  }
+  return `<p class="muted">${esc(message || "Sign in to do that.")}</p>
+    <p><a href="#/login">Go to sign in</a></p>`;
+}
+
+function noteForm({ heading, submitLabel, note = {}, onSubmit }) {
+  return `
+    <h2>${esc(heading)}</h2>
+    <form id="note-form">
+      <label>Title <input name="title" value="${esc(note.title ?? "")}" required></label>
+      <label>Subject
+        <select name="subject">
+          ${["networks", "databases", "algorithms", "systems"]
+            .map((s) => `<option value="${s}" ${note.subject === s ? "selected" : ""}>${s}</option>`)
+            .join("")}
+        </select>
+      </label>
+      <label>Body <textarea name="body" rows="8" required>${esc(note.body ?? "")}</textarea></label>
+      <button type="submit">${esc(submitLabel)}</button>
+      <div id="form-error"></div>
+    </form>`;
+}
+
+router.register("/notes", async (page, params, query = new URLSearchParams()) => {
+  const res = await notes.list({ subject: query.get("subject"), sort: query.get("sort"), order: query.get("order") });
+  page.innerHTML = `
+    <div class="toolbar">
+      <h1>Notes</h1>
+      <button id="search-go" type="button">Search</button>
+      ${currentUser ? `<a class="btn" href="#/compose">New note</a>` : ""}
+    </div>
+    <div class="grid">${(res.body.notes || []).map(noteCard).join("")}</div>`;
+  search.searchButton(document).addEventListener("click", () => {
+    window.location.hash = "#/search";
   });
-}
-
-async function openNote(id) {
-  const { note } = await api(`/api/notes/${id}`);
-  const comments = await api(`/api/comments/${id}`);
-  $("#note-detail").classList.remove("hidden");
-  $("#note-title").textContent = note.title;
-  $("#note-title").dataset.id = String(note.id);
-  $("#note-meta").textContent = `by ${note.author_name} | ${note.subject} | created ${note.created_at}`;
-  $("#note-body").textContent = note.body;
-  // BUG-03 (security, controlled): comments are inserted as raw HTML. Anyone
-  // can post a comment containing <img onerror=...> or <script> markup and it
-  // executes in every reader's browser. This weakness is LOCAL to the
-  // challenge environment; never reproduce it in a real app.
-  const list = $("#comment-list");
-  list.innerHTML = comments.comments
-    .map((c) => `<li><strong>${c.author_name}</strong>: ${c.body}</li>`)
-    .join("");
-}
-
-$("#comment-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const noteId = ($("#note-title").dataset.id || "").trim();
-  if (!noteId) return;
-  const body = new FormData(e.target).get("body");
-  await api(`/api/comments/${noteId}`, { method: "POST", body: JSON.stringify({ body }) });
-  await openNote(Number(noteId));
 });
 
-loadMe().then(loadNotes);
+router.register("/note/:id", async (page, params) => {
+  const res = await notes.get(params.id);
+  if (res.status !== 200) {
+    page.innerHTML = errorBox((res.body && res.body.detail) || "Note not found.");
+    return;
+  }
+  const commentsRes = await comments.list(params.id);
+  page.innerHTML = `
+    ${noteDetail(res.body)}
+    ${sessionGate("Sign in to comment or bookmark.") ?? ""}
+    <h2>Comments</h2>
+    <div id="comment-list">${commentList(commentsRes.body.comments || [])}</div>
+    ${
+      currentUser
+        ? `<form id="comment-form"><textarea name="body" rows="3" required></textarea>
+           <button type="submit">Post comment</button></form>`
+        : ""
+    }`;
+  const detail = document.getElementById("note-detail");
+  const noteId = Number(detail.dataset.noteId);
+  bookmarks.wireBookmarks(document, async () => {
+    await bookmarks.toggleBookmark(noteId, false);
+    router.navigate();
+  });
+  const form = document.getElementById("comment-form");
+  if (form) {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await comments.create(noteId, form.body.value);
+      router.navigate();
+    });
+  }
+});
+
+router.register("/compose", async (page) => {
+  if (sessionGate()) {
+    page.innerHTML = sessionGate();
+    return;
+  }
+  page.innerHTML = noteForm({ heading: "New note", submitLabel: "Create" });
+  const form = document.getElementById("note-form");
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const res = await notes.create({
+      title: form.title.value,
+      body: form.body.value,
+      subject: form.subject.value,
+    });
+    if (res.status === 201) {
+      window.location.hash = `#/note/${res.body.note.id}`;
+      return;
+    }
+    document.getElementById("form-error").innerHTML = errorBox(res.body.detail || "Could not save.");
+  });
+});
+
+router.register("/search", async (page, params, query = new URLSearchParams()) => {
+  const q = query.get("q") || "";
+  page.innerHTML = `
+    <h1>Search</h1>
+    <form id="search-form">
+      <input name="q" value="${esc(q)}" placeholder="at least 2 characters">
+      <select name="subject">
+        <option value="">any subject</option>
+        ${["networks", "databases", "algorithms", "systems"].map((s) => `<option value="${s}">${s}</option>`).join("")}
+      </select>
+      <button type="submit">Search</button>
+    </form>
+    <div id="search-results" class="grid"></div>`;
+  const form = document.getElementById("search-form");
+  const results = document.getElementById("search-results");
+  async function run() {
+    const res = await search.search({ q: form.q.value, subject: form.subject.value });
+    if (res.status !== 200) {
+      results.innerHTML = errorBox(res.body.detail || "Search failed.");
+      return;
+    }
+    results.innerHTML = res.body.results.map(noteCard).join("") || `<p class="muted">No matches.</p>`;
+  }
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    run();
+  });
+  if (q) {
+    await run();
+  }
+});
+
+router.register("/bookmarks", async (page) => {
+  if (sessionGate()) {
+    page.innerHTML = sessionGate();
+    return;
+  }
+  const res = await bookmarks.listMine();
+  const rows = (res.body.bookmarks || [])
+    .map(
+      (b) => `
+      <li class="card" data-note-id="${b.note_id}">
+        <a href="#/note/${b.note_id}">${esc(b.title)}</a>
+        <span class="muted">${esc(b.subject)} - ${fmtDate(b.bookmarked_at)}</span>
+        <button class="unbookmark-btn" data-note-id="${b.note_id}">Remove</button>
+      </li>`
+    )
+    .join("");
+  page.innerHTML = `<h1>Bookmarks</h1><ul class="list">${rows}</ul>`;
+  for (const button of page.querySelectorAll(".unbookmark-btn")) {
+    button.addEventListener("click", async () => {
+      await bookmarks.unbookmark(Number(button.dataset.noteId));
+      router.navigate();
+    });
+  }
+});
+
+router.register("/profile", async (page) => {
+  if (sessionGate()) {
+    page.innerHTML = sessionGate();
+    return;
+  }
+  const res = await fetch("/api/profile").then((r) => r.json());
+  const stats = res.profile.stats;
+  const subjects = Object.entries(stats.subjects)
+    .map(([subject, count]) => `<li>${esc(subject)}: ${count}</li>`)
+    .join("");
+  page.innerHTML = `
+    <h1>${esc(res.profile.user.name)}</h1>
+    <p class="muted">${esc(res.profile.user.email)} - member since ${fmtDate(res.profile.user.created_at)}</p>
+    <div class="card">
+      <p>Notes: ${stats.notes_total} - Comments: ${stats.comments_total} - Bookmarks: ${stats.bookmarks_total}</p>
+      <p class="muted">Subject spread:</p>
+      <ul>${subjects || "<li>(nothing yet)</li>"}</ul>
+    </div>
+    <h2>Digest</h2>
+    <ul class="list">${(res.digest || []).map((d) => `<li>${esc(d.note_title)}: ${d.comment_count} new comments</li>`).join("")}</ul>`;
+});
+
+router.register("/login", async (page) => {
+  page.innerHTML = `
+    <h1>Sign in</h1>
+    <form id="login-form">
+      <label>Email <input name="email" type="email" required></label>
+      <label>Password <input name="password" type="password" required></label>
+      <button type="submit">Sign in</button>
+    </form>
+    <h2>New here?</h2>
+    <form id="register-form">
+      <label>Email <input name="email" type="email" required></label>
+      <label>Name <input name="name" required></label>
+      <label>Password <input name="password" type="password" required></label>
+      <button type="submit">Register</button>
+    </form>
+    <div id="auth-error"></div>`;
+  const loginForm = document.getElementById("login-form");
+  const registerForm = document.getElementById("register-form");
+  const errorBox_ = document.getElementById("auth-error");
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const res = await auth.login({ email: loginForm.email.value, password: loginForm.password.value });
+    if (res.status === 200) {
+      await refreshSession();
+      window.location.hash = "#/notes";
+      return;
+    }
+    errorBox_.innerHTML = errorBox(res.body.detail || "Sign in failed.");
+  });
+  registerForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const res = await auth.register({
+      email: registerForm.email.value,
+      name: registerForm.name.value,
+      password: registerForm.password.value,
+    });
+    if (res.status === 201) {
+      await refreshSession();
+      window.location.hash = "#/notes";
+      return;
+    }
+    errorBox_.innerHTML = errorBox(res.body.detail || "Registration failed.");
+  });
+});
+
+router.start();
+refreshSession();

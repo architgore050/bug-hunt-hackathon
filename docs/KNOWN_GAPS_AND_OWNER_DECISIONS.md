@@ -1,4 +1,5 @@
-Status: created 2026-11-25 for the four-level event flow branch
+Status: created 2026-11-25 for the four-level event flow branch; updated
+2026-11-28 for the challenge expansion
 
 # Known Gaps and Owner Decisions
 
@@ -6,6 +7,20 @@ Everything the four-level flow needs that cannot be decided by an agent.
 Each item lists whether it blocks marking the event READY (the readiness
 checklist in the admin console and `docs/ONE_SHOT_ACCEPTANCE_CRITERIA.md`
 enforce the blocking ones).
+
+## Landed in the challenge expansion (2026-11-28)
+
+- The level-scoped ground-truth filter (former gap 2 dependency) is in:
+  `gt.gt_bugs.level` (migration 0010), seeded from the generated manifest and
+  filtered in `evaluator_level._candidates_for_version`. The expanded Option A
+  catalog (22 award units) can be seeded into one challenge version safely.
+- Option A parity gap closed by the generated two-tree pipeline
+  (`papyrus-reference/` + builder + `organizer/` manifests); Option B (Marina)
+  remains a fixture and still blocks READY (item 3 below).
+- The coding-agent rules, prompt template and handoff draft for Level 3 ship
+  inside the workspace (`agent/`), and the side quest pack + HMAC flag
+  manifest are generated (`organizer/sidequest-pack/`); the AI-rules
+  amendment and side quest cap remain owner decisions below.
 
 ## Blocking before READY (event-critical)
 
