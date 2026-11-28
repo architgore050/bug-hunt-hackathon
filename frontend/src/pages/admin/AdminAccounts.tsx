@@ -4,25 +4,28 @@ import { fmtDateTime } from '../../lib/format'
 import { useAdmin } from '../../admin/store'
 import { Modal, ConfirmDialog, useToast } from '../../admin/ui'
 import { PlusIcon } from '../../admin/icons'
+import { api } from '../../lib/api'
 import type { AdminAccount, AdminRole, AdminStatus } from '../../admin/types'
 
 const ROLES: AdminRole[] = ['super_admin', 'admin', 'organizer', 'viewer']
 const STATUSES: AdminStatus[] = ['active', 'pending', 'suspended', 'revoked']
 
 export default function AdminAccounts() {
-  const { state, addAdmin, updateAdmin, revokeAdmin, resetAdminPassword, revokeSession } = useAdmin()
+  const { state, addAdmin, updateAdmin, revokeAdmin, revokeSession } = useAdmin()
   const toast = useToast()
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<AdminAccount | null>(null)
   const [revoking, setRevoking] = useState<AdminAccount | null>(null)
   const [resetFor, setResetFor] = useState<AdminAccount | null>(null)
-  const [issuedToken, setIssuedToken] = useState<string | null>(null)
 
-  function issueReset(acct: AdminAccount) {
-    const token = resetAdminPassword(acct.id, 'admin')
+  async function issueReset(acct: AdminAccount) {
     setResetFor(acct)
-    setIssuedToken(token)
-    toast.push({ kind: 'warning', title: 'Reset token issued', body: 'Shown once. Hand it to the admin out of band.' })
+    try {
+      await api<{ ok: boolean }>('/v1/auth/password/reset-request', { method: 'POST', body: { email: acct.email } })
+      toast.push({ kind: 'info', title: 'Reset requested', body: 'A single-use token is created server-side.' })
+    } catch {
+      toast.push({ kind: 'critical', title: 'Reset request failed', body: 'Could not reach the platform API.' })
+    }
   }
 
   return (

@@ -107,8 +107,6 @@ interface AdminCtx {
   addAdmin: (input: Partial<AdminAccount> & { name: string; email: string }) => AdminAccount
   updateAdmin: (id: string, patch: Partial<AdminAccount>) => void
   revokeAdmin: (id: string, admin: string) => void
-  resetAdminPassword: (id: string, admin: string) => string | null
-  completePasswordReset: (id: string, token: string, admin: string) => boolean
   revokeSession: (sessionId: string, admin: string) => void
   setPermission: (permission: string, role: AdminRole, value: boolean) => void
   markNotificationRead: (id: string) => void
@@ -121,16 +119,45 @@ interface AdminCtx {
 
 const Ctx = createContext<AdminCtx | null>(null)
 
+const ARRAY_KEYS: (keyof AdminWorkspace)[] = [
+  'participants', 'teams', 'rounds', 'evaluations', 'questions', 'repositories',
+  'adjustments', 'incidents', 'admins', 'loginAttempts', 'sessions', 'activity',
+  'notifications', 'permissions', 'services', 'infraSamples', 'recentIncidents',
+]
+
+export function sanitizeWorkspace(parsed: unknown): AdminWorkspace | null {
+  if (!parsed || typeof parsed !== 'object') return null
+  const p = parsed as Partial<AdminWorkspace> & { event?: unknown }
+  if (!p.event || typeof p.event !== 'object') return null
+  const workspace = { ...(parsed as AdminWorkspace) }
+  for (const key of ARRAY_KEYS) {
+    if (!Array.isArray(workspace[key])) return null
+  }
+  workspace.admins = workspace.admins.map((a) => {
+    const { resetToken: _rt, resetTokenIssuedAt: _rti, ...rest } = a as AdminAccount & { resetToken?: unknown; resetTokenIssuedAt?: unknown }
+    return rest
+  })
+  return workspace
+}
+
 function loadState(): AdminWorkspace {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
-      const parsed = JSON.parse(raw) as AdminWorkspace
-      if (parsed && Array.isArray(parsed.participants)) return parsed
+      const restored = sanitizeWorkspace(JSON.parse(raw))
+      if (restored) return restored
     }
   } catch {
   }
   return seedWorkspace()
+}
+
+function persistState(state: AdminWorkspace): AdminWorkspace {
+  const admins = state.admins.map((a) => {
+    const { resetToken: _rt, resetTokenIssuedAt: _rti, ...rest } = a as AdminAccount & { resetToken?: unknown; resetTokenIssuedAt?: unknown }
+    return rest
+  })
+  return { ...state, admins }
 }
 
 export function AdminProvider({ children }: { children: ReactNode }) {
@@ -140,7 +167,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(persistState(state)))
     } catch {
     }
   }, [state])
@@ -341,7 +368,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       pushNotification({ kind: 'malpractice', severity: 'critical', title: 'Penalty applied', body: `${inc.teamName}: -${Math.abs(amount)}. ${reason}`, link: '/admin/scoreboard' })
     },
     addAdmin: (input) => {
-      const admin: AdminAccount = { id: uid('adm'), name: input.name, email: input.email, role: input.role ?? 'organizer', status: input.status ?? 'pending', createdAt: nowIso(), lastLoginAt: null, resetRequired: input.resetRequired ?? true, resetToken: null, resetTokenIssuedAt: null }
+      const admin: AdminAccount = { id: uid('adm'), name: input.name, email: input.email, role: input.role ?? 'organizer', status: input.status ?? 'pending', createdAt: nowIso(), lastLoginAt: null, resetRequired: input.resetRequired ?? true }
       mutate((s) => ({ ...s, admins: [admin, ...s.admins] }))
       return admin
     },
@@ -349,19 +376,6 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     revokeAdmin: (id, admin) => {
       mutate((s) => ({ ...s, admins: s.admins.map((a) => (a.id === id ? { ...a, status: 'revoked' } : a)), sessions: s.sessions.map((sess) => (sess.adminId === id ? { ...sess, revoked: true } : sess)) }))
       logActivity({ admin, action: 'admin.revoke', targetType: 'admin', targetId: id, targetLabel: id })
-    },
-    resetAdminPassword: (id, admin) => {
-      const token = uid('reset').replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)
-      mutate((s) => ({ ...s, admins: s.admins.map((a) => (a.id === id ? { ...a, resetToken: token, resetTokenIssuedAt: nowIso(), resetRequired: true } : a)) }))
-      logActivity({ admin, action: 'admin.password_reset_issued', targetType: 'admin', targetId: id, targetLabel: id })
-      return token
-    },
-    completePasswordReset: (id, token, admin) => {
-      const acct = stateRef.current.admins.find((a) => a.id === id)
-      if (!acct || !acct.resetToken || acct.resetToken !== token) return false
-      mutate((s) => ({ ...s, admins: s.admins.map((a) => (a.id === id ? { ...a, resetToken: null, resetTokenIssuedAt: null, resetRequired: false, status: a.status === 'pending' ? 'active' : a.status } : a)) }))
-      logActivity({ admin, action: 'admin.password_reset_completed', targetType: 'admin', targetId: id, targetLabel: id })
-      return true
     },
     revokeSession: (sessionId, admin) => {
       mutate((s) => ({ ...s, sessions: s.sessions.map((sess) => (sess.id === sessionId ? { ...sess, revoked: true } : sess)) }))

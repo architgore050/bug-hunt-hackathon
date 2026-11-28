@@ -85,7 +85,7 @@ export function SiteFooter() {
 
 const NAV: Record<string, { to: string; label: string; roles: string[] }[]> = {
   '/app': [
-    { to: '/dashboard', label: 'Dashboard', roles: ['participant'] },
+    { to: '/arena/overview', label: 'Workspace', roles: ['participant'] },
     { to: '/app/submissions', label: 'Submissions', roles: ['participant'] },
     { to: '/app/results', label: 'Results', roles: ['participant'] },
     { to: '/app/leaderboard', label: 'Leaderboard', roles: ['participant'] },
@@ -100,11 +100,6 @@ const NAV: Record<string, { to: string; label: string; roles: string[] }[]> = {
 
 export function ConsoleShell({ area, children, aside }: { area: '/app' | '/review' | '/admin'; children: ReactNode; aside?: ReactNode }) {
   const { user, logout } = useAuth()
-  const location = useLocation()
-  const previewEnabled =
-    area === '/admin' &&
-    import.meta.env.DEV &&
-    new URLSearchParams(location.search).get('preview') === 'admin'
   const items = NAV[area] ?? []
   return (
     <div>
@@ -113,11 +108,7 @@ export function ConsoleShell({ area, children, aside }: { area: '/app' | '/revie
           <Wordmark />
           <nav className="topnav" aria-label="Console">
             {items.map((i) => (
-              <NavLink
-                key={i.to}
-                to={previewEnabled ? `${i.to}?preview=admin` : i.to}
-                end={i.to === area}
-              >
+              <NavLink key={i.to} to={i.to} end={i.to === area}>
                 {i.label}
               </NavLink>
             ))}
@@ -143,37 +134,9 @@ export function ConsoleShell({ area, children, aside }: { area: '/app' | '/revie
 }
 
 /** Route guard: waits for session restore, then enforces the role. */
-export function RequireRole({
-  roles,
-  children,
-  devPreview = false,
-}: {
-  roles: string[]
-  children: ReactNode
-  devPreview?: boolean
-}) {
+export function RequireRole({ roles, children }: { roles: string[]; children: ReactNode }) {
   const { user, status } = useAuth()
   const location = useLocation()
-  const previewEnabled =
-    devPreview &&
-    import.meta.env.DEV &&
-    new URLSearchParams(location.search).get('preview') === 'admin'
-
-  if (previewEnabled) {
-    return (
-      <>
-        <div className="wrap-wide" role="status" style={{ paddingTop: 12 }}>
-          <div className="banner banner-tone-warn">
-            <span className="banner-title">Local admin preview</span>
-            <div className="small">
-              Sign-in is skipped for this UI only. Protected API requests still require an authorized account.
-            </div>
-          </div>
-        </div>
-        {children}
-      </>
-    )
-  }
 
   if (status === 'loading') {
     return (

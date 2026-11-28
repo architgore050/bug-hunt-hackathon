@@ -374,7 +374,13 @@ export default function Landing() {
             <Link to="/rules" className="btn btn-ghost">
               Read the rules
             </Link>
+            <Link to="/arena/overview" className="btn btn-ghost">
+              Open demo workspace
+            </Link>
           </div>
+          <p className="muted small mono" style={{ marginTop: 10 }}>
+            Demo workspace uses sample data. No account is required.
+          </p>
         </div>
         <EventStatusStrip />
       </section>
