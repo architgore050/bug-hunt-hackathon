@@ -1,0 +1,77 @@
+import type { Issue } from '../types'
+
+/** Sample issue reports already filed by the team. */
+export const issues: Issue[] = [
+  {
+    id: 'ISS-1042', title: 'Route guard trusts user id from query string',
+    path: 'server/middleware/auth.js', line: 9, category: 'Security', severity: 'Critical',
+    description: 'The authenticate middleware derives the user identity from request parameters instead of a verified token.',
+    reasoning: 'Any caller can set userId in the query string and read another account notes. The Authorization header is only checked for presence.',
+    expected: 'The token signature is verified and the subject must match the requested user.',
+    actual: 'A token with any value grants access to the requested user id.',
+    status: 'accepted', points: 24, submittedAt: 'Today, 09:41',
+    feedback: 'Confirmed. The missing signature check is the intended defect.',
+  },
+  {
+    id: 'ISS-1043', title: 'Grand total ignores item quantity',
+    path: 'server/utils/totals.js', line: 3, category: 'Logic', severity: 'High',
+    description: 'The reduce callback adds only the unit price and never multiplies by quantity.',
+    reasoning: 'Orders with a quantity greater than one are undercharged because the accumulator skips that field.',
+    expected: 'Each contribution is price multiplied by quantity.',
+    actual: 'Each contribution is the raw price.',
+    status: 'accepted', points: 18, submittedAt: 'Today, 10:02',
+    feedback: 'Accepted. Precise location and clear expected behaviour.',
+  },
+  {
+    id: 'ISS-1044', title: 'Vote counter loses increments under parallel requests',
+    path: 'server/routes/notes.js', line: 17, category: 'Concurrency', severity: 'High',
+    description: 'The vote handler captures the current value then writes it back inside a timer.',
+    reasoning: 'Two overlapping requests read the same starting value and both write the same result, so one increment is lost.',
+    expected: 'Each request produces a distinct atomic increment.',
+    actual: 'Concurrent requests can produce a single increment.',
+    status: 'under-review', points: 0, submittedAt: 'Today, 10:26',
+  },
+  {
+    id: 'ISS-1045', title: 'Note title rendered as raw markup',
+    path: 'src/components/NoteList.jsx', line: 6, category: 'Security', severity: 'Critical',
+    description: 'The note title is injected with dangerouslySetInnerHTML instead of a text node.',
+    reasoning: 'A crafted title executes script in every viewer browser session.',
+    expected: 'The title renders as escaped text.',
+    actual: 'Markup in a title is interpreted by the browser.',
+    status: 'accepted', points: 28, submittedAt: 'Today, 11:03',
+    feedback: 'Confirmed. This is the intended client side defect.',
+  },
+  {
+    id: 'ISS-1046', title: 'Static admin token committed in config',
+    path: 'config/default.json', line: 4, category: 'Configuration', severity: 'Medium',
+    description: 'A static token is stored in a file that ships with the service.',
+    reasoning: 'The value is readable by anyone with repository access and cannot be rotated at runtime.',
+    expected: 'Secrets are loaded from environment configuration.',
+    actual: 'A fixed token is present in source control.',
+    status: 'duplicate', points: 0, submittedAt: 'Today, 11:40',
+    feedback: 'Another team reported this first. Marked duplicate.',
+  },
+  {
+    id: 'ISS-1047', title: 'Missing status check on vote request',
+    path: 'src/api/client.js', line: 10, category: 'Error handling', severity: 'Low',
+    description: 'The vote helper returns the raw fetch promise without checking the response status.',
+    reasoning: 'Callers treat a failed request as a success.',
+    expected: 'Non successful responses produce a rejected promise.',
+    actual: 'Failures resolve silently.',
+    status: 'rejected', points: 0, submittedAt: 'Today, 12:05',
+    feedback: 'Not an intended defect for this stage. Keep investigating the server side.',
+  },
+]
+
+export const draftIssue = {
+  title: '',
+  path: '',
+  line: '',
+  lineEnd: '',
+  category: 'Logic',
+  severity: 'Medium',
+  description: '',
+  reasoning: '',
+  expected: '',
+  actual: '',
+}

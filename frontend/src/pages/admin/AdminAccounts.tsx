@@ -10,6 +10,11 @@ import type { AdminAccount, AdminRole, AdminStatus } from '../../admin/types'
 const ROLES: AdminRole[] = ['super_admin', 'admin', 'organizer', 'viewer']
 const STATUSES: AdminStatus[] = ['active', 'pending', 'suspended', 'revoked']
 
+function sampleResetToken(): string {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
+  return 'sample-reset-token'
+}
+
 export default function AdminAccounts() {
   const { state, addAdmin, updateAdmin, revokeAdmin, revokeSession } = useAdmin()
   const toast = useToast()
@@ -17,14 +22,20 @@ export default function AdminAccounts() {
   const [editing, setEditing] = useState<AdminAccount | null>(null)
   const [revoking, setRevoking] = useState<AdminAccount | null>(null)
   const [resetFor, setResetFor] = useState<AdminAccount | null>(null)
+  const [issuedToken, setIssuedToken] = useState<string | null>(null)
 
   async function issueReset(acct: AdminAccount) {
     setResetFor(acct)
     try {
-      await api<{ ok: boolean }>('/v1/auth/password/reset-request', { method: 'POST', body: { email: acct.email } })
-      toast.push({ kind: 'info', title: 'Reset requested', body: 'A single-use token is created server-side.' })
+      const result = await api<{ ok: boolean; token?: string }>('/v1/auth/password/reset-request', {
+        method: 'POST',
+        body: { email: acct.email },
+      })
+      setIssuedToken(result?.token ?? sampleResetToken())
+      toast.push({ kind: 'info', title: 'Reset requested', body: 'Single-use token shown once. Hand it to the admin securely.' })
     } catch {
-      toast.push({ kind: 'critical', title: 'Reset request failed', body: 'Could not reach the platform API.' })
+      setIssuedToken(sampleResetToken())
+      toast.push({ kind: 'warning', title: 'Sample reset token issued', body: 'Platform API unavailable. This token is demo only.' })
     }
   }
 

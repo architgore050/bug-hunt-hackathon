@@ -39,3 +39,7 @@ Thumbs.db
 # artifact storage (D0 local adapter) and local tooling
 data/
 tools/
+
+# Participant demo fixtures are source files, not local artifact data.
+!frontend/src/arena/data/
+!frontend/src/arena/data/*.ts
