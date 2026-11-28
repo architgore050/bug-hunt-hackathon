@@ -618,9 +618,11 @@ def test_double_reversal_skips_already_reversed_entries(seeded_db):
         rows = (
             s.execute(
                 text(
-                    "SELECT id, points FROM app.score_ledger_entries "
-                    "WHERE submission_id = CAST(:sid AS uuid) AND stage_id = CAST(:stid AS uuid) "
-                    "AND reverses_entry_id IS NULL"
+                    "SELECT e.id, e.points FROM app.score_ledger_entries e "
+                    "WHERE e.submission_id = CAST(:sid AS uuid) AND e.stage_id = CAST(:stid AS uuid) "
+                    "AND e.reverses_entry_id IS NULL "
+                    "AND NOT EXISTS (SELECT 1 FROM app.score_ledger_entries r "
+                    "WHERE r.reverses_entry_id = e.id)"
                 ),
                 {"sid": sub_a, "stid": stage_id},
             )

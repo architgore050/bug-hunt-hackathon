@@ -356,9 +356,11 @@ def finalize_submission_score(
             prev_rows = (
                 session.execute(
                     text(
-                        "SELECT id, points FROM app.score_ledger_entries "
-                        "WHERE submission_id = CAST(:ps AS uuid) AND stage_id = CAST(:stid AS uuid) "
-                        "AND reverses_entry_id IS NULL"
+                        "SELECT id, points FROM app.score_ledger_entries e "
+                        "WHERE e.submission_id = CAST(:ps AS uuid) AND e.stage_id = CAST(:stid AS uuid) "
+                        "AND e.reverses_entry_id IS NULL "
+                        "AND NOT EXISTS (SELECT 1 FROM app.score_ledger_entries r "
+                        "WHERE r.reverses_entry_id = e.id)"
                     ),
                     {"ps": prev_sub_id, "stid": stage_id},
                 )
