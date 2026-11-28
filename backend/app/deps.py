@@ -31,22 +31,40 @@ _bucket: dict[str, list[float]] = defaultdict(list)
 
 
 def rate_limit(key: str, limit: int, window_s: float) -> None:
+    """In-process token bucket keyed by identity (NET-01 / REM-022).
+
+    PostgreSQL/DB-backed quotas remain authoritative for submission caps; this
+    bucket only sheds abusive request volume before they hit the transaction.
+    It is per-process by design (a multi-worker deployment must front the API
+    with a shared limiter such as Cloudflare rate limiting); here we make the
+    429 carry an explicit ``retry_after_s`` so clients (and our own frontend)
+    can honour ``Retry-After`` instead of guessing.
+    """
     now = time.monotonic()
     hits = [t for t in _bucket[key] if now - t < window_s]
     if len(hits) >= limit:
-        raise ApiError("AUTH_RATE_LIMITED", details={"n": int(window_s)})
+        # Earliest hit that will fall out of the window = when a slot frees up.
+        retry_after = max(1, round(hits[0] + window_s - now))
+        raise ApiError("AUTH_RATE_LIMITED", details={"n": int(window_s), "retry_after_s": retry_after})
     hits.append(now)
     _bucket[key] = hits[-60:]
 
 
 class Principal:
-    """Authenticated caller resolved from server-side state."""
+    """Authenticated caller resolved from server-side state.
+
+    ``tenant_id`` is server-derived from the joined ``app.users`` row and is
+    NEVER accepted from the request body (REM-001).  It is the root of every
+    tenant-scoped query in the API; routers consume it via the helpers in
+    :mod:`app.tenancy`.
+    """
 
     def __init__(self, row):
         self.id = str(row.id)
         self.email = row.email
         self.name = row.name
         self.role = row.role
+        self.tenant_id = str(row.tenant_id) if getattr(row, "tenant_id", None) is not None else None
         self.session_id = str(row.session_id)
         self.token_version = int(row.token_version)
 
@@ -65,8 +83,9 @@ def get_principal(request: Request, creds: HTTPAuthorizationCredentials | None =
         row = (
             s.execute(
                 text(
-                    "SELECT u.id, u.email, u.name, u.role, u.token_version, s.id AS session_id, "
-                    "s.revoked_at FROM app.users u JOIN app.sessions s ON s.id = CAST(:sid AS uuid) "
+                    "SELECT u.id, u.email, u.name, u.role, u.tenant_id, u.token_version, "
+                    "s.id AS session_id, s.revoked_at FROM app.users u "
+                    "JOIN app.sessions s ON s.id = CAST(:sid AS uuid) "
                     "WHERE u.id = CAST(:uid AS uuid)"
                 ),
                 {"sid": claims["sid"], "uid": claims["sub"]},
@@ -114,20 +133,34 @@ def require_organizer(p: Principal = Depends(get_principal)) -> Principal:
 
 
 def require_rules_accepted(p: Principal) -> None:
-    """Blocking rules gate (AUTH-04): participants must accept the current rules version."""
+    """Blocking rules gate (AUTH-04): participants must accept the current rules version.
+
+    The active event and its rules version are resolved WITHIN the caller's
+    tenant (REM-001) so a participant in tenant A is never gated by tenant B's
+    rules.  When no event exists in the tenant we return rather than fail,
+    matching the original "no event yet" behaviour.
+    """
     if p.role != "participant":
         return
     with app_session() as s:
-        ev = s.execute(
-            text(
-                "SELECT rules_version FROM app.events WHERE status IN ('ready','live','closed','finalized') ORDER BY created_at DESC LIMIT 1"
+        ev = (
+            s.execute(
+                text(
+                    "SELECT rules_version FROM app.events "
+                    "WHERE tenant_id = CAST(:t AS uuid) "
+                    "AND status IN ('ready','live','closed','finalized') "
+                    "ORDER BY created_at DESC LIMIT 1"
+                ),
+                {"t": p.tenant_id},
             )
-        ).first()
+            .mappings()
+            .first()
+        )
         if ev is None:
             return
         acc = s.execute(
             text("SELECT 1 FROM app.acceptances WHERE user_id = CAST(:u AS uuid) AND rules_version = :v"),
-            {"u": p.id, "v": int(ev[0])},
+            {"u": p.id, "v": int(ev["rules_version"])},
         ).first()
     if acc is None:
         raise ApiError("RULES_NOT_ACCEPTED")

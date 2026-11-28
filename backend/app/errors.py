@@ -50,6 +50,17 @@ CATALOG: dict[str, tuple[int, str]] = {
     "NOT_FOUND": (404, "Not found."),
     "VALIDATION_ERROR": (422, "Some fields are invalid."),
     "INTERNAL_ERROR": (500, "Something went wrong. Reference: {request_id}."),
+    # --- REM-006 finalization readiness gates ---
+    "FINALIZE_BLOCKED": (409, "Event cannot be finalized: {reason}."),
+    "RELEASE_BLOCKED": (409, "Results cannot be released: {reason}."),
+    # --- REM-005 reason / two-person controls ---
+    "REASON_REQUIRED": (422, "A reason is required for this action."),
+    # --- REM-075 minimum client version gate ---
+    "CLIENT_VERSION_UNSUPPORTED": (426, "Your app version is no longer supported. Please refresh."),
+    # --- REM-007 answer pack / rescore protocol ---
+    "RESCORE_NOT_AVAILABLE": (409, "Rescore is not available for this submission."),
+    # --- REM-017 audit chain ---
+    "AUDIT_CHAIN_BROKEN": (409, "Audit chain verification failed."),
 }
 
 
@@ -69,7 +80,17 @@ async def api_error_handler(_: Request, exc: ApiError) -> JSONResponse:
     with contextlib.suppress(KeyError, IndexError):
         message = message.format(request_id=request_id, **exc.details)
     body = {"error": {"code": exc.code, "message": message, "request_id": request_id, "details": exc.details}}
-    return JSONResponse(status_code=exc.status, content=body, headers={"X-Request-Id": request_id})
+    headers = {"X-Request-Id": request_id}
+    # Surface a Retry-After header for the rate-limit / cooldown error codes so
+    # clients (and our own frontend) can honour it (REM-022).  The detail may
+    # be provided by the caller; otherwise fall back to a short fixed window.
+    if exc.code in ("AUTH_RATE_LIMITED", "SUBMISSION_COOLDOWN", "SUBMISSION_CAP_REACHED", "RUN_RATE_LIMITED"):
+        retry_after = exc.details.get("retry_after_s") or exc.details.get("n") or 5
+        try:
+            headers["Retry-After"] = str(int(retry_after))
+        except (TypeError, ValueError):
+            headers["Retry-After"] = "5"
+    return JSONResponse(status_code=exc.status, content=body, headers=headers)
 
 
 async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
