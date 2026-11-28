@@ -414,7 +414,8 @@ def activate(body: ActivateIn, request: Request):
         s.execute(
             text(
                 "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash, status, registration_id) "
-                "SELECT :id, e.tenant_id, :email, split_part(:email, '@', 1), :role, :pw, 'active', :reg "
+                "SELECT CAST(:id AS uuid), e.tenant_id, CAST(:email AS varchar), split_part(CAST(:email AS text), '@', 1), "
+                "CAST(:role AS varchar), :pw, 'active', :reg "
                 "FROM app.events e WHERE e.id = CAST(:ev AS uuid) "
                 "ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, status = 'active' RETURNING id"
             ),
