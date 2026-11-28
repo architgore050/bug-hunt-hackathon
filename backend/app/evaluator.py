@@ -238,6 +238,8 @@ def verify_flag(payload: dict) -> None:
     from .security import flag_code_hash
 
     with app_session() as s:
+        if _has_component(s, submission_id, "ctf_bonus"):
+            return  # idempotent: this submission was already paid; keep its status/matched_bug_code
         sub = _submission(s, submission_id)
         if sub is None:
             raise ValueError("submission missing")
@@ -263,24 +265,46 @@ def verify_flag(payload: dict) -> None:
                 {"sid": submission_id},
             )
             return
+        # The award unit for a verified flag is the ground-truth flag row itself
+        # (gt uniqueness is (challenge_version_id, flag_key); the row id is the
+        # identity that never collides across challenge versions reusing a key).
+        award_unit_id = str(flag["id"])
         # Serialize the cap read and ledger write for this team. Without this
         # lock, concurrent workers can each award against the same stale total.
         session.execute(
             text("SELECT id FROM app.teams WHERE id = CAST(:team AS uuid) FOR UPDATE"),
             {"team": str(sub["team_id"])},
         ).scalar_one()
-        # max_awards is shared by every team claiming this public flag key.
-        # The transaction-scoped lock serializes the count and claim across workers.
+        # max_awards is shared by every team claiming this ground-truth flag row.
+        # The transaction-scoped lock serializes the count and claim across workers;
+        # its key is the same award-unit identity the claim row stores.
         session.execute(
-            text("SELECT pg_advisory_xact_lock(hashtextextended('ctf_flag:' || :flag_key, 0))"),
-            {"flag_key": flag["flag_key"]},
+            text("SELECT pg_advisory_xact_lock(hashtextextended('ctf_flag:' || :u, 0))"),
+            {"u": award_unit_id},
         ).scalar_one()
+        prior = session.execute(
+            text(
+                "SELECT submission_id FROM app.award_claims "
+                "WHERE stage_id = CAST(:s AS uuid) AND team_id = CAST(:t AS uuid) AND award_unit_id = :u LIMIT 1"
+            ),
+            {"s": str(sub["stage_id"]), "t": str(sub["team_id"]), "u": award_unit_id},
+        ).scalar_one_or_none()
+        if prior is not None:
+            if str(prior) == submission_id:
+                return  # redelivery after a commit: keep the already-awarded status
+            session.execute(
+                text("UPDATE app.submissions SET status='duplicate' WHERE id = CAST(:sid AS uuid)"),
+                {"sid": submission_id},
+            )
+            return
         # max_awards per flag
         claimed = session.execute(
             text("SELECT count(*) FROM app.award_claims WHERE award_unit_id = :u"),
-            {"u": flag["flag_key"]},
+            {"u": award_unit_id},
         ).scalar_one()
         if int(claimed) >= int(flag["max_awards"]):
+            # The pool is exhausted by other submissions only: a claim held by
+            # this submission would have short-circuited above.
             session.execute(
                 text("UPDATE app.submissions SET status='duplicate' WHERE id = CAST(:sid AS uuid)"),
                 {"sid": submission_id},
@@ -291,10 +315,12 @@ def verify_flag(payload: dict) -> None:
             event_id=str(sub["event_id"]),
             stage_id=str(sub["stage_id"]),
             team_id=str(sub["team_id"]),
-            award_unit_id=flag["flag_key"],
+            award_unit_id=award_unit_id,
             submission_id=submission_id,
         )
         if not ok:
+            # Unreachable while the advisory lock is held; if it ever happens,
+            # the unit was won by a different submission.
             session.execute(
                 text("UPDATE app.submissions SET status='duplicate' WHERE id = CAST(:sid AS uuid)"),
                 {"sid": submission_id},
@@ -315,7 +341,7 @@ def verify_flag(payload: dict) -> None:
             stage_id=str(sub["stage_id"]),
             team_id=str(sub["team_id"]),
             submission_id=submission_id,
-            award_unit_id=flag["flag_key"],
+            award_unit_id=award_unit_id,
             component="ctf_bonus",
             kind="bonus",
             points=award_points,

@@ -29,7 +29,9 @@ Per-file coverage:
 
 | File | Tests | What it proves |
 | --- | --- | --- |
-| `test_auth.py` (6) | Generic login failures prevent account enumeration; password reset revokes sessions and bumps token_version; sensitive admin routes require step-up; refresh rotation reuses the successor inside grace and revokes the entire family outside grace; session caps evict the oldest live session; expired refresh-token families do not hold session slots |
+| `test_auth.py` (7) | Generic login failures prevent account enumeration; admin registration assigns the staff password and requires step-up; a passwordless staff account cannot claim an initial password; sensitive admin routes require step-up; refresh rotation reuses the successor inside grace and revokes the entire family outside grace; session caps evict the oldest live session; expired refresh-token families do not hold session slots |
+| `test_admin_setup_scoring.py` (3) | Configuration revision history and freeze (DAT-04); event-scoped time adjustment (TIM-05); manual score adjustment requires admin step-up |
+| `test_admin_managed_accounts.py` (2) | Admin-only participant registration, team move, removal and password reset, including token_version bump, session and refresh-token revocation, and the no-password first-claim path; a non-admin caller is refused on participant creation (403) |
 | `test_authorization.py` (7) | Cross-team submission read -> 404 (SEC-02 IDOR); participant/reviewer role boundaries; persisted challenge binding is the server-resolved assignment; unauthenticated requests rejected; traversal paths return exactly 400 `PATH_INVALID`; report text is preserved for the separately tested frontend renderer |
 | `test_gt_isolation.py` (5) | Real `app_api` role denied on `gt.gt_bugs` / `gt.gt_flags` / gt INSERT. `gt_admin` positive control. The platform never lists or serves `ORGANIZER_ANSWER_KEY.md` (DAT-03, AT-08) |
 | `test_idempotency.py` (4) | Same key five times -> one receipt (DAT-02). Same key different payload -> 409 `IDEMPOTENCY_CONFLICT`. Committed-key replay returns the ORIGINAL receipt even after the deadline. Cooldown races on the same file rejected with 429 (INT-05) |
@@ -37,6 +39,8 @@ Per-file coverage:
 | `test_scoring.py` (7) | Weight split math; database-enforced ledger immutability and reversal linkage; two independent transactions racing for an award unit produce one claim; seed-independent CTF flags exercise the 100-point cap; concurrent verification cannot exceed the team cap or a flag's max_awards; leaderboard tie-break ordering |
 | `test_root.py` (1) | Root endpoint returns 200 JSON with the app name and `ok` status |
 | `test_flow_*.py` (39) | Four-level gates, repository locks, submissions, uploads, and deadline auto-submit against real PostgreSQL |
+
+Total at the 2026-11-28 snapshot: `pytest --collect-only -q` collects 83 tests with 0 collection errors. Collection is not a passing test run.
 
 Run:
 
@@ -148,7 +152,7 @@ All of these must be green before the event goes live. They map to the seeded `a
 
 Per-suite gates for every code change:
 
-- pytest 38 test functions.
+- pytest suite green against PostgreSQL (83 tests collected at the 2026-11-28 snapshot; collection is not a passing test run).
 - e2e journey 46/46.
 - frontend build clean.
 - frontend SSR rendering regression test clean.

@@ -29,6 +29,11 @@ router = APIRouter(tags=["auth"])
 
 REFRESH_COOKIE = "bhctf_refresh"
 
+# Fixed sentinel hash burned on the unknown-email login path so it costs the
+# same one argon2 verification as the wrong-password path; response timing then
+# does not reveal whether an address is registered (AUTH-1).
+_DUMMY_PASSWORD_HASH = security.hash_password("no-such-user-timing-equalizer")
+
 
 def _set_refresh_cookie(response: Response, raw_token: str) -> None:
     response.set_cookie(
@@ -72,6 +77,9 @@ def login(body: LoginIn, request: Request, response: Response):
         # Participant first-claim is allowed only for an account that is already
         # attached to a team. Staff credentials are always assigned by an admin.
         if user is None:
+            # Unknown address: still burn one argon2 verification so the timing
+            # matches the wrong-password path; the response is identical 401.
+            security.verify_password(body.password, _DUMMY_PASSWORD_HASH)
             raise ApiError("AUTH_INVALID_CREDENTIALS")
         if user["role"] == "participant":
             membership = s.execute(
@@ -113,8 +121,7 @@ def login(body: LoginIn, request: Request, response: Response):
         #    always succeeds. The cap bounds live sessions; it must never lock
         #    a legitimate user out of their own account.
         # The user-row lock serializes concurrent logins for one user so two
-        # racing sign-ins cannot exceed the cap.
-        s.execute(text("SELECT id FROM app.users WHERE id = CAST(:u AS uuid) FOR UPDATE"), {"u": str(user["id"])})
+        # racing sign-ins cannot exceed the cap (taken by the SELECT above).
         s.execute(
             text(
                 "UPDATE app.sessions SET revoked_at = now() "
@@ -412,7 +419,7 @@ def step_up(body: StepUpIn, request: Request, p: Principal = Depends(get_princip
             .mappings()
             .first()
         )
-        if not urow or not security.verify_password(body.password, urow["password_hash"]):
+        if not urow or not urow["password_hash"] or not security.verify_password(body.password, urow["password_hash"]):
             rate_limit(f"stepup:{p.id}", limit=5, window_s=300)
             raise ApiError("AUTH_INVALID_CREDENTIALS")
         s.execute(

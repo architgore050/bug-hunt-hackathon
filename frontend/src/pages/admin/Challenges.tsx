@@ -66,7 +66,7 @@ export default function AdminChallenges() {
   const [uploadState, setUploadState] = useState<string | null>(null)
   const [error, setError] = useState<ApiRequestError | null>(null)
   const [busy, setBusy] = useState(false)
-  const [lastCreated, setLastCreated] = useState<string | null>(null)
+  const [lastCreated, setLastCreated] = useState<{ id: string; createdAt: string } | null>(null)
   const [publishStage, setPublishStage] = useState('')
   const [testForm, setTestForm] = useState({ submissionId: '', passed: '', total: '' })
   const [testDone, setTestDone] = useState<string | null>(null)
@@ -106,7 +106,7 @@ export default function AdminChallenges() {
       setKnown(ids)
       saveKnown(ids)
       setChallengeId(res.challenge_id)
-      setLastCreated(res.challenge_id)
+      setLastCreated({ id: res.challenge_id, createdAt: new Date().toISOString() })
       setForm({ slug: '', title: '', instructions: '' })
       void queryClient.invalidateQueries({ queryKey: ['admin-assignments'] })
     }
@@ -224,7 +224,7 @@ export default function AdminChallenges() {
                 </Field>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                   <Button type="submit" variant="primary" disabled={busy || !elevated}>Create version</Button>
-                  {lastCreated && <span className="mono small muted">created {lastCreated.slice(0, 13)}</span>}
+                  {lastCreated && <span className="mono small muted">created {lastCreated.id.slice(0, 13)}</span>}
                 </div>
                 {!elevated && <span className="muted small">Confirm your identity above to enable challenge creation.</span>}
               </form>
@@ -368,7 +368,7 @@ export default function AdminChallenges() {
                   ))}
                 </div>
               )}
-              {lastCreated && <p className="muted small mono" style={{ marginTop: 8 }}>created {fmtDateTime(new Date().toISOString())}: {lastCreated}</p>}
+              {lastCreated && <p className="muted small mono" style={{ marginTop: 8 }}>created {fmtDateTime(lastCreated.createdAt)}: {lastCreated.id}</p>}
             </Panel>
           </div>
         </div>

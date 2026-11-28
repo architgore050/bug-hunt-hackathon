@@ -1,3 +1,5 @@
+Status: dataset provenance record, prepared 2026-11-27 against audit baseline `f96eb5ca`. It describes the audit dataset and its citation limits, not the current branch tree.
+
 # Audit dataset provenance
 
 **Dataset:** `findings_all.json`  

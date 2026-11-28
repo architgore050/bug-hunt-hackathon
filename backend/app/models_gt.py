@@ -94,7 +94,9 @@ class GtFlag(GtBase):
 
     id: Mapped[uuid.UUID] = pk()
     challenge_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
-    flag_key: Mapped[str] = mapped_column(String(40), nullable=False)  # stable public identifier used as award unit
+    flag_key: Mapped[str] = mapped_column(
+        String(40), nullable=False
+    )  # stable public identifier shown to participants; the award unit is the gt flag row id
     code_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     points: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False)
     max_awards: Mapped[int] = mapped_column(Integer, default=99, nullable=False)

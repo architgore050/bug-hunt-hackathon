@@ -155,11 +155,14 @@ All in `frontend/src/ui/components.tsx`, `frontend/src/components/`, and
 
 ### 4.1 Login (/login)
 
-- Data: `POST /v1/auth/login`. Rate limited 20/min per IP and 10/min per email;
-  failures are generic (`AUTH_INVALID_CREDENTIALS`) so the API never reveals
-  whether an email exists (ATH-01). Pending accounts get `AUTH_NOT_ACTIVATED`;
-  disqualified accounts get `AUTH_FORBIDDEN` with a contact-the-organizers
-  message.
+- Data: `POST /v1/auth/login`. Rate limited 20/min per IP and 10/min per email
+  (429 `AUTH_RATE_LIMITED`); failures are generic (`AUTH_INVALID_CREDENTIALS`)
+  so the API never reveals whether an email exists (ATH-01). Only
+  admin-registered accounts can sign in: a passwordless participant who
+  already has a team membership claims an initial password at first sign-in,
+  and staff accounts sign in with an administrator-assigned password. There is
+  no pending, unactivated or disqualified account state; removing a
+  participant's team membership is what cuts off sign-in.
 - Behavior: redirects already-signed-in users to their role home (participant
   to /app, reviewer to /review, organizer and admin to /admin) or to the path
   they were originally heading for. Session limit of 2 concurrent sessions per
@@ -170,20 +173,24 @@ All in `frontend/src/ui/components.tsx`, `frontend/src/components/`, and
 - States: idle form; busy state on submit; error banner with the server
   message and code; loading state handled globally by the session restore.
 
-### 4.2 Activate (/activate)
+### 4.2 Account setup (no public activation surface)
 
-- Data: `POST /v1/auth/activate` with invite token, new password, and rules
-  acceptance. Invites are single use and expire after 48 hours.
-- Behavior: live password checklist (at least 12 characters, upper, lower,
-  digit, symbol; the server enforces the 12 character minimum). The rules
-  checkbox records acceptance for the current rules version in the same
-  transaction as activation; acceptance cannot be withdrawn. Tokens can be
-  pasted or arrive via `/activate?invite=...`.
-- States: checklist rows show neutral, pass, and fail; submit stays disabled
-  until every check passes and the rules box is ticked; success renders the
-  "Account activated" banner with the activated email and a sign-in link;
-  failures (invalid, used, or expired token; `RULES_NOT_ACCEPTED`;
-  validation errors) render the error banner.
+- There is no `/activate` route, invite token or activation URL in the built
+  product. Accounts exist only after an administrator creates them: staff
+  through `POST /v1/auth/register` (administrator-assigned password, step-up
+  protected) and participants through `POST /v1/admin/events/{id}/participants`
+  (no password until first sign-in).
+- First sign-in: `POST /v1/auth/login` is the only public account entry. A
+  passwordless participant who already belongs to a team chooses the initial
+  password in the login form itself (12 character minimum enforced server
+  side); rules acceptance happens afterwards in the lobby via `POST
+  /v1/me/acceptances`. Passwordless staff, participants without a team
+  membership and unknown emails all receive the same generic
+  invalid-credentials error.
+- States: the login form carries the admin-managed-account note, the generic
+  failure banner, and the "Not registered? Contact an administrator" line.
+  There are no token-paste states, no standalone password checklist screen and
+  no activation banner.
 
 ## 5. Participant console (/app, role participant)
 
@@ -327,8 +334,8 @@ There is no dedicated account page in v1. Account data lives in three places:
 the console shell role chip and sign-out, the lobby team and rules panels, and
 the API endpoints `GET /v1/me`, `GET /v1/me/sessions`, `DELETE
 /v1/me/sessions/{id}`, and `POST /v1/me/acceptances`. Password reset is
-self-service only via the reset request and reset token endpoints (no email
-provider in v1; see the incident notes in the operations playbook).
+admin-only (`POST /v1/admin/users/{user_id}/password-reset`, fresh step-up
+required); there is no self-service reset route.
 
 ## 6. Reviewer console (/review, role reviewer)
 
@@ -443,14 +450,15 @@ page.
 ## 8. Error codes the UI can surface
 
 From the routers and deps: AUTH_RATE_LIMITED, AUTH_INVALID_CREDENTIALS,
-AUTH_NOT_ACTIVATED, AUTH_FORBIDDEN (includes the disqualified message),
-AUTH_TOKEN_EXPIRED (handled by silent refresh), AUTH_SESSION_REVOKED,
-RULES_NOT_ACCEPTED, VALIDATION_ERROR, NOT_FOUND, PATH_INVALID,
-ROUND_NOT_ACTIVE, ROUND_PAUSED, ROUND_ENDED, SUBMISSION_INVALID,
-SUBMISSION_CAP_REACHED, SUBMISSION_COOLDOWN, FILE_NOT_FOUND,
-IDEMPOTENCY_CONFLICT, DRAFT_VERSION_CONFLICT, GROUND_TRUTH_LOCKED,
-ADMIN_STEP_UP_REQUIRED, NETWORK (client classified). Every one renders with
-the code and request id so the desk can trace it.
+AUTH_FORBIDDEN, AUTH_TOKEN_EXPIRED (handled by silent refresh),
+AUTH_SESSION_REVOKED, RULES_NOT_ACCEPTED, VALIDATION_ERROR, NOT_FOUND,
+PATH_INVALID, ROUND_NOT_ACTIVE, ROUND_PAUSED, ROUND_ENDED,
+SUBMISSION_INVALID, SUBMISSION_CAP_REACHED, SUBMISSION_COOLDOWN,
+FILE_NOT_FOUND, IDEMPOTENCY_CONFLICT, DRAFT_VERSION_CONFLICT,
+GROUND_TRUTH_LOCKED, ADMIN_STEP_UP_REQUIRED, NETWORK (client classified).
+Every one renders with the code and request id so the desk can trace it.
+There is no account-status code: sign-in failures of every kind surface as
+the generic `AUTH_INVALID_CREDENTIALS`.
 
 ## 9. Not implemented in v1
 
@@ -465,14 +473,18 @@ the code and request id so the desk can trace it.
   (ADR-010); functional test results are recorded offline by organizers.
 - AI-assisted scoring. Disabled by default per DEC-13 until the provider gate
   in the AI tooling document passes.
-- Email delivery. Invites and reset tokens are surfaced through the organizer
-  console and logs, not an SMTP provider.
+- Email delivery. The platform sends no email and has no SMTP provider; there
+  are no invite or reset tokens to deliver. Administrators hand an initial or
+  reset password to the account holder in person or through an
+  organization-approved authenticated one-to-one channel.
 - A dedicated account settings page, including the sessions management UI
   (the endpoints exist without a screen).
 - Self-service team join by code. Teams and membership are organizer managed;
   join codes are displayed in the lobby for identification at the desk.
 - Live presence indicators and sockets. Presence is an estimate from team
   accounts; updates are polling based per the D1 realtime profile.
-- An operator endpoint for the final transition (released to final) and for
-  marking an account disqualified; both states exist in the model and are
-  applied directly by the platform admin when needed.
+- An operator endpoint for the final transition (released to final); the state
+  exists in the model and is applied directly by the platform admin when
+  needed. Disqualification is not an account state in v1: an administrator
+  removes the participant's team membership (or the team's members) from the
+  admin console, which revokes sessions and blocks further sign-in.

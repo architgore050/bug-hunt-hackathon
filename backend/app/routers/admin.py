@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from contextlib import contextmanager
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
@@ -530,10 +531,10 @@ def list_teams(event_id: str, p: Principal = Depends(require_organizer)):
         rows = (
             s.execute(
                 text(
-                    "SELECT t.id, t.name, t.status, count(DISTINCT tm.user_id) AS member_count "
+                    "SELECT t.id, t.name, count(DISTINCT tm.user_id) AS member_count "
                     "FROM app.teams t LEFT JOIN app.team_members tm ON tm.team_id = t.id "
                     "WHERE t.event_id = CAST(:e AS uuid) "
-                    "GROUP BY t.id, t.name, t.status ORDER BY t.name"
+                    "GROUP BY t.id, t.name ORDER BY t.name"
                 ),
                 {"e": event_id},
             )
@@ -567,39 +568,47 @@ def register_event_participant(
     """Create a passwordless participant and attach them directly to an event team."""
     user_id = None
     password_setup_required = True
-    try:
-        with app_session() as s:
-            event = (
-                s.execute(
-                    text("SELECT tenant_id, max_participants FROM app.events WHERE id = CAST(:e AS uuid) FOR UPDATE"),
-                    {"e": event_id},
-                )
-                .mappings()
-                .first()
-            )
-            if event is None:
-                raise ApiError("NOT_FOUND")
-
-            team = s.execute(
-                text("SELECT event_id FROM app.teams WHERE id = CAST(:t AS uuid) FOR UPDATE"),
-                {"t": body.team_id},
-            ).first()
-            if team is None or str(team[0]) != event_id:
-                raise ApiError("VALIDATION_ERROR", details={"team_id": "Choose a team from this event."})
-
-            member_count = s.execute(
-                text(
-                    "SELECT count(DISTINCT tm.user_id) FROM app.team_members tm "
-                    "JOIN app.teams t ON t.id = tm.team_id WHERE t.event_id = CAST(:e AS uuid)"
-                ),
+    with app_session() as s:
+        event = (
+            s.execute(
+                text("SELECT tenant_id, max_participants FROM app.events WHERE id = CAST(:e AS uuid) FOR UPDATE"),
                 {"e": event_id},
-            ).scalar_one()
-            if int(member_count) >= int(event["max_participants"]):
-                raise ApiError(
-                    "VALIDATION_ERROR",
-                    details={"capacity": f"Participant cap ({event['max_participants']}) reached."},
-                )
+            )
+            .mappings()
+            .first()
+        )
+        if event is None:
+            raise ApiError("NOT_FOUND")
 
+        team = s.execute(
+            text("SELECT event_id FROM app.teams WHERE id = CAST(:t AS uuid) FOR UPDATE"),
+            {"t": body.team_id},
+        ).first()
+        if team is None or str(team[0]) != event_id:
+            raise ApiError("VALIDATION_ERROR", details={"team_id": "Choose a team from this event."})
+
+        member_count = s.execute(
+            text(
+                "SELECT count(DISTINCT tm.user_id) FROM app.team_members tm "
+                "JOIN app.teams t ON t.id = tm.team_id WHERE t.event_id = CAST(:e AS uuid)"
+            ),
+            {"e": event_id},
+        ).scalar_one()
+        if int(member_count) >= int(event["max_participants"]):
+            raise ApiError(
+                "VALIDATION_ERROR",
+                details={"capacity": f"Participant cap ({event['max_participants']}) reached."},
+            )
+        # per-team member cap: the target team row is locked FOR UPDATE above,
+        # so concurrent adds to one team serialize before this count.
+        team_member_count = s.execute(
+            text("SELECT count(*) FROM app.team_members WHERE team_id = CAST(:t AS uuid)"),
+            {"t": body.team_id},
+        ).scalar_one()
+        if int(team_member_count) >= settings.max_team_members:
+            raise ApiError("TEAM_FULL", details={"team_id": f"Team member cap ({settings.max_team_members}) reached."})
+
+        try:
             existing = (
                 s.execute(
                     text(
@@ -659,26 +668,27 @@ def register_event_participant(
                 ),
                 {"id": str(uuid7()), "team": body.team_id, "user": user_id},
             )
-            audit_write(
-                s,
-                actor_id=p.id,
-                actor_role=p.role,
-                action="participant.registered",
-                entity_type="user",
-                entity_id=user_id,
-                request_id=request.state.request_id,
-                event_scope=f"event:{event_id}",
-                details={
-                    "email": body.email.lower(),
-                    "team_id": body.team_id,
-                    "password_setup_required": password_setup_required,
-                },
-            )
-    except IntegrityError:
-        raise ApiError(
-            "VALIDATION_ERROR",
-            details={"email": "This email or team membership already exists. Refresh the roster and retry."},
-        ) from None
+        except IntegrityError:
+            raise ApiError(
+                "VALIDATION_ERROR",
+                details={"email": "This email or team membership already exists. Refresh the roster and retry."},
+            ) from None
+
+        audit_write(
+            s,
+            actor_id=p.id,
+            actor_role=p.role,
+            action="participant.registered",
+            entity_type="user",
+            entity_id=user_id,
+            request_id=request.state.request_id,
+            event_scope=f"event:{event_id}",
+            details={
+                "email": body.email.lower(),
+                "team_id": body.team_id,
+                "password_setup_required": password_setup_required,
+            },
+        )
 
     return {
         "participant_id": user_id,
@@ -716,6 +726,15 @@ def reassign_event_participant(
         if current is None:
             raise ApiError("NOT_FOUND")
         if str(current[0]) != body.team_id:
+            # per-team member cap on the target team (locked FOR UPDATE above)
+            team_member_count = s.execute(
+                text("SELECT count(*) FROM app.team_members WHERE team_id = CAST(:t AS uuid)"),
+                {"t": body.team_id},
+            ).scalar_one()
+            if int(team_member_count) >= settings.max_team_members:
+                raise ApiError(
+                    "TEAM_FULL", details={"team_id": f"Team member cap ({settings.max_team_members}) reached."}
+                )
             s.execute(
                 text("DELETE FROM app.team_members WHERE user_id = CAST(:u AS uuid) AND team_id = CAST(:t AS uuid)"),
                 {"u": user_id, "t": str(current[0])},
@@ -1759,7 +1778,12 @@ def resolve_dispute(dispute_id: str, body: dict, request: Request, p: Principal 
             {"o": outcome, "r": resolution, "u": p.id, "id": dispute_id},
         )
         if outcome == "upheld" and adjust_points:
-            # rescoring via ledger adjustment (DAT-05): reversal + new entry
+            # rescoring via ledger adjustment (DAT-05): reversal + new entry.
+            # Same non-finite guard as manual_adjustment: JSON NaN would poison
+            # the append-only ledger total.
+            adjust_points = float(adjust_points)
+            if not math.isfinite(adjust_points):
+                raise ApiError("VALIDATION_ERROR", details={"adjust_points": "Points must be a finite number."})
             stage_id = str(d["stage_id"])
             team_id = str(d["team_id"])
             event_id = s.execute(
@@ -1776,7 +1800,7 @@ def resolve_dispute(dispute_id: str, body: dict, request: Request, p: Principal 
                 team_id=team_id,
                 component="adjustment",
                 kind="adjustment",
-                points=float(adjust_points),
+                points=adjust_points,
                 reason_code="DISPUTE_UPHELD",
                 submission_id=str(d["submission_id"]),
                 actor_id=p.id,
@@ -1804,7 +1828,9 @@ def manual_adjustment(body: dict, request: Request, p: Principal = Depends(admin
     reason = body.get("reason", "")
     if not stage_id or not team_id or not reason or points == 0:
         raise ApiError("VALIDATION_ERROR", details={"adjustment": "stage_id, team_id, points, reason required."})
-    if abs(points) > 10000 or len(reason) > 1000:
+    # JSON literal NaN/Infinity passes both the ==0 and the magnitude bound and
+    # would poison the append-only ledger total (Postgres SUM propagates NaN).
+    if not math.isfinite(points) or abs(points) > 10000 or len(reason) > 1000:
         raise ApiError(
             "VALIDATION_ERROR", details={"adjustment": "Points must be within +/-10000 and reason <=1000 chars."}
         )

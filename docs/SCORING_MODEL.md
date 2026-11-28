@@ -140,8 +140,16 @@ The evaluator's decision paths (deterministic matcher, then evaluator jobs):
   notes "(capped)" on the entry when truncated. Reason FLAG_VERIFIED.
 - Bonus entries are component ctf_bonus, kind bonus. They never interact with
   the main-score components or the penalty cap.
-- Concurrent verification is serialized by a team-row lock for the bonus cap
-  and a transaction-scoped advisory lock for each flag key's max_awards check.
+- Concurrent verification is serialized twice before the max_awards count and
+  claim: the claiming team's row is locked `FOR UPDATE` for the bonus-cap read
+  and ledger append, and a transaction-scoped advisory lock scoped to the
+  ground-truth flag (per challenge version; gt key uniqueness is
+  `(challenge_version_id, flag_key)`, so the pool is one flag row of one
+  version, never the bare `flag_key` across versions) serializes teams racing
+  for the same award unit. The queue is at-least-once, so a redelivered
+  verify_flag job finds the submission's existing ctf_bonus ledger entry and
+  leaves the already-paid submission untouched instead of relabeling it
+  duplicate.
 
 ## 5. Penalty model
 
