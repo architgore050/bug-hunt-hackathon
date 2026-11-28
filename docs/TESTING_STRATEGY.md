@@ -40,6 +40,11 @@ Behavioral coverage:
 | Storage and HTTP safety | Content-addressed artifacts, ZIP path/type validation, database session atomicity, health/cache/security headers, CORS, and error envelopes |
 | Core v1 regressions | Existing authorization, idempotency, ground-truth isolation, matching, scoring, root, and four-level flow suites |
 
+The table above covers the 36 v1 tests. The remaining 39 are the four-level
+flow files: `test_flow_gates.py` (9), `test_flow_auto_submit.py` (6),
+`test_flow_repo_lock.py` (6), `test_flow_submissions.py` (6) and
+`test_flow_uploads.py` (12).
+
 Run:
 
 ```bash
@@ -131,9 +136,9 @@ Re-run the role tests against PRODUCTION after any database grant change; this i
 
 ## 6. CI wiring
 
-See `CI_CD_PIPELINE.md`. Contract:
+See `CI_CD_PIPELINE.md`. The committed workflow has six jobs: secret scan, backend quality, backend tests, backend e2e, frontend quality and source hygiene. Contract:
 
-- Backend job runs the pytest suite against a PostgreSQL 17 service container (conftest is already service-compatible: it calls `dev_db.sh`/`migrate.sh`, which need `psql` on PATH and `PGPORT=5433`).
+- Backend test and e2e jobs use a PostgreSQL 17 service container (conftest is service-compatible: it calls `dev_db.sh`/`migrate.sh`, which need `psql` on PATH and `PGPORT=5433`).
 - Frontend job runs `npm ci`, `npm audit`, `npm run lint`, `npm test`, and `npm run build`.
 - The first real CI run must be verified on GitHub after push and the green run recorded as readiness evidence (OPS-02: never let the live event be the first full run).
 
@@ -152,7 +157,7 @@ All of these must be green before the event goes live. They map to the seeded `a
 
 Per-suite gates for every code change:
 
-- pytest 38 test functions.
+- pytest 75 test functions.
 - e2e journey 46/46.
 - frontend build clean.
 - frontend SSR rendering regression test clean.

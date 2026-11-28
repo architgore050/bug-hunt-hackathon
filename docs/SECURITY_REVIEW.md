@@ -8,7 +8,7 @@ Reviewed: auth flows (login, refresh rotation, step-up, activation), RBAC (parti
 
 ## Method
 
-1. pytest unit/integration suite: 34/34 pass, including auth, authorization, gt isolation (with real psycopg connections as `app_api`/`gt_admin`), idempotency, matching, scoring.
+1. pytest unit/integration suite: 75 tests (36 v1 plus 39 four-level flow), including auth, authorization, gt isolation (with real psycopg connections as `app_api`/`gt_admin`), idempotency, matching, scoring and the level-flow paths. Passing status must come from the CI run for the exact commit.
 2. E2E journey: 46/46 checks in `scripts/e2e_journey.py`, covering organizer lifecycle, participant and reviewer loops, release, flags, audit verify.
 3. Code reading of `backend/app/security.py`, `deps.py`, `routers/submissions.py`, `db.py`, `audit.py`, and frontend rendering paths.
 4. Hostile-payload test in the backend suite: oversized bodies, malformed ids, path traversal strings on file reads.
