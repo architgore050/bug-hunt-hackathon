@@ -49,7 +49,7 @@ Login with a seeded organizer account to reach admin views; seeded participant a
 - Backend: `cd backend && python -m pytest tests/ -q` (75 tests: 36 v1 covering auth, authorization, gt isolation, idempotency, matching and scoring, plus 39 four-level flow tests for gates, repo lock, uploads and auto-submit).
 - E2E: `python scripts/e2e_journey.py` (46 checks across organizer, participant, reviewer, release, flags, audit).
 - Frontend: `cd frontend && npm run build` (must stay clean; CI also greps for TODO/Lorem/XXX).
-- CI parity: `.github/workflows/ci.yml` has six jobs (secret scan, backend quality, backend tests, backend e2e, frontend quality, docs hygiene). First green run on GitHub is UNVERIFIED from this repository (L-15).
+- CI parity: `.github/workflows/ci.yml` has six jobs (secret scan, backend quality, backend tests, backend e2e, frontend quality, source hygiene). First green run on GitHub is UNVERIFIED from this repository (L-15).
 
 ## How to make a safe change
 

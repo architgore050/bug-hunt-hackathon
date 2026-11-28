@@ -49,9 +49,9 @@ PostgreSQL 17 service on port 5433, roles and migrations as in Job 3, `python se
 
 Node 22: `npm ci`, `npm audit --audit-level=high`, `npm run lint`, `npm test` and `npm run build` (`tsc -b && vite build`) in `frontend/`.
 
-### Job 6: docs-hygiene
+### Job 6: source-hygiene
 
-Greps for em dashes in docs, frontend, backend, scripts and root markdown, and for TODO/Lorem/XXX in platform code. The placeholder ban deliberately excludes the challenge-app vendor product, which keeps its documented TODO.
+Greps for em dashes in frontend source and for TODO/Lorem/XXX in platform code. The placeholder ban deliberately excludes the challenge-app vendor product, which keeps its documented TODO.
 
 ### E2E journey gate
 
@@ -79,7 +79,7 @@ The first real CI run MUST be verified on GitHub, not assumed from the committed
    - Common first-run failures to expect and fix: service-container health timing, Node/Python version mismatches, linter strictness differences, missing `psql` in the backend jobs.
 3. Record the green run URL and date in the readiness evidence alongside `runbooks`.
    - The master docs' rule applies: the live event must never be the first full run of any pipeline.
-4. Branch protection: once green, require all six jobs (secret scan, backend quality, backend tests, backend e2e, frontend quality and docs hygiene) before merging to main, so the event branch cannot regress silently.
+4. Branch protection: once green, require all six jobs (secret scan, backend quality, backend tests, backend e2e, frontend quality and source hygiene) before merging to main, so the event branch cannot regress silently.
 
 ## 5. Release flow (manual, documented)
 

@@ -136,7 +136,7 @@ Re-run the role tests against PRODUCTION after any database grant change; this i
 
 ## 6. CI wiring
 
-See `CI_CD_PIPELINE.md`. The committed workflow has six jobs: secret scan, backend quality, backend tests, backend e2e, frontend quality and docs hygiene. Contract:
+See `CI_CD_PIPELINE.md`. The committed workflow has six jobs: secret scan, backend quality, backend tests, backend e2e, frontend quality and source hygiene. Contract:
 
 - Backend test and e2e jobs use a PostgreSQL 17 service container (conftest is service-compatible: it calls `dev_db.sh`/`migrate.sh`, which need `psql` on PATH and `PGPORT=5433`).
 - Frontend job runs `npm ci`, `npm audit`, `npm run lint`, `npm test`, and `npm run build`.

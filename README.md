@@ -23,7 +23,7 @@ is UNRUN.
 | `challenge-app/` | "Papyrus", the Node/Express challenge app with 10 planted bugs + 2 flags |
 | `docs/` | The full documentation set (27+ documents, see below) |
 | `scripts/` | Dev bootstrap, migrations, seed reset, E2E journey, load test |
-| `.github/workflows/` | CI: secret scan, backend quality, backend tests, backend e2e, frontend quality, docs hygiene |
+| `.github/workflows/` | CI: secret scan, backend quality, backend tests, backend e2e, frontend quality, source hygiene |
 
 ## Quick start (D0 local profile)
 
