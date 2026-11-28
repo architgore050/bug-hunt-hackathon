@@ -119,7 +119,7 @@ export default function App() {
       <Route
         path="/admin"
         element={
-          <RequireRole roles={['organizer', 'admin']}>
+          <RequireRole roles={['organizer', 'admin']} devPreview>
             <ConsoleShell area="/admin">
               <Routes>
                 <Route index element={<AdminDashboard />} />
