@@ -24,15 +24,19 @@ any feature that is not needed to run the event.
 
 ## 2. Accounts and eligibility
 
-1. Access requires an account activated through an organizer-issued invite.
-   Invites are single use and expire; the account remains tied to the email
-   the organizers registered.
+1. Access requires an account registered by an organizer: staff accounts are
+   created by an admin with a password, and participants are added to a team
+   by an organizer and claim a password at first sign-in. No invite links,
+   activation tokens, or self-service reset tokens are issued.
 2. Accounts are personal: one person per account, no sharing, no transfer.
    You are responsible for all activity performed with your credentials.
    Password reset revokes all sessions for the account.
 3. The organizers may suspend or disqualify accounts that break these terms
-   or the competition rules. A disqualified account is refused at sign-in
-   with a contact-the-organizers message.
+   or the competition rules. Disqualification is enforced administratively:
+   the organizers remove the member from the team or delete the team. A
+   removed member cannot sign in, because participant sign-in requires an
+   existing team membership, and removal revokes the account's sessions and
+   refresh tokens.
 
 ## 3. Acceptable use
 
