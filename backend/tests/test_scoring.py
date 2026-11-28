@@ -212,9 +212,9 @@ def ctf_flag_scenario(seeded_db, request):
         )
 
     run_id = uuid.uuid4().hex[:12]
-    flags = [(f"TEST-CAP-{run_id}-{index}", f"FLAG{{ctf_cap_{run_id}_{index}}}") for index in range(flag_count)]
+    flags = [(f"TEST-CAP-{run_id}-{index}", f"FLAG{{ctf_cap_{run_id}_{index}}}", str(uuid.uuid4())) for index in range(flag_count)]
     with gt_session() as gt:
-        for flag_key, code in flags:
+        for flag_key, code, flag_id in flags:
             gt.execute(
                 text(
                     "INSERT INTO gt.gt_flags "
@@ -222,7 +222,7 @@ def ctf_flag_scenario(seeded_db, request):
                     "VALUES (CAST(:id AS uuid), CAST(:challenge AS uuid), :key, :hash, 30, :max_awards)"
                 ),
                 {
-                    "id": str(uuid.uuid4()),
+                    "id": flag_id,
                     "challenge": challenge_version_id,
                     "key": flag_key,
                     "hash": flag_code_hash(code),
@@ -234,7 +234,7 @@ def ctf_flag_scenario(seeded_db, request):
     with app_session() as s:
         submission_index = 0
         for team_id, user_id in submitters:
-            for flag_key, code in flags:
+            for flag_key, code, flag_id in flags:
                 submission_id = str(uuid.uuid4())
                 s.execute(
                     text(
@@ -265,7 +265,8 @@ def ctf_flag_scenario(seeded_db, request):
     return {
         "stage_id": stage_id,
         "team_ids": [team_id for team_id, _ in submitters],
-        "flag_keys": [flag_key for flag_key, _ in flags],
+        "flag_keys": [flag_key for flag_key, _, _ in flags],
+        "flag_ids": [flag_id for _, _, flag_id in flags],
         "submissions": submissions,
     }
 
@@ -287,9 +288,40 @@ def test_ctf_bonus_is_capped(ctf_flag_scenario):
             {"stage": stage_id, "team": team_id},
         ).all()
 
-    assert {row.award_unit_id for row in awards} == {key for key, _, _ in ctf_flag_scenario["submissions"]}
+    assert {row.award_unit_id for row in awards} == set(ctf_flag_scenario["flag_ids"])
     assert sorted(float(row.points) for row in awards) == [10.0, 30.0, 30.0, 30.0]
     assert round(sum(float(row.points) for row in awards), 2) == 100.0
+
+
+def test_flag_verification_redelivery_is_idempotent(ctf_flag_scenario):
+    """A previously paid flag submission must not be marked duplicate on retry."""
+    from app import evaluator
+    from app.db import app_session
+
+    worker_drain()
+    _flag_key, _team_id, submission_id = ctf_flag_scenario["submissions"][0]
+    evaluator.verify_flag({"submission_id": submission_id})
+
+    with app_session() as session:
+        status = session.execute(
+            text("SELECT status FROM app.submissions WHERE id = CAST(:sid AS uuid)"),
+            {"sid": submission_id},
+        ).scalar_one()
+        bonus_count = session.execute(
+            text(
+                "SELECT count(*) FROM app.score_ledger_entries "
+                "WHERE submission_id = CAST(:sid AS uuid) AND component = 'ctf_bonus' AND kind = 'bonus'"
+            ),
+            {"sid": submission_id},
+        ).scalar_one()
+        claim_count = session.execute(
+            text("SELECT count(*) FROM app.award_claims WHERE submission_id = CAST(:sid AS uuid)"),
+            {"sid": submission_id},
+        ).scalar_one()
+
+    assert status == "matched_auto"
+    assert int(bonus_count) == 1
+    assert int(claim_count) == 1
 
 
 def test_ctf_bonus_cap_holds_for_concurrent_verification(ctf_flag_scenario):
@@ -368,13 +400,13 @@ def test_flag_max_awards_holds_for_concurrent_teams(ctf_flag_scenario):
     from app.db import app_session
 
     stage_id = ctf_flag_scenario["stage_id"]
-    flag_key = ctf_flag_scenario["flag_keys"][0]
+    flag_id = ctf_flag_scenario["flag_ids"][0]
     submissions = ctf_flag_scenario["submissions"]
 
     with app_session() as blocker:
         blocker.execute(
-            text("SELECT pg_advisory_xact_lock(hashtextextended('ctf_flag:' || :flag_key, 0))"),
-            {"flag_key": flag_key},
+            text("SELECT pg_advisory_xact_lock(hashtextextended('ctf_flag:' || :flag_id, 0))"),
+            {"flag_id": flag_id},
         )
         # Without the advisory lock both workers can read max_awards=1 before
         # either insert. This lock forces them to reach that race deterministically.
@@ -418,8 +450,8 @@ def test_flag_max_awards_holds_for_concurrent_teams(ctf_flag_scenario):
 
     with app_session() as s:
         claim_count = s.execute(
-            text("SELECT count(*) FROM app.award_claims WHERE award_unit_id = :flag_key"),
-            {"flag_key": flag_key},
+            text("SELECT count(*) FROM app.award_claims WHERE award_unit_id = :flag_id"),
+            {"flag_id": flag_id},
         ).scalar_one()
         awards = s.execute(
             text(

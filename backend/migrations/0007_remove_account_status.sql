@@ -1,6 +1,8 @@
 -- Account status is not part of the event's account model.
 -- Preserve historical user rows for score/audit foreign keys, but revoke access
 -- for records that were explicitly disabled or disqualified in older builds.
+BEGIN;
+
 UPDATE app.sessions s
 SET revoked_at = COALESCE(s.revoked_at, now())
 FROM app.users u
@@ -25,3 +27,5 @@ WHERE tm.user_id = u.id
   AND u.status IN ('disabled', 'disqualified');
 
 ALTER TABLE app.users DROP COLUMN status;
+
+COMMIT;

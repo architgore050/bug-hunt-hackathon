@@ -59,7 +59,7 @@ def _pending_participants(session, stage_id: str, level_no: int) -> list[str]:
             "WHERE pp.level_no = :l AND pp.status IN ('locked', 'available', 'in_progress') "
             "AND ptr.level_no = :l AND ptr.node IN ('explain', 'exec') "
             "AND EXISTS (SELECT 1 FROM app.team_members tm JOIN app.teams t ON t.id = tm.team_id "
-            "            WHERE tm.user_id = pp.user_id AND t.event_id = pp.event_id) "
+            "            WHERE tm.user_id = pp.user_id AND t.event_id = pp.event_id AND t.status = 'active') "
             "AND EXISTS (SELECT 1 FROM app.stages st2 WHERE st2.id = CAST(:s AS uuid)) "
             "AND pp.event_id = (SELECT event_id FROM app.stages WHERE id = CAST(:s AS uuid)) "
             "ORDER BY pp.user_id"
@@ -275,7 +275,7 @@ def scan_and_submit() -> int:
                 member = (
                     session.execute(
                         text(
-                            "SELECT tm.team_id, t.event_id, e.tenant_id "
+                            "SELECT tm.team_id, t.event_id, t.status AS team_status, e.tenant_id "
                             "FROM app.team_members tm JOIN app.teams t ON t.id = tm.team_id "
                             "JOIN app.events e ON e.id = t.event_id WHERE tm.user_id = CAST(:u AS uuid) LIMIT 1"
                         ),
