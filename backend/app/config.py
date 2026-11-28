@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,6 +27,18 @@ class Settings(BaseSettings):
     database_url_gt: str = "postgresql+psycopg://gt_admin:gt_admin_dev@127.0.0.1:5434/bughunt"
     db_pool_size: int = 8
     db_max_overflow: int = 4
+    # REM-002 (CRITICAL): this process currently holds BOTH DB roles -- app_api
+    # for the participant surface and gt_admin for the admin/GT routers -- so
+    # the answer-key trust boundary is process-level, not only SQL-role-level.
+    # When the evaluator split lands, the participant API must run with
+    # database_url_gt deliberately unset/empty (gt_credential_required=False)
+    # and refuse to start if an admin/GT route is mounted; the pre-split
+    # default True keeps the combined process booting as it does today.
+    gt_credential_required: bool = True
+    # REM-002: production must either complete the evaluator split or set
+    # EVALUATOR_SPLIT=1 to explicitly acknowledge running pre-split with the GT
+    # credential still in this process (enforced by validate_production_config).
+    evaluator_split_acknowledged: bool = Field(default=False, alias="EVALUATOR_SPLIT")
 
     # --- auth ----------------------------------------------------------------
     # DEV ONLY DEFAULTS. A live deployment MUST override all of these.
@@ -118,4 +131,15 @@ def validate_production_config() -> list[str]:
         violations.append("cookie_domain should be a host-only ('') or a dot-prefixed domain.")
     if settings.access_token_ttl_s > 3600:
         violations.append("access_token_ttl_s exceeds 1 hour; tighten for production.")
+    # REM-002 (CRITICAL): the participant API process holds the GT credential
+    # (database_url_gt) together with the admin/GT routers.  A d0-local dev
+    # profile using the gt_admin dev credential is fine (early return above);
+    # production must either complete the evaluator split so the participant
+    # process runs without the GT credential, or explicitly acknowledge
+    # running pre-split via EVALUATOR_SPLIT=1.
+    if not settings.evaluator_split_acknowledged:
+        violations.append(
+            "REM-002: the GT credential is present in the participant API process; complete the evaluator "
+            "split (docs/SECURITY_ARCHITECTURE.md) or acknowledge it with EVALUATOR_SPLIT=1."
+        )
     return violations

@@ -40,23 +40,33 @@ enforce the blocking ones).
    Levels 3-4, an isolated runner design and capacity review must pass.
    Owner decision: approve or keep disabled; blocks READY only if Run is
    expected on event day.
+9. REM-002 (CRITICAL) evaluator split. The participant API process still
+   holds the GT database credential and serves the admin/GT routes in the
+   same process, so the answer-key boundary is process-level, not only
+   SQL-role-level. Owner: platform owner. Decision: complete the evaluator
+   split before D1 (separate evaluator service with its own credential;
+   participant API runs as `app_api` only); blocks READY. Interim controls:
+   production boot requires `EVALUATOR_SPLIT=1` to acknowledge the
+   pre-split state, role isolation is tested by `tests/test_gt_isolation.py`,
+   and GT writes stay behind step-up (docs/SECURITY_ARCHITECTURE.md
+   section 13).
 
 ## Non-blocking (tracked, with owners)
 
-9. Frontend concept selection. PRs #16, #17, #18 (recreated concepts) remain
-   mutually exclusive alternatives; the owner picks one and funds its
-   four-level adaptation (the backend keeps every v1 endpoint stable, so all
-   three still run today). PR #19 (rebuild-base) is the shared baseline.
-10. Fork PR #15 (landing-page contribution) cannot be reopened or recreated
+10. Frontend concept selection. PRs #16, #17, #18 (recreated concepts) remain
+    mutually exclusive alternatives; the owner picks one and funds its
+    four-level adaptation (the backend keeps every v1 endpoint stable, so all
+    three still run today). PR #19 (rebuild-base) is the shared baseline.
+11. Fork PR #15 (landing-page contribution) cannot be reopened or recreated
     until the fork syncs with the rewritten main; recovery note is posted on
     the PR.
-11. E2E journey extension for the four-level loop (scripts/e2e_journey.py
+12. E2E journey extension for the four-level loop (scripts/e2e_journey.py
     covers the v1 loop; the flow test suite covers the four-level loop
     in-process).
-12. IndexDB/local persistence and Monaco workspace behavior for Levels 3-4
+13. IndexDB/local persistence and Monaco workspace behavior for Levels 3-4
     live in the frontend concepts; the server draft API they need
     (`GET/PUT /v1/levels/{n}/draft`, artifacts, computed diff) is shipped.
-13. Email/invite delivery stays manual (organizer console), unchanged from
+14. Email/invite delivery stays manual (organizer console), unchanged from
     v1.
 
 ## What was deliberately NOT built in this branch

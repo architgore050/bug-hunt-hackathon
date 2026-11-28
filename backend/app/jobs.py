@@ -64,7 +64,22 @@ def claim_next(session: Session, *, lease_s: int = 120, kinds: list[str] | None 
     return dict(row) if row else None
 
 
+def claim_next_for_kind(session: Session, kind: str, *, lease_s: int = 120) -> dict | None:
+    """Claim the next queued job of exactly one kind (REM-021).
+
+    Thin wrapper over claim_next(kinds=[kind]) for call sites that drive a
+    single kind of work (e.g. the scheduler's auto-submit scan) without
+    competing with other kinds. Per-kind lease/backoff controls (attempts,
+    backoff, jitter, timeout, retryable error classes, dead-letter handling)
+    are still the shared RETRY_BACKOFF_S policy in fail(); introducing real
+    per-kind policy tables remains follow-up work tracked by REM-021.
+    """
+    return claim_next(session, lease_s=lease_s, kinds=[kind])
+
+
 def complete(session: Session, job_id: str) -> None:
+    # REM-070: status flip to 'done' clears lease_until, releasing the lease so
+    # requeue_expired_leases cannot reclaim a finished job.
     session.execute(
         text("UPDATE app.jobs SET status='done', lease_until=NULL, updated_at=:now WHERE id=:id"),
         {"now": datetime.now(UTC), "id": job_id},
@@ -72,6 +87,8 @@ def complete(session: Session, job_id: str) -> None:
 
 
 def fail(session: Session, job_id: str, error: str) -> None:
+    # REM-070: both branches clear lease_until (status 'dead' or re-queued with a
+    # backoff run_after), releasing the lease for the next attempt/worker.
     row = session.execute(
         text("SELECT attempts, max_attempts, payload, kind FROM app.jobs WHERE id=:id FOR UPDATE"),
         {"id": job_id},

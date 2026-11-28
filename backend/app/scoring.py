@@ -75,6 +75,49 @@ def add_ledger_entry(
     return entry_id
 
 
+def reverse_ledger_entry(session: Session, entry_id: str, actor_id: str | None, reason: str) -> str | None:
+    """Append the reversal entry for an existing ledger entry (REM-011).
+
+    Idempotent: if some entry already reverses `entry_id`, its id is returned
+    and no second reversal is written, so a retried rejection job cannot
+    double-reverse the same award. The original row is never modified
+    (append-only invariant); the reversal mirrors the original's
+    tenant/event/stage/team/component/submission/award unit, carries the
+    inverse points and is attributed to `actor_id` with `reason` as its note.
+    """
+    existing = session.execute(
+        text("SELECT id FROM app.score_ledger_entries WHERE reverses_entry_id = CAST(:id AS uuid) LIMIT 1"),
+        {"id": entry_id},
+    ).scalar_one_or_none()
+    if existing is not None:
+        return str(existing)
+    original = session.execute(
+        text(
+            "SELECT tenant_id, event_id, stage_id, team_id, submission_id, award_unit_id, "
+            "component, kind, points FROM app.score_ledger_entries WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": entry_id},
+    ).first()
+    if original is None:
+        return None
+    return add_ledger_entry(
+        session,
+        tenant_id=str(original.tenant_id),
+        event_id=str(original.event_id),
+        stage_id=str(original.stage_id),
+        team_id=str(original.team_id),
+        component=original.component,
+        kind=original.kind,
+        points=-float(original.points),
+        reason_code="reversal",
+        submission_id=str(original.submission_id) if original.submission_id else None,
+        award_unit_id=original.award_unit_id,
+        actor_id=actor_id,
+        reverses_entry_id=entry_id,
+        note=reason,
+    )
+
+
 def claim_award_unit(
     session: Session,
     *,
@@ -91,6 +134,9 @@ def claim_award_unit(
     than an IntegrityError, so duplicate evaluation jobs remain harmless.
     """
     claimed_id = session.execute(
+        # REM-057: the ON CONFLICT (stage_id, team_id, award_unit_id) DO NOTHING
+        # insert is the atomic claim primitive: exactly one concurrent claimer wins,
+        # losers see no row and get False, so caps/awards cannot double-claim.
         text(
             "INSERT INTO app.award_claims "
             "(id, event_id, stage_id, team_id, award_unit_id, submission_id) "

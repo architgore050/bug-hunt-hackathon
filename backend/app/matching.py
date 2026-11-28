@@ -22,6 +22,12 @@ import json
 import re
 from dataclasses import dataclass, field
 
+# MANUAL-REVALIDATION (REM-013): decide/decide_multi are deterministic given
+# (report, candidates, rule_set, already_awarded_units) but auto-accept needs a
+# measured blind-validation precision gate (labelled corpus, authoring/validation
+# split) before production trust; evaluation provenance (matcher_version,
+# ruleset hash, feature vector) is not persisted here.
+
 CATEGORIES_FAMILIES: dict[str, list[str]] = {
     "logic": ["logic", "error_handling", "other"],
     "input_validation": ["input_validation", "logic", "other"],

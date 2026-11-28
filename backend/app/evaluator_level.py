@@ -23,6 +23,7 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from . import jobs
 from .db import app_session, gt_session
@@ -149,6 +150,8 @@ def evaluate_level_submission(payload: dict) -> None:
             locations = flag.get("locations") or []
             report_text = f"{flag.get('description') or ''} {flag.get('evidence') or ''}"
             if level_no >= 2 and len(locations) > 1:
+                # MANUAL-REVALIDATION (REM-013): multi-flag matching needs a blind-validation
+                # precision gate before production trust.
                 decision = decide_multi(
                     locations,
                     report_text,
@@ -171,14 +174,23 @@ def evaluate_level_submission(payload: dict) -> None:
             outcomes.append(decision.outcome)
             if decision.outcome == "accept_full" and decision.bug is not None:
                 bug = decision.bug
-                claimed = claim_award_unit(
-                    session,
-                    event_id=event_id,
-                    stage_id=stage_id,
-                    team_id=team_id,
-                    award_unit_id=bug.code,
-                    submission_id=submission_id,
-                )
+                # REM-053: a concurrent duplicate evaluation job can hit the same unique
+                # constraint between our pre-read and the insert; treat that as
+                # already-claimed (idempotent retry), never a crashed job.
+                try:
+                    with session.begin_nested():
+                        claimed = claim_award_unit(
+                            session,
+                            event_id=event_id,
+                            stage_id=stage_id,
+                            team_id=team_id,
+                            award_unit_id=bug.code,
+                            submission_id=submission_id,
+                        )
+                except IntegrityError:
+                    # Savepoint rolled back; the outer transaction stays usable.
+                    outcomes[-1] = "duplicate"
+                    continue
                 if claimed:
                     awarded.add(bug.code)
                     weights = (

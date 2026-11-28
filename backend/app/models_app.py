@@ -458,9 +458,20 @@ class Dispute(AppBase):
 
 # --- scoring ------------------------------------------------------------------
 
+# INVARIANT (REM-017): every scoring/award mutation must audit_write inside the
+# same DB transaction as the ledger/claim change, so the audit hash chain stays
+# parallel to the append-only ledger. Audit chain heads are serialized per
+# event_scope (see audit.py); verification must enumerate all scopes.
+
 
 class ScoreLedgerEntry(AppBase):
-    """Append-only ledger. Corrections are reversal/adjustment entries (architecture 8.3)."""
+    """Append-only ledger. Corrections are reversal/adjustment entries (architecture 8.3).
+
+    INVARIANT (REM-051): `reverses_entry_id` ties every reversal/adjustment
+    entry back to the original it corrects; the pair (original + reversal)
+    gives net zero for the reversed award. Rows are never UPDATEd/DELETEd in
+    production code paths (append-only; DB triggers reject UPDATE/DELETE).
+    """
 
     __tablename__ = "score_ledger_entries"
     __table_args__ = {"schema": "app"}
@@ -485,7 +496,13 @@ class ScoreLedgerEntry(AppBase):
 
 
 class AwardClaim(AppBase):
-    """One effective award per (team, stage, award unit) - database-enforced (DAT-01)."""
+    """One effective award per (team, stage, award unit) - database-enforced (DAT-01).
+
+    INVARIANT (REM-051): UNIQUE(stage_id, team_id, award_unit_id) is the
+    database guarantee behind "exactly one effective award per
+    (stage, team, award_unit)"; scoring.claim_award_unit's atomic
+    ON CONFLICT DO NOTHING insert depends on it.
+    """
 
     __tablename__ = "award_claims"
     __table_args__ = (UniqueConstraint("stage_id", "team_id", "award_unit_id"), {"schema": "app"})

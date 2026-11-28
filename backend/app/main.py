@@ -76,6 +76,15 @@ async def lifespan(app: FastAPI):
         for v in violations:
             log.critical("startup config violation: %s", v)
         raise RuntimeError("Refusing to start in production with insecure configuration: " + "; ".join(violations))
+    # REM-002: fail-loud marker so a production boot can never silently run
+    # pre-split.  The durable fix is a separate evaluator service that owns
+    # the GT credential while this API runs as app_api only (owner decision
+    # ADR-007); until the split lands, the warning fires once per process.
+    if settings.environment == "production":
+        log.warning(
+            "REM-002: the participant API process still holds the GT credential; "
+            "the evaluator split (docs/SECURITY_ARCHITECTURE.md) must be completed before the event."
+        )
     log.info("starting Bug Hunt CTF API profile=%s environment=%s", settings.profile, settings.environment)
     yield
     log.info("shutdown complete")

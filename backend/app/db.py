@@ -7,8 +7,12 @@ Two SQLAlchemy engines model the trust boundary from the architecture (§9.2):
 - ``gt_engine``   connects as the ``gt_admin`` role. Only evaluator/ground-truth
   code paths use it.
 
-A test (tests/test_gt_isolation.py) connects with the real app_api role and
-asserts that reading gt raises a permission error.
+REM-002 WARNING: ``gt_engine``/``gt_session`` are ONLY for evaluator and
+ground-truth paths (job handlers reading gt.gt_*). The ``app_api`` role must
+NEVER read the gt schema — tests/test_gt_isolation.py connects with the real
+app_api role and asserts that reading gt raises a permission error. Do NOT
+import ``gt_session`` from participant-facing routers; the full fix (separate
+participant/admin services without the GT credential) is tracked in REM-002.
 """
 
 from __future__ import annotations
@@ -38,6 +42,8 @@ def _make_engine(url: str) -> Engine:
 
 
 app_engine: Engine = _make_engine(settings.database_url_app)
+# REM-002: gt credential lives here ONLY for evaluator/GT code paths; app_api
+# (app_engine above) must never read gt (asserted by tests/test_gt_isolation.py).
 gt_engine: Engine = _make_engine(settings.database_url_gt)
 
 AppSession = sessionmaker(bind=app_engine, expire_on_commit=False, autoflush=False)
@@ -109,4 +115,28 @@ def health_probe() -> dict:
             out["database_gt"] = "up"
     except SQLAlchemyError as e:  # pragma: no cover
         out["database_gt_error"] = str(e.__class__.__name__)
+    # REM-056: pool stats are cheap already-maintained counters; expose them so
+    # operators can see pool pressure without a metrics endpoint.
+    for name, engine in (("pool_app", app_engine), ("pool_gt", gt_engine)):
+        try:
+            out[name] = engine.pool.status()
+        except Exception as e:  # pragma: no cover  # noqa: BLE001
+            out[name] = f"unavailable ({e.__class__.__name__})"
     return out
+
+
+def requeue_owned_leases(session: Session, worker_id: str) -> int:
+    """REM-070: requeue jobs still leased by this worker back to the queue.
+
+    worker.py calls this on graceful shutdown (drain) so leases this worker
+    claimed but could not finish are released immediately instead of idling
+    until lease expiry; retries are safe because job handlers are idempotent
+    (REM-053). Column names follow the repo schema ('queued', lease_until).
+    Selectivity requires a lease_owner column recorded by claim_next (jobs.py);
+    until that migration lands this matches nothing rather than misfiring.
+    """
+    res = session.execute(
+        text("UPDATE app.jobs SET status='queued', lease_until=NULL WHERE lease_owner=:w AND status='running'"),
+        {"w": worker_id},
+    )
+    return res.rowcount or 0

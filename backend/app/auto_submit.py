@@ -163,7 +163,14 @@ def _auto_payload_for(
 
 def _auto_submit_one(member: dict, user_id: str, level_no: int, stage: dict) -> str | None:
     """Transactional auto-submit for one participant. Returns the submission id
-    or None when a concurrent writer (manual submit) won the race."""
+    or None when a concurrent writer (manual submit) won the race.
+
+    REM-053: idempotent under retries and duplicate scheduler runs — the
+    pointer row is taken FOR UPDATE (flow.get_pointer_for_update), the
+    submission carries a stable idempotency_key "auto-{submission_id}", and
+    the award path in evaluator_level.py claims with ON CONFLICT so a retry
+    after a crash converges to one receipt/one award, never a 500.
+    """
     event_id = str(member["event_id"])
     with app_session() as s:
         ptr = flow.get_pointer_for_update(s, user_id)
@@ -264,7 +271,11 @@ def _auto_submit_one(member: dict, user_id: str, level_no: int, stage: dict) -> 
 
 
 def scan_and_submit() -> int:
-    """Scan every expired level and auto-submit its pending participants."""
+    """Scan every expired level and auto-submit its pending participants.
+
+    REM-021: MUST run under the worker leader's pg advisory lock (acquired in
+    worker.py); non-leader workers skip it.
+    """
     count = 0
     with app_session() as session:
         expired = _expired_levels(session)

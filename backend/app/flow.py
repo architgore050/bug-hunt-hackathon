@@ -19,6 +19,8 @@ from .errors import ApiError
 LEVEL_COUNT = 4
 # node ordering index: explain < exec < done
 NODE_ORDER = {"explain": 0, "exec": 1, "done": 2}
+# MANUAL-REVALIDATION (REM-062): terminal-state semantics (RELEASED→FINAL,
+# DISPUTED→RESOLVED) must be reconciled with the DB transition constraints.
 LEVEL_STATUSES = ("locked", "available", "in_progress", "submitted", "auto_submitted", "missed")
 DONE_STATUSES = ("submitted", "auto_submitted")
 
@@ -70,6 +72,8 @@ def get_pointer(session: Session, user_id: str) -> dict | None:
 
 
 def get_pointer_for_update(session: Session, user_id: str) -> dict | None:
+    # Confirmed (REM-057): SELECT ... FOR UPDATE locks the pointer row so the
+    # monotonicity check + update serialize against concurrent advances.
     row = (
         session.execute(
             text(
@@ -238,6 +242,8 @@ def compute_gate(session: Session, event_id: str, user_id: str, team_id: str | N
     Returns {allowed, reason, waiting_on, stage_status}. Never cached; callers
     use it at request time inside their own transaction.
     """
+    # MANUAL-REVALIDATION (REM-062): window cutoffs use the caller's clock here;
+    # leaderboard/release cutoffs must use DB time.
     stage = level_stage(session, event_id, level_no)
     if stage is None:
         return {"allowed": False, "reason": "Level not configured yet.", "waiting_on": [], "stage_status": None}
