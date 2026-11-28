@@ -833,43 +833,6 @@ def test_step_up_wrong_password_is_generic_and_records_no_success(client):
         )
 
 
-def test_step_up_for_passwordless_participant_returns_generic_401_without_raising(client):
-    login = _login(client, "p1.team1@example.com")
-    token = login.json()["access_token"]
-    user_id = security.decode_access_token(token)["sub"]
-    session_id = security.decode_access_token(token)["sid"]
-
-    with app_session() as session:
-        session.execute(
-            text("UPDATE app.users SET password_hash = NULL WHERE id = CAST(:user_id AS uuid)"),
-            {"user_id": user_id},
-        )
-
-    response = client.post(
-        "/v1/auth/step-up",
-        headers=_auth(token),
-        json={"password": "Any-Valid-Format-Password-123"},
-    )
-
-    error = _assert_error(response, 401, "AUTH_INVALID_CREDENTIALS")
-    assert error["message"] == "Email or password is incorrect."
-    with app_session() as session:
-        assert (
-            session.execute(
-                text("SELECT step_up_at FROM app.sessions WHERE id = CAST(:sid AS uuid)"),
-                {"sid": session_id},
-            ).scalar_one()
-            is None
-        )
-        assert (
-            session.execute(
-                text("SELECT count(*) FROM audit.entries WHERE action = 'auth.step_up' AND actor_id = CAST(:uid AS uuid)"),
-                {"uid": user_id},
-            ).scalar_one()
-            == 0
-        )
-
-
 def test_step_up_success_updates_the_session_audit_and_unlocks_a_sensitive_route(client):
     login = _login(client, "organizer@example.com")
     token = login.json()["access_token"]

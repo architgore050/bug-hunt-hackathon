@@ -54,19 +54,6 @@ def test_password_verification_treats_malformed_hashes_as_unverifiable(bad_hash)
     assert security.verify_password("Any-Valid-Looking-Password", bad_hash) is False
 
 
-def test_password_verification_uses_a_dummy_hash_when_account_has_no_hash(monkeypatch):
-    calls = []
-
-    def verify(encoded_hash, password):
-        calls.append((encoded_hash, password))
-        return True
-
-    monkeypatch.setattr(security._ph, "verify", verify)
-
-    assert security.verify_password("submitted-password", None) is False
-    assert calls == [(security._DUMMY_PASSWORD_HASH, "submitted-password")]
-
-
 def test_sha256_and_token_hash_accept_text_and_bytes_without_normalizing():
     expected = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 

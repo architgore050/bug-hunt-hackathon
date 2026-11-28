@@ -789,6 +789,18 @@ def register_event_participant(
             if team is None or str(team[0]) != event_id:
                 raise ApiError("VALIDATION_ERROR", details={"team_id": "Choose a team from this event."})
 
+            # The target team row is locked above, so concurrent registrations
+            # for the same team serialize before checking this cap.
+            team_member_count = s.execute(
+                text("SELECT count(*) FROM app.team_members WHERE team_id = CAST(:team AS uuid)"),
+                {"team": body.team_id},
+            ).scalar_one()
+            if int(team_member_count) >= settings.max_team_members:
+                raise ApiError(
+                    "TEAM_FULL",
+                    details={"team_id": f"Team member cap ({settings.max_team_members}) reached."},
+                )
+
             member_count = s.execute(
                 text(
                     "SELECT count(DISTINCT tm.user_id) FROM app.team_members tm "
@@ -918,6 +930,15 @@ def reassign_event_participant(
         if current is None:
             raise ApiError("NOT_FOUND")
         if str(current[0]) != body.team_id:
+            target_count = s.execute(
+                text("SELECT count(*) FROM app.team_members WHERE team_id = CAST(:team AS uuid)"),
+                {"team": body.team_id},
+            ).scalar_one()
+            if int(target_count) >= settings.max_team_members:
+                raise ApiError(
+                    "TEAM_FULL",
+                    details={"team_id": f"Team member cap ({settings.max_team_members}) reached."},
+                )
             s.execute(
                 text("DELETE FROM app.team_members WHERE user_id = CAST(:u AS uuid) AND team_id = CAST(:t AS uuid)"),
                 {"u": user_id, "t": str(current[0])},

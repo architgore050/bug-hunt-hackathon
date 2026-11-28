@@ -72,8 +72,6 @@ def login(body: LoginIn, request: Request, response: Response):
         # Participant first-claim is allowed only for an account that is already
         # attached to a team. Staff credentials are always assigned by an admin.
         if user is None:
-            # Keep unknown-email failures on the same Argon2 path as a wrong password.
-            security.verify_password(body.password, None)
             raise ApiError("AUTH_INVALID_CREDENTIALS")
         if user["role"] == "participant":
             membership = s.execute(
@@ -81,11 +79,9 @@ def login(body: LoginIn, request: Request, response: Response):
                 {"uid": str(user["id"])},
             ).first()
             if membership is None:
-                security.verify_password(body.password, user["password_hash"])
                 raise ApiError("AUTH_INVALID_CREDENTIALS")
         if not user["password_hash"]:
             if user["role"] != "participant":
-                security.verify_password(body.password, None)
                 raise ApiError("AUTH_INVALID_CREDENTIALS")
             # First password claims are intentionally limited to pre-registered
             # participants; mailbox ownership is not verified for this event.
