@@ -61,7 +61,12 @@ def test_password_verification_uses_a_dummy_hash_when_account_has_no_hash(monkey
         calls.append((encoded_hash, password))
         return True
 
-    monkeypatch.setattr(security._ph, "verify", verify)
+    class DummyVerifier:
+        @staticmethod
+        def verify(encoded_hash, password):
+            return verify(encoded_hash, password)
+
+    monkeypatch.setattr(security, "_ph", DummyVerifier())
 
     assert security.verify_password("submitted-password", None) is False
     assert calls == [(security._DUMMY_PASSWORD_HASH, "submitted-password")]

@@ -378,10 +378,11 @@ def test_team_member_cap_is_enforced_for_registration_and_reassignment(client, m
             text(
                 "SELECT tm.user_id FROM app.team_members tm "
                 "JOIN app.users u ON u.id = tm.user_id "
-                "WHERE tm.team_id <> CAST(:team AS uuid) AND u.role = 'participant' "
-                "ORDER BY tm.user_id LIMIT 1"
+                "JOIN app.teams t ON t.id = tm.team_id "
+                "WHERE tm.team_id <> CAST(:team AS uuid) AND t.event_id = CAST(:event AS uuid) "
+                "AND u.role = 'participant' ORDER BY tm.user_id LIMIT 1"
             ),
-            {"team": str(target["id"])},
+            {"team": str(target["id"]), "event": str(target["event_id"])},
         ).scalar_one()
 
     target_team_id = str(target["id"])
