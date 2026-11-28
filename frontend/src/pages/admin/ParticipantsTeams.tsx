@@ -6,13 +6,13 @@ import { useAdmin } from '../../admin/store'
 import { Pagination, Modal, ConfirmDialog, SortHeader, useToast } from '../../admin/ui'
 import { PlusIcon, UploadIcon } from '../../admin/icons'
 import { participantsForTeam } from '../../admin/helpers'
-import type { Participant, ParticipationStatus, RegistrationStatus, Team, TeamStatus } from '../../admin/types'
+import type { Participant, ParticipationStatus, RegistrationStatus, Team } from '../../admin/types'
 import { CsvImportWizard } from '../../admin/CsvImportWizard'
 
 type SortKey = 'name' | 'id' | 'email' | 'team' | 'registrationStatus' | 'participationStatus' | 'registeredAt'
 
 export default function ParticipantsTeams() {
-  const { state, updateParticipant, assignTeam, removeParticipant, setParticipantStatus, setRegistrationStatus, addParticipant, addTeam, setTeamStatus, removeTeam } = useAdmin()
+  const { state, updateParticipant, assignTeam, removeParticipant, setParticipantStatus, setRegistrationStatus, addParticipant, addTeam, removeTeam } = useAdmin()
   const toast = useToast()
   const [params, setParams] = useSearchParams()
   const [tab, setTab] = useState<'participants' | 'teams'>(params.get('tab') === 'teams' || params.get('newTeam') === '1' ? 'teams' : 'participants')
@@ -176,7 +176,6 @@ export default function ParticipantsTeams() {
           showNewTeam={showNewTeam}
           onCloseNewTeam={() => setShowNewTeam(false)}
           onAddTeam={(name, capacity) => { addTeam(name, capacity); toast.push({ kind: 'success', title: 'Team created', body: name }); setShowNewTeam(false) }}
-          onSetTeamStatus={setTeamStatus}
           onRemoveTeam={(id) => { removeTeam(id); toast.push({ kind: 'warning', title: 'Team removed' }) }}
           onAssign={assignTeam}
         />
@@ -301,13 +300,12 @@ function ParticipantForm({ teams, initial, onClose, onSubmit }: { teams: Team[];
   }
 }
 
-function TeamsPanel({ teams, participants, showNewTeam, onCloseNewTeam, onAddTeam, onSetTeamStatus, onRemoveTeam, onAssign }: {
+function TeamsPanel({ teams, participants, showNewTeam, onCloseNewTeam, onAddTeam, onRemoveTeam, onAssign }: {
   teams: Team[]
   participants: Participant[]
   showNewTeam: boolean
   onCloseNewTeam: () => void
   onAddTeam: (name: string, capacity: number) => void
-  onSetTeamStatus: (id: string, status: TeamStatus) => void
   onRemoveTeam: (id: string) => void
   onAssign: (participantId: string, teamId: string | null) => void
 }) {
@@ -321,7 +319,7 @@ function TeamsPanel({ teams, participants, showNewTeam, onCloseNewTeam, onAddTea
       <div className="table-scroll">
         <table className="table">
           <caption className="sr-only">Teams</caption>
-          <thead><tr><th scope="col">Team</th><th scope="col">Members</th><th scope="col">Status</th><th scope="col">Join code</th><th scope="col">Capacity</th><th scope="col">Actions</th></tr></thead>
+          <thead><tr><th scope="col">Team</th><th scope="col">Members</th><th scope="col">Join code</th><th scope="col">Capacity</th><th scope="col">Actions</th></tr></thead>
           <tbody>
             {teams.map((t) => {
               const members = participantsForTeam(t.id, participants)
@@ -329,13 +327,11 @@ function TeamsPanel({ teams, participants, showNewTeam, onCloseNewTeam, onAddTea
                 <tr key={t.id}>
                   <td style={{ fontWeight: 600 }}>{t.name}</td>
                   <td className="small">{members.length}</td>
-                  <td><StatusChip value={t.status} /></td>
                   <td className="mono small">{t.joinCode}</td>
                   <td className="mono small">{members.length} / {t.capacity}</td>
                   <td>
                     <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
                       <Button size="sm" onClick={() => setManaging(t)}>Members</Button>
-                      <Button size="sm" onClick={() => onSetTeamStatus(t.id, t.status === 'active' ? 'inactive' : 'active')}>{t.status === 'active' ? 'Deactivate' : 'Activate'}</Button>
                       <Button size="sm" variant="danger" onClick={() => setRemovingTeam(t)}>Remove</Button>
                     </span>
                   </td>
