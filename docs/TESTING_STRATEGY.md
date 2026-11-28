@@ -1,4 +1,4 @@
-Status: describes the implementation as of 2026-11-28
+Status: describes the implementation as of 2026-11-28; exact-commit CI result remains pending for this branch
 
 # Testing Strategy
 
@@ -6,7 +6,7 @@ The pyramid as actually implemented:
 
 - A pytest integration-heavy suite against real PostgreSQL.
 - Pure-function unit tests for the deterministic matcher and scoring math.
-- One end-to-end journey script against a running stack (46 checks).
+- One end-to-end journey script against a running stack.
 - Frontend type-check, build, lint, and server-rendered security regression tests.
 - The gt-isolation tests that assert the database boundary itself.
 
@@ -29,8 +29,8 @@ Behavioral coverage:
 
 | Scope | What it proves |
 | --- | --- |
-| Authentication and security primitives | Generic login failures, token claims and rejection, password hashing, session and refresh lifecycle, activation and reset, role boundaries, rules acceptance, step-up, CSRF, and rate limits |
-| Admin event and challenge operations | Event schedules and readiness, config revisions, stage controls, teams and invites, challenge upload/freeze/publish, ground-truth authoring, announcements, time adjustments, live ops, audit, exports, disputes, adjustments, and health |
+| Authentication and security primitives | Generic login failures, token claims and rejection, password hashing, session and refresh lifecycle, admin-managed staff registration and first-password claims, role boundaries, rules acceptance, step-up, CSRF, and rate limits |
+| Admin event and challenge operations | Event schedules and readiness, config revisions, stage controls, admin-managed teams and participant registration, challenge upload/freeze/publish, ground-truth authoring, announcements, time adjustments, live ops, audit, exports, disputes, adjustments, and health |
 | Admin four-level operations | Repository lock and options, progress views, manual auto-submit, and idempotent level bootstrap |
 | Participant delivery and responses | Assignment ownership, safe file content/search, public event/rules allowlists, server time and state, leaderboard visibility, team-scoped results, submission masking, and disputes |
 | Reviewer workflow | Queue ordering, claim ownership and expiry, detail projection, decision validation, persisted review jobs, and audit effects |
@@ -39,11 +39,6 @@ Behavioral coverage:
 | Worker and deadline flow | Queue leasing and retries, dead letters, auto-submit idempotency, progression, rollback, and gate boundaries |
 | Storage and HTTP safety | Content-addressed artifacts, ZIP path/type validation, database session atomicity, health/cache/security headers, CORS, and error envelopes |
 | Core v1 regressions | Existing authorization, idempotency, ground-truth isolation, matching, scoring, root, and four-level flow suites |
-
-The table above covers the 36 v1 tests. The remaining 39 are the four-level
-flow files: `test_flow_gates.py` (9), `test_flow_auto_submit.py` (6),
-`test_flow_repo_lock.py` (6), `test_flow_submissions.py` (6) and
-`test_flow_uploads.py` (12).
 
 Run:
 
@@ -70,7 +65,7 @@ Because `matching.decide` is a pure function of (report, candidates, rule set, c
 - Any rule change must update them.
 - Recorded feature values in ledger notes keep real decisions replayable (DAT-05).
 
-## 3. E2E journey (`scripts/e2e_journey.py`, 46 checks)
+## 3. E2E journey (`scripts/e2e_journey.py`)
 
 Runs against a live stack (`bash scripts/run_dev.sh` first; API on 8100, worker draining). One participant-team-organizer-reviewer journey exercising the P0 paths:
 
@@ -96,8 +91,8 @@ Run:
 bash scripts/run_dev.sh && python scripts/e2e_journey.py   # pass --base for a remote stack
 ```
 
-- Exit code 0 required; prints `46/46 checks passed` when green.
-- Note: the "reviewer records auditable decision" check and its "auto-matched" fallback are mutually exclusive by branch, so the total executed is 46 either way.
+- Exit code 0 required; prints the checks-passed summary when green.
+- Note: the "reviewer records auditable decision" check and its "auto-matched" fallback are mutually exclusive by branch, so the executed total does not change.
 
 ## 4. Frontend verification
 
@@ -136,11 +131,15 @@ Re-run the role tests against PRODUCTION after any database grant change; this i
 
 ## 6. CI wiring
 
-See `CI_CD_PIPELINE.md`. The committed workflow has six jobs: secret scan, backend quality, backend tests, backend e2e, frontend quality and source hygiene. Contract:
+See `CI_CD_PIPELINE.md`. Contract:
 
-- Backend test and e2e jobs use a PostgreSQL 17 service container (conftest is service-compatible: it calls `dev_db.sh`/`migrate.sh`, which need `psql` on PATH and `PGPORT=5433`).
-- Frontend job runs `npm ci`, `npm audit`, `npm run lint`, `npm test`, and `npm run build`.
-- The first real CI run must be verified on GitHub after push and the green run recorded as readiness evidence (OPS-02: never let the live event be the first full run).
+- `secret-scan`: gitleaks over the full pull-request commit range.
+- `backend-quality`: Ruff lint/format, Bandit and pip-audit.
+- `backend-tests`: pytest with coverage against PostgreSQL 17 after applying the ordered migrations.
+- `backend-e2e`: seeded PostgreSQL 17, API and worker, then the 46-check journey.
+- `frontend-quality`: npm audit, lint, rendering tests and production build on Node 22.
+- `source-hygiene`: frontend em-dash and platform placeholder gates.
+- Check the exact pull-request head commit on GitHub; the successful upstream `main` run is not evidence that this branch passes. Record the branch's successful six-job run as readiness evidence only after it completes (OPS-02: never let the live event be the first full run).
 
 ## 7. Pre-event test gate list
 
@@ -157,8 +156,8 @@ All of these must be green before the event goes live. They map to the seeded `a
 
 Per-suite gates for every code change:
 
-- pytest 75 test functions.
-- e2e journey 46/46.
+- pytest suite.
+- e2e journey.
 - frontend build clean.
 - frontend SSR rendering regression test clean.
 - oxlint clean.

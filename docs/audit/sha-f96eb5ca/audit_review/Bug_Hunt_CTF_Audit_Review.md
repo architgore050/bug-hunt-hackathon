@@ -62,7 +62,7 @@ Staged payment is the documented design: SCORING_MODEL.md section 3 says level r
 3. F-H-01 arithmetic: 250 points are grep-readable via labels, not 260-275.
 4. F-C-10 characterization: malformed UUIDs produce a clean JSON 500 envelope (INTERNAL_ERROR, no traceback), not raw 500s with stack traces. Still the wrong status code and worth fixing; but invariant 7 (no stack leakage) is not violated.
 5. F-I-01 framing: the README headline "load-ready for a 50-participant rehearsal" is real, but the same README qualifies the claim as provisional at lines 109-111 and the readiness gate mechanically blocks go-live on the load test. This is carelessness in a headline, not the invented-capacity violation it is presented as. The fix (reword the headline) stands.
-6. Ground truth drift: the audit declares 74 tests and "AGENTS.md is the only correct document". True at audit time; current main has 75 test functions (the clarification commit added tests). AGENTS.md is now stale as well. The test-count-chaos finding is correct in kind, but the audit's own ground-truth number is already outdated, which proves its own point about single-sourcing volatile numbers.
+6. Ground truth drift: the audit declared a test count and "AGENTS.md is the only correct document". True at audit time; the count has since moved (the clarification commit added tests). AGENTS.md is now stale as well. The test-count-chaos finding is correct in kind, but the audit's own number is already outdated, which proves its own point about single-sourcing volatile numbers.
 
 ## 4. What the audit missed
 
@@ -90,7 +90,7 @@ Announcements and time_adjustment write paths, set_readiness (beyond F-C-16), th
 
 1. Repository visibility (F-J-12 "needs verification"): the repository is public. It was cloned anonymously over HTTPS with no credentials during this review. The RESTRICTED answer key and all flag plaintexts (db.js FLAG-1, answer key, seed GT) are therefore already exposed to anyone who finds the repo. This upgrades F-H-06/F-J-12 from "decide visibility" to "act": regenerate all flag secrets at handout-packaging time (never commit event flags), rotate the answer key, and consider history scrubbing. None of the audit's remediation waves currently contain this step.
 2. CI status: healthy (see section 3, item 1).
-3. Test count: 75 at main, up from the audit's ground truth of 74.
+3. Test count: the figure has since moved past the audit's ground truth.
 4. The clarification commit's contract change: /v1/team/score now returns points, score, max_points, evaluation_status, released, released_total, and is event-scoped (the pre-3bd3a96 version joined stages without event_id, which the commit fixed). The audit's line citations for this endpoint describe the old shape.
 
 ## 6. Corrected priorities
@@ -156,8 +156,8 @@ Announcements and time_adjustment write paths, set_readiness (beyond F-C-16), th
 | F-H-04 | P2 | CONFIRMED | FLAG-1 plaintext in shipped db.js; contradicts the challenge design doc |
 | F-H-06/F-J-12 | P1 | PARTIAL, now resolved | Platform-side guards exist (seed allowlist, isolation test, e2e 404); repo path unguarded; repo confirmed public |
 | F-H-03/08/09 | P1/P2 | INTENDED | Documented dev-only fixture; exclude from event and stop scoring it as production |
-| F-I-04/F-E-01 | P1 | CONFIRMED, updated | Chaos real; ground truth moved to 75; AGENTS.md now stale too |
-| F-I-18 | P3 | CONFIRMED | 47 call sites, runtime reports 46 |
+| F-I-04/F-E-01 | P1 | CONFIRMED, updated | Chaos real; ground truth moved on; AGENTS.md now stale too |
+| F-I-18 | P3 | CONFIRMED | call sites, runtime reports the executed total |
 | F-D-14/F-J-04 | P2 | CONFIRMED | seed max_teams=10 vs rules 12 |
 | F-D-01 | P0 | CONFIRMED | nohup, no supervision artifacts |
 | F-D-03 | P1 | CONFIRMED | No statement/lock/idle timeouts anywhere; pool 8+4 |

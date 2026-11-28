@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, ApiRequestError } from '../lib/api'
-import { Button, Chip } from '../ui/components'
+import { Button, Chip, useNowTick } from '../ui/components'
 import { ShieldIcon } from '../ui/icons'
 
 /**
@@ -11,16 +11,18 @@ export function StepUpPanel({
   stepUpUntil,
   onStepUp,
   note,
+  nowMs,
 }: {
   stepUpUntil: number | null
   onStepUp: (validUntilMs: number) => void
+  nowMs: number
   note?: string
 }) {
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const elevated = stepUpUntil !== null && stepUpUntil > Date.now()
+  const elevated = stepUpUntil !== null && stepUpUntil > nowMs
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -42,7 +44,7 @@ export function StepUpPanel({
   }
 
   if (elevated) {
-    const mins = Math.max(0, Math.round(((stepUpUntil as number) - Date.now()) / 60000))
+    const mins = Math.max(0, Math.round(((stepUpUntil as number) - nowMs) / 60000))
     return (
       <div className="banner banner-tone-ok" role="status" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -85,6 +87,11 @@ export function StepUpPanel({
       {error && <div className="field-error" role="alert">{error}</div>}
     </form>
   )
+}
+
+export function useStepUpWindow(stepUpUntil: number | null) {
+  const nowMs = useNowTick(1000)
+  return { nowMs, elevated: stepUpUntil !== null && stepUpUntil > nowMs }
 }
 
 /** Shared helper: does this admin error demand a step-up prompt? */

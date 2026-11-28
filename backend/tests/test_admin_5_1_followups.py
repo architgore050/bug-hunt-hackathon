@@ -144,163 +144,6 @@ def _team_total(team_id: str) -> float:
 # =============================================================================
 
 
-class TestF_C_05_InviteRoles:
-    def test_organizer_can_invite_every_permitted_non_admin_role(self, client):
-        oc = _organizer(client)
-        ev = _q("SELECT id FROM app.events ORDER BY created_at LIMIT 1", one=True)["id"]
-        for role in ("participant", "reviewer"):
-            r = oc.post(f"/v1/admin/events/{ev}/invites", json={"email": f"{role}-invite@example.com", "role": role})
-            assert r.status_code == 201, (role, r.text)
-            stored = _q("SELECT role FROM app.invites WHERE email = :e", {"e": f"{role}-invite@example.com"}, one=True)
-            assert stored["role"] == role
-
-    def test_organizer_cannot_mint_admin_or_organizer_invites(self, client):
-        oc = _organizer(client)
-        ev = _q("SELECT id FROM app.events ORDER BY created_at LIMIT 1", one=True)["id"]
-        for role in ("admin", "organizer"):
-            r = oc.post(f"/v1/admin/events/{ev}/invites", json={"email": f"escalate-{role}@example.com", "role": role})
-            assert r.status_code == 403, (role, r.text)
-            assert r.json()["error"]["code"] == "AUTH_FORBIDDEN"
-            assert not _q("SELECT 1 FROM app.invites WHERE email = :e", {"e": f"escalate-{role}@example.com"})
-
-    def test_admin_can_invite_organizer_and_admin(self, client):
-        ac = _admin(client)
-        ev = _q("SELECT id FROM app.events ORDER BY created_at LIMIT 1", one=True)["id"]
-        for role in ("organizer", "admin"):
-            r = ac.post(
-                f"/v1/admin/events/{ev}/invites", json={"email": f"admin-invited-{role}@example.com", "role": role}
-            )
-            assert r.status_code == 201, (role, r.text)
-
-    def test_unknown_misspelled_and_miscapitalized_roles_are_rejected(self, client):
-        oc = _organizer(client)
-        ev = _q("SELECT id FROM app.events ORDER BY created_at LIMIT 1", one=True)["id"]
-        for role in ("superuser", "particpant", "Admin", "ADMIN", "null", ""):
-            r = oc.post(f"/v1/admin/events/{ev}/invites", json={"email": "bad-role@example.com", "role": role})
-            assert r.status_code == 422, (role, r.text)
-        assert not _q("SELECT 1 FROM app.invites WHERE email = 'bad-role@example.com'")
-
-    def test_missing_role_defaults_to_participant(self, client):
-        oc = _organizer(client)
-        ev = _q("SELECT id FROM app.events ORDER BY created_at LIMIT 1", one=True)["id"]
-        r = oc.post(f"/v1/admin/events/{ev}/invites", json={"email": "default-role@example.com"})
-        assert r.status_code == 201, r.text
-        assert (
-            _q("SELECT role FROM app.invites WHERE email = 'default-role@example.com'", one=True)["role"]
-            == "participant"
-        )
-
-    def test_non_organizers_cannot_invite(self, client):
-        ev = _q("SELECT id FROM app.events ORDER BY created_at LIMIT 1", one=True)["id"]
-        pc = participant_client(client, "p1.team1@example.com")
-        r = pc.post(f"/v1/admin/events/{ev}/invites", json={"email": "x@example.com", "role": "participant"})
-        assert r.status_code == 403
-        anon = TestClient(client.app)
-        r = anon.post(f"/v1/admin/events/{ev}/invites", json={"email": "x@example.com", "role": "participant"})
-        assert r.status_code in (401, 403)
-
-    def test_invited_account_activates_with_the_intended_role(self, client):
-        oc = _organizer(client)
-        ev = _q("SELECT id FROM app.events ORDER BY created_at LIMIT 1", one=True)["id"]
-        r = oc.post(f"/v1/admin/events/{ev}/invites", json={"email": "activate-me@example.com", "role": "reviewer"})
-        assert r.status_code == 201, r.text
-        token = r.json()["invite_token"]
-
-        rc = TestClient(client.app)
-        act = rc.post(
-            "/v1/auth/activate",
-            json={"invite_token": token, "password": "Activation-Passw0rd!", "accept_rules": True},
-        )
-        assert act.status_code == 200, act.text
-        row = _q("SELECT role, status FROM app.users WHERE email = 'activate-me@example.com'", one=True)
-        assert row["role"] == "reviewer"  # the invite role is honored, no escalation
-        assert row["status"] == "active"
-
-    def test_invite_activation_is_single_use_under_concurrency(self, client):
-        oc = _organizer(client)
-        ev = _q("SELECT id FROM app.events ORDER BY created_at LIMIT 1", one=True)["id"]
-        invite = oc.post(
-            f"/v1/admin/events/{ev}/invites",
-            json={"email": "activate-race@example.com", "role": "participant"},
-        )
-        assert invite.status_code == 201, invite.text
-        token = invite.json()["invite_token"]
-        start = threading.Barrier(2)
-        statuses: list[int] = []
-        lock = threading.Lock()
-
-        def activate():
-            c = TestClient(client.app)
-            start.wait(timeout=10)
-            response = c.post(
-                "/v1/auth/activate",
-                json={"invite_token": token, "password": "Activation-Passw0rd!", "accept_rules": True},
-            )
-            with lock:
-                statuses.append(response.status_code)
-
-        threads = [threading.Thread(target=activate) for _ in range(2)]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join(timeout=30)
-        assert sorted(statuses) == [200, 404], statuses
-        assert len(_q("SELECT id FROM app.users WHERE email = 'activate-race@example.com'")) == 1
-
-    def test_invite_cannot_take_over_an_existing_privileged_account(self, client):
-        oc = _organizer(client)
-        ev = _q("SELECT id FROM app.events ORDER BY created_at LIMIT 1", one=True)["id"]
-        invite = oc.post(
-            f"/v1/admin/events/{ev}/invites",
-            json={"email": ADMIN_EMAIL, "role": "participant"},
-        )
-        assert invite.status_code == 201, invite.text
-        activation = TestClient(client.app).post(
-            "/v1/auth/activate",
-            json={
-                "invite_token": invite.json()["invite_token"],
-                "password": "Attacker-Passw0rd!",
-                "accept_rules": True,
-            },
-        )
-        assert activation.status_code == 403, activation.text
-        assert _q("SELECT role FROM app.users WHERE email = :e", {"e": ADMIN_EMAIL}, one=True)["role"] == "admin"
-        assert client.post("/v1/auth/login", json={"email": ADMIN_EMAIL, "password": STAFF_PW}).status_code == 200
-
-    def test_existing_account_invite_does_not_reset_its_password(self, client):
-        oc = _organizer(client)
-        ev = _q("SELECT id FROM app.events ORDER BY created_at LIMIT 1", one=True)["id"]
-        invite = oc.post(
-            f"/v1/admin/events/{ev}/invites",
-            json={"email": "reviewer1@example.com", "role": "reviewer"},
-        )
-        assert invite.status_code == 201, invite.text
-        activation = TestClient(client.app).post(
-            "/v1/auth/activate",
-            json={
-                "invite_token": invite.json()["invite_token"],
-                "password": "Ignored-Passw0rd!",
-                "accept_rules": True,
-            },
-        )
-        assert activation.status_code == 200, activation.text
-        assert (
-            client.post("/v1/auth/login", json={"email": "reviewer1@example.com", "password": STAFF_PW}).status_code
-            == 200
-        )
-        assert (
-            client.post(
-                "/v1/auth/login", json={"email": "reviewer1@example.com", "password": "Ignored-Passw0rd!"}
-            ).status_code
-            == 401
-        )
-
-
-# =============================================================================
-# F-C-06: manual/dispute adjustments accept NaN and unbounded values
-# =============================================================================
-
-
 def _adjustment_body(points, *, reason="F-C-06 fixture"):
     ids = _seed_ids()
     team = _q("SELECT id FROM app.teams ORDER BY created_at LIMIT 1", one=True)["id"]
@@ -309,7 +152,7 @@ def _adjustment_body(points, *, reason="F-C-06 fixture"):
 
 class TestF_C_06_ManualAdjustmentValidation:
     def test_valid_positive_and_negative_adjustments(self, client):
-        ac = _admin(client)
+        ac = _stepped_up(client, ADMIN_EMAIL)
         body, team = _adjustment_body(10.5)
         r = ac.post("/v1/admin/adjustments", json=body)
         assert r.status_code == 200, r.text
@@ -325,7 +168,7 @@ class TestF_C_06_ManualAdjustmentValidation:
         assert all(x["kind"] == "adjustment" for x in rows)
 
     def test_zero_and_missing_points_are_rejected(self, client):
-        ac = _admin(client)
+        ac = _stepped_up(client, ADMIN_EMAIL)
         for points in (0, None):
             body, team = _adjustment_body(points)
             r = ac.post("/v1/admin/adjustments", json=body)
@@ -336,7 +179,7 @@ class TestF_C_06_ManualAdjustmentValidation:
             )
 
     def test_nan_and_infinities_are_rejected_without_touching_the_ledger(self, client):
-        ac = _admin(client)
+        ac = _stepped_up(client, ADMIN_EMAIL)
         stage = _seed_ids()["stage_id"]
         team = _q("SELECT id FROM app.teams ORDER BY created_at LIMIT 1", one=True)["id"]
         for literal in ("NaN", "Infinity", "-Infinity"):
@@ -359,14 +202,14 @@ class TestF_C_06_ManualAdjustmentValidation:
             assert r.status_code == 422, (bad, r.text)
 
     def test_extreme_values_beyond_numeric_column_are_rejected(self, client):
-        ac = _admin(client)
+        ac = _stepped_up(client, ADMIN_EMAIL)
         for bad in (1e9, -1e9, "123456789012345", 99999999.999):
             body, _ = _adjustment_body(bad)
             r = ac.post("/v1/admin/adjustments", json=body)
             assert r.status_code == 422, (bad, r.text)
 
     def test_malformed_numeric_representation_is_rejected_cleanly(self, client):
-        ac = _admin(client)
+        ac = _stepped_up(client, ADMIN_EMAIL)
         for bad in ("abc", [1], {"v": 1}, True):
             body, _ = _adjustment_body(bad)
             r = ac.post("/v1/admin/adjustments", json=body)
@@ -379,7 +222,7 @@ class TestF_C_06_ManualAdjustmentValidation:
         assert r.status_code == 403
 
     def test_stage_and_team_must_belong_to_the_same_event(self, client):
-        ac = _admin(client)
+        ac = _stepped_up(client, ADMIN_EMAIL)
         seed_stage = str(_seed_ids()["stage_id"])
         other = ac.post(
             "/v1/admin/events",
@@ -412,7 +255,7 @@ class TestF_C_06_ManualAdjustmentValidation:
         assert _q("SELECT count(*) AS n FROM app.score_ledger_entries", one=True)["n"] == before + 1
 
     def test_ledger_reconciliation_stays_consistent(self, client):
-        ac = _admin(client)
+        ac = _stepped_up(client, ADMIN_EMAIL)
         body, team = _adjustment_body(10)
         assert ac.post("/v1/admin/adjustments", json=body).status_code == 200
         body2, _ = _adjustment_body(-4)

@@ -89,7 +89,7 @@ export function refreshSession(): Promise<boolean> {
 }
 
 export interface ApiOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
   idempotencyKey?: string
   /** Internal: skip the silent-refresh retry (used by the retry itself). */

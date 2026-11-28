@@ -33,14 +33,24 @@ def hash_password(password: str) -> str:
     return _ph.hash(password)
 
 
-def verify_password(password: str, password_hash: str) -> bool:
+# A fixed, non-user hash keeps credential failures for unknown or
+# passwordless accounts on the same Argon2 verification path as bad passwords.
+# It is never accepted as a valid credential, even in the astronomically unlikely
+# event that a request supplies the fixed dummy input.
+_DUMMY_PASSWORD_HASH = _ph.hash("bughunt-dummy-credential-not-for-authentication")
+
+
+def verify_password(password: str, password_hash: str | None) -> bool:
+    dummy = password_hash is None
+    encoded_hash = password_hash if password_hash is not None else _DUMMY_PASSWORD_HASH
     try:
-        return _ph.verify(password_hash, password)
+        verified = _ph.verify(encoded_hash, password)
     except VerifyMismatchError:
-        return False
+        verified = False
     except (VerificationError, InvalidHashError):
-        # malformed or foreign-format hash stored on the row: treat as unverifiable, never crash
-        return False
+        # Malformed or foreign-format hashes are unverifiable, never fatal.
+        verified = False
+    return verified and not dummy
 
 
 def sha256_hex(data: str | bytes) -> str:

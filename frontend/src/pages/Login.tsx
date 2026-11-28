@@ -43,11 +43,10 @@ export default function Login() {
           <span className="exhibit-num">EX-AUTH</span>
           <h1 className="display" style={{ fontSize: 'clamp(1.6rem, 4vw, 2.2rem)', margin: 0 }}>Sign in</h1>
           <p className="muted small">
-            Sign in with your email id. Accounts are created by an organizer through the admin panel; unregistered
-            emails are rejected with a generic error. If you are registered but have no password yet, the password you
-            type becomes your password; if you already have one, it is checked. No separate activation step is needed
-            for this event. The console opens by role: participants land in the lobby, reviewers in the queue,
-            organizers in operations.
+            Sign in with your registered email. Only administrators can create accounts. Participants whose account
+            has no password choose one at first sign-in; staff accounts receive an administrator-assigned password.
+            This event does not verify mailbox ownership for participant first-password claims, so registered
+            participant emails must be distributed through a controlled channel. No activation link is used.
           </p>
         </header>
 
@@ -73,6 +72,8 @@ export default function Login() {
                 className="input mono"
                 type="password"
                 autoComplete="current-password"
+                minLength={12}
+                maxLength={200}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -86,8 +87,8 @@ export default function Login() {
         </Panel>
 
         <p className="muted small">
-          No account yet? Just sign in with your email id - your account is created on first sign-in. The server
-          rejects wrong credentials with one generic message; it never reveals whether an email exists.
+          Not registered? Contact an administrator. The server rejects unregistered emails and incorrect passwords
+          with the same generic response.
         </p>
       </div>
     </div>

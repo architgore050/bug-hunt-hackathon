@@ -12,7 +12,7 @@ export default function Privacy() {
       <Panel exhibit="EX-01" title="What the platform stores">
         <p>
           The platform keeps only the records the competition needs to run and to stay auditable. Accounts carry
-          your email, your name as provided at activation, your role and your activation status. Sessions are
+          your email, your name as provided at registration and your role. Sessions are
           recorded with a hashed IP, the browser user agent, creation time and last-seen time; you can list and
           revoke your own sessions from the API at any time.
         </p>
@@ -23,8 +23,8 @@ export default function Privacy() {
           request id, timestamp.
         </p>
         <p>
-          Passwords are stored only as salted hashes. Invite tokens and password reset tokens are stored hashed
-          after a single use. Report content is used for scoring and review and is not published to other
+          Passwords are stored only as salted hashes. Password resets are performed by administrators; no invite,
+          activation or public password-reset tokens are generated. Report content is used for scoring and review and is not published to other
           participants at any point before results are released.
         </p>
       </Panel>
@@ -33,7 +33,7 @@ export default function Privacy() {
         <ul style={{ margin: 0, paddingLeft: 20, display: 'grid', gap: 8 }}>
           <li>No third-party analytics, trackers or advertising of any kind.</li>
           <li>No cookies beyond the first-party, HttpOnly refresh session cookie scoped to the refresh endpoint path.</li>
-          <li>No email marketing. Mail is limited to operational messages: invites and, when configured, password resets.</li>
+          <li>No email marketing or account-activation email flow. Administrators distribute initial and reset passwords privately.</li>
           <li>No sale or sharing of data. Records stay inside the event deployment.</li>
         </ul>
       </Panel>
