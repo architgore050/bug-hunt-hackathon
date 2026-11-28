@@ -131,15 +131,16 @@ Re-run the role tests against PRODUCTION after any database grant change; this i
 
 ## 6. CI wiring
 
-See `CI_CD_PIPELINE.md`. Contract:
+See `CI_CD_PIPELINE.md`. The committed workflow has seven logical jobs: secret scan, backend quality, six backend test shards, the backend coverage gate, backend e2e, frontend quality and source hygiene. Contract:
 
 - `secret-scan`: gitleaks over the full pull-request commit range.
 - `backend-quality`: Ruff lint/format, Bandit and pip-audit.
-- `backend-tests`: pytest with coverage against PostgreSQL 17 after applying the ordered migrations.
-- `backend-e2e`: seeded PostgreSQL 17, API and worker, then the 46-check journey.
+- `backend-test-shards`: six pytest runners, each with its own PostgreSQL 17 service container and migrations (conftest is service-compatible: it calls `dev_db.sh`/`migrate.sh`, which need `psql` on PATH and `PGPORT=5433`).
+- `backend-tests`: combines the six shard coverage artifacts and enforces the 65% branch and statement gate; this keeps the original backend tests check name.
+- `backend-e2e`: seeded PostgreSQL 17, API and worker, then the journey.
 - `frontend-quality`: npm audit, lint, rendering tests and production build on Node 22.
 - `source-hygiene`: frontend em-dash and platform placeholder gates.
-- Check the exact pull-request head commit on GitHub; the successful upstream `main` run is not evidence that this branch passes. Record the branch's successful six-job run as readiness evidence only after it completes (OPS-02: never let the live event be the first full run).
+- Check the exact pull-request head commit on GitHub; the successful upstream `main` run is not evidence that this branch passes. Record the branch's successful run as readiness evidence only after it completes (OPS-02: never let the live event be the first full run).
 
 ## 7. Pre-event test gate list
 
