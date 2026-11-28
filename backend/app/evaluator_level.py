@@ -101,6 +101,9 @@ def evaluate_level_submission(payload: dict) -> None:
         sub = _submission(session, submission_id)
         if sub is None:
             raise ValueError(f"submission {submission_id} not found")
+        if sub["kind"] not in ("level_artifact", "level_report"):
+            # Unsupported kind: do not touch evaluation_state.
+            return
         session.execute(
             text("UPDATE app.submissions SET evaluation_state = 'EVALUATING' WHERE id = CAST(:sid AS uuid)"),
             {"sid": submission_id},
@@ -122,8 +125,6 @@ def evaluate_level_submission(payload: dict) -> None:
                 text("UPDATE app.submissions SET evaluation_state = 'NEEDS_REVIEW' WHERE id = CAST(:sid AS uuid)"),
                 {"sid": submission_id},
             )
-            return
-        if sub["kind"] != "level_report":
             return
         team_id = str(sub["team_id"])
         stage_id = str(sub["stage_id"])
