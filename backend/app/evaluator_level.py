@@ -225,6 +225,8 @@ def evaluate_level_submission(payload: dict) -> None:
             new_status = "matched_auto"
         elif any(o in ("accept_partial", "needs_review") for o in outcomes):
             new_status = "needs_review"
+        elif outcomes and all(o == "duplicate" for o in outcomes):
+            new_status = "duplicate"
         elif outcomes and all(o in ("reject_invalid", "duplicate") for o in outcomes):
             new_status = "rejected_auto"
         else:

@@ -195,7 +195,7 @@ def record_decision(item_id: str, body: DecisionIn, request: Request, p: Princip
             raise ApiError("NOT_FOUND")
         if row["status"] == "decided":
             raise ApiError("VALIDATION_ERROR", details={"decision": "Already decided."})
-        if row["status"] == "claimed" and row["claimed_by"] is not None and str(row["claimed_by"]) != p.id:
+        if row["status"] != "claimed" or row["claimed_by"] is None or str(row["claimed_by"]) != p.id:
             raise ApiError("AUTH_FORBIDDEN", message="Claim this item before deciding.")
 
         sub_status = {

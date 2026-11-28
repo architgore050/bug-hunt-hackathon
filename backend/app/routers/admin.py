@@ -54,14 +54,18 @@ def create_event(body: EventIn, request: Request, p: Principal = Depends(require
         ev_id = str(uuid7())
         s.execute(
             text(
-                "INSERT INTO app.events (id, tenant_id, slug, name, duration_minutes, max_participants, max_teams, config) "
-                "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), :slug, :name, :dur, :mp, :mt, CAST(:cfg AS jsonb))"
+                "INSERT INTO app.events "
+                "(id, tenant_id, slug, name, starts_at, timezone, duration_minutes, max_participants, max_teams, config) "
+                "VALUES (CAST(:id AS uuid), CAST(:t AS uuid), :slug, :name, CAST(:starts AS timestamptz), "
+                ":timezone, :dur, :mp, :mt, CAST(:cfg AS jsonb))"
             ),
             {
                 "id": ev_id,
                 "t": str(tenant[0]),
                 "slug": body.slug,
                 "name": body.name,
+                "starts": body.starts_at,
+                "timezone": body.timezone,
                 "dur": body.duration_minutes,
                 "mp": body.max_participants,
                 "mt": body.max_teams,
@@ -205,7 +209,8 @@ def list_events(p: Principal = Depends(require_organizer)):
         rows = (
             s.execute(
                 text(
-                    "SELECT id, slug, name, status, starts_at, ends_at, timezone, max_participants, max_teams, rules_version, config_version FROM app.events ORDER BY created_at DESC"
+                    "SELECT id, slug, name, status, starts_at, ends_at, timezone, duration_minutes, "
+                    "max_participants, max_teams, rules_version, config_version FROM app.events ORDER BY created_at DESC"
                 )
             )
             .mappings()
@@ -250,8 +255,10 @@ def create_stage(event_id: str, body: StageIn, request: Request, p: Principal = 
         st_id = str(uuid7())
         s.execute(
             text(
-                "INSERT INTO app.stages (id, event_id, name, kind, ordinal, config, rule_set_hash) "
-                "VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :name, :kind, :ord, CAST(:cfg AS jsonb), :rsh)"
+                "INSERT INTO app.stages "
+                "(id, event_id, name, kind, ordinal, grace_seconds, config, rule_set_hash) "
+                "VALUES (CAST(:id AS uuid), CAST(:e AS uuid), :name, :kind, :ord, :grace, "
+                "CAST(:cfg AS jsonb), :rsh)"
             ),
             {
                 "id": st_id,
@@ -259,6 +266,7 @@ def create_stage(event_id: str, body: StageIn, request: Request, p: Principal = 
                 "name": body.name,
                 "kind": body.kind,
                 "ord": int(ordinal) + 1,
+                "grace": body.grace_seconds,
                 "cfg": json.dumps(cfg),
                 "rsh": rsh,
             },
@@ -478,6 +486,11 @@ def create_invite(event_id: str, body: InviteIn, request: Request, p: Principal 
     """Creates a single-use activation token. v1 returns it to the organizer
     console (email delivery is a deployment follow-up, see runbook)."""
     import secrets
+
+    if body.role not in ("participant", "reviewer", "organizer", "admin"):
+        raise ApiError("VALIDATION_ERROR", details={"role": "Unsupported invite role."})
+    if body.role == "admin" and p.role != "admin":
+        raise ApiError("AUTH_FORBIDDEN", message="Only an admin can invite another admin.")
 
     raw = secrets.token_urlsafe(32)
     with app_session() as s:
@@ -968,7 +981,7 @@ def live_ops(event_id: str, p: Principal = Depends(require_organizer)):
         stages = (
             s.execute(
                 text(
-                    "SELECT id, name, kind, status, starts_at, ends_at, config FROM app.stages WHERE event_id = CAST(:e AS uuid) "
+                    "SELECT id, name, kind, ordinal, status, starts_at, ends_at, config FROM app.stages WHERE event_id = CAST(:e AS uuid) "
                     "ORDER BY (kind = 'level') ASC, ordinal ASC"
                 ),
                 {"e": event_id},

@@ -127,6 +127,13 @@ The evaluator's decision paths (deterministic matcher, then evaluator jobs):
   statuses and ledger effects as above; needs_second_review returns the
   submission to in_review and closes the item (a second item is not
   auto-created in v1; flag it to the organizers).
+- A multi-location full match must cover distinct canonical locations. Repeating
+  one correct location cannot stand in for another required location.
+- A submission with multiple claimed award units receives evidence, review, and
+  functional-test components for each unit, not only one arbitrary claim.
+- Evaluation computes release defaults and penalties while feedback stays
+  hidden. Release publishes feedback and per-submission points. A stage-row lock
+  and existing-entry checks make repeated evaluate/release delivery idempotent.
 
 ## 4. CTF bonus and caps
 

@@ -411,12 +411,13 @@ def activate(body: ActivateIn, request: Request):
             )
         user_id = str(uuid7())
         pw_hash = security.hash_password(body.password)
-        s.execute(
+        created_user_id = s.execute(
             text(
                 "INSERT INTO app.users (id, tenant_id, email, name, role, password_hash, status, registration_id) "
-                "SELECT :id, e.tenant_id, :email, split_part(:email, '@', 1), :role, :pw, 'active', :reg "
-                "FROM app.events e WHERE e.id = CAST(:ev AS uuid) "
-                "ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, status = 'active' RETURNING id"
+                "SELECT CAST(:id AS uuid), e.tenant_id, CAST(:email AS varchar), "
+                "split_part(CAST(:email AS varchar), '@', 1), CAST(:role AS varchar), CAST(:pw AS varchar), "
+                "'active', CAST(:reg AS varchar) FROM app.events e WHERE e.id = CAST(:ev AS uuid) "
+                "ON CONFLICT (email) DO NOTHING RETURNING id"
             ),
             {
                 "id": user_id,
@@ -426,7 +427,11 @@ def activate(body: ActivateIn, request: Request):
                 "reg": str(uuid7())[:8],
                 "ev": str(inv["event_id"]),
             },
-        )
+        ).scalar_one_or_none()
+        if created_user_id is None:
+            raise ApiError(
+                "NOT_FOUND", message="This invite is invalid or expired. Request a new invite from the organizers."
+            )
         urow = (
             s.execute(
                 text("SELECT id, tenant_id, role, token_version FROM app.users WHERE email = :e"), {"e": inv["email"]}
